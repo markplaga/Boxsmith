@@ -30,7 +30,7 @@ const DEFAULTS = {
 };
 let S = Object.assign({}, DEFAULTS);
 try{ const saved = JSON.parse(localStorage.getItem('boxsmith-v1')||'null'); if(saved) S = Object.assign({}, DEFAULTS, saved);}catch(e){}
-function save(){ try{ localStorage.setItem('boxsmith-v1', JSON.stringify(S)); }catch(e){} }
+function save(){ if(window.BOX && window.BOX.noSave) return; try{ localStorage.setItem('boxsmith-v1', JSON.stringify(S)); }catch(e){} }
 
 /* ================= GEOMETRY HELPERS ================= */
 const PI = Math.PI;
@@ -770,7 +770,7 @@ const MATS={
   birch:{face:[226,196,150],side:[176,138,92],a:1}, walnut:{face:[122,82,54],side:[84,54,34],a:1}, mdf:{face:[168,124,82],side:[120,84,52],a:1},
   clear:{face:[190,225,235],side:[120,170,185],a:0.42}, black:{face:[48,48,52],side:[22,22,24],a:1}, pink:{face:[244,150,180],side:[214,100,140],a:0.85}, card:{face:[196,160,112],side:[150,118,78],a:1}
 };
-const view={yaw:-0.6,pitch:0.5,zoom:1,explode:0,spin:false,mat:'birch',animT:0,play:0,phase:0,loop:false,hw:true};
+const view={yaw:-0.6,pitch:0.5,zoom:1,explode:0,spin:false,mat:'birch',animT:0,play:0,phase:0,loop:false,hw:true,pan:[0,0,0]};
 let scene=null, selPi=-1;
 function circlePts(c){ return arc(c.x,c.y,c.r,0,2*PI,18).slice(0,18); }
 function buildScene(parts){
@@ -875,7 +875,13 @@ function buildGL(){
       const {o,u,v,n}=s.map;
       const base=new THREE.Matrix4().set(u[0],v[0],n[0],o[0], u[1],v[1],n[1],o[1], u[2],v[2],n[2],o[2], 0,0,0,1);
       const mesh=new THREE.Mesh(geo,s.look==='clear'?[GL.clearCap,GL.clearSide]:[GL.cap,GL.side]); mesh.matrixAutoUpdate=false; mesh.userData.pi=s.pi;
-      const edges=new THREE.LineSegments(new THREE.EdgesGeometry(geo,30),GL.line); edges.matrixAutoUpdate=false;
+      const ev=[]; const th=s.th;
+      for(const L of [s.pts,...s.holes]){ const n=L.length;
+        for(let i=0;i<n;i++){ const p=L[i], q=L[(i+1)%n]; ev.push(p[0],p[1],0,q[0],q[1],0, p[0],p[1],th,q[0],q[1],th);
+          const r=L[(i-1+n)%n], d1=[p[0]-r[0],p[1]-r[1]], d2=[q[0]-p[0],q[1]-p[1]]; const c=(d1[0]*d2[0]+d1[1]*d2[1])/((Math.hypot(...d1)*Math.hypot(...d2))||1);
+          if(c<0.94) ev.push(p[0],p[1],0,p[0],p[1],th); } }
+      const eg=new THREE.BufferGeometry(); eg.setAttribute('position',new THREE.Float32BufferAttribute(ev,3));
+      const edges=new THREE.LineSegments(eg,GL.line); edges.matrixAutoUpdate=false;
       GL.root.add(mesh); GL.root.add(edges);
       const decal=s.decal?makeDecal(s):null; if(decal) GL.root.add(decal);
       const hw=makeHardware(s); if(hw) GL.root.add(hw);
@@ -899,7 +905,7 @@ function renderGL(){
   GL.r.setPixelRatio(window.devicePixelRatio||1); GL.r.setSize(w,h,false);
   glColors();
   const up0=scene.divLift? (scene.divLift*1.15*1.25+0.6)*scene.R*view.explode : 0;
-  const C=[scene.ctr[0],scene.ctr[1],scene.ctr[2]+up0*0.45], cy=Math.cos(view.yaw), sy=Math.sin(view.yaw), cp=Math.cos(view.pitch), sp=Math.sin(view.pitch);
+  const C=[scene.ctr[0]+view.pan[0],scene.ctr[1]+view.pan[1],scene.ctr[2]+up0*0.45+view.pan[2]], cy=Math.cos(view.yaw), sy=Math.sin(view.yaw), cp=Math.cos(view.pitch), sp=Math.sin(view.pitch);
   const scale=Math.min(w,h)*0.40/(scene.R*(1+view.explode*0.9)+up0*0.45)*view.zoom;
   const away=[cp*sy,cp*cy,-sp], up=[sp*sy,sp*cy,cp], dist=scene.R*20;
   const cam=GL.cam; cam.position.set(C[0]-away[0]*dist,C[1]-away[1]*dist,C[2]-away[2]*dist); cam.up.set(up[0],up[1],up[2]); cam.lookAt(C[0],C[1],C[2]);
@@ -1219,6 +1225,10 @@ function update(resetView){
 }
 $('#sheets').addEventListener('click',e=>{ const pp=e.target.closest('.pp'); if(!pp) return; selectPart(+pp.dataset.pi); const f=LAST.fparts.find(x=>x.idx===selPi); if(f) toast(f.name+' — '+fmt(f.bb.w)+' × '+fmt(f.bb.h)); });
 window.update=update;
+window.BOX={ get S(){ return S; }, set(o){ Object.assign(S,o); }, reset(){ S=Object.assign({},DEFAULTS); }, update, render, view, playDemo,
+  hwPoints(){ if(!GL) return []; const out=[]; for(const o of GL.objs){ if(!o.hw) continue; const kids=o.hw.children; for(let i=2;i<kids.length;i+=3){ const g=kids[i].geometry; g.computeBoundingSphere(); const c=g.boundingSphere.center.clone().applyMatrix4(o.base); const h=kids[i-1].geometry; h.computeBoundingSphere(); const hc=h.boundingSphere.center.clone().applyMatrix4(o.base); out.push({nut:[c.x,c.y,c.z],head:[hc.x,hc.y,hc.z],part:o.s.part.name}); } } return out; },
+  ctr(){ return scene?scene.ctr.slice():[0,0,0]; },
+  tab(v){ const b=document.querySelector('#tabs [data-v="'+v+'"]'); if(b) b.click(); }, noSave:false };
 initGL();
 update(true);
 if(document.fonts && document.fonts.ready){ const fams=['Bebas Neue','Caveat','Pacifico','Playfair Display','Rye','Stardos Stencil']; Promise.all(fams.map(f=>document.fonts.load('40px "'+f+'"').catch(()=>{}))).then(()=>{ _textCache.clear(); update(); }); }
