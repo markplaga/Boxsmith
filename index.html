@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boxsmith — Laser-Cut Box Generator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=Bebas+Neue&family=Caveat:wght@600&family=Pacifico&family=Playfair+Display:wght@700&family=Rye&family=Stardos+Stencil:wght@700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f4f1ec; --panel:#fffdf9; --ink:#1f1d1a; --muted:#6f6a62; --line:#e2ddd4; --line2:#d3ccc0;
+  --accent:#e2461b; --accent-ink:#fff; --accent-soft:#fbe6dd; --ok:#2f7d4f; --warn:#a8650a; --warn-soft:#fdf1dc;
+  --mono:'IBM Plex Mono',ui-monospace,monospace; --sans:'IBM Plex Sans',system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:var(--sans);background:var(--bg);color:var(--ink);font-size:14px;-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+.app{display:grid;grid-template-columns:380px 1fr;height:100vh}
+aside{border-right:1px solid var(--line);background:var(--panel);overflow-y:auto;display:flex;flex-direction:column}
+.brand{padding:18px 20px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.brand .logo{width:30px;height:30px;flex:none}
+.brand h1{font-size:17px;margin:0;letter-spacing:-.01em}
+.brand p{margin:1px 0 0;color:var(--muted);font-size:12px}
+.sec{border-bottom:1px solid var(--line);padding:14px 20px 16px}
+.sec h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0 0 10px;font-weight:600;display:flex;justify-content:space-between;align-items:center}
+.types{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.type{border:1px solid var(--line2);background:#fff;border-radius:8px;padding:8px 9px;text-align:left;cursor:pointer;display:flex;gap:8px;align-items:center;min-height:46px}
+.type svg{width:30px;height:30px;flex:none}
+.type b{display:block;font-size:12.5px;font-weight:600;line-height:1.2}
+.type span{display:block;font-size:11px;color:var(--muted);line-height:1.25}
+.type:hover{border-color:#b9b0a2}
+.type.on{border-color:var(--accent);background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px 10px}
+.f{display:flex;flex-direction:column;gap:3px;min-width:0}
+.f label{font-size:12px;color:var(--muted)}
+.f textarea{width:100%;border:1px solid var(--line2);border-radius:6px;padding:7px 8px;background:#fff;font-family:var(--sans);font-size:13px;resize:vertical;min-height:54px}
+.f textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+.f input[type=number],.f input[type=text],.f select{width:100%;border:1px solid var(--line2);border-radius:6px;padding:7px 8px;background:#fff;font-family:var(--mono);font-size:13px}
+.f select,.f input[type=text]{font-family:var(--sans)}
+.f input:focus,.f select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+.f .hint{font-size:11px;color:var(--muted);line-height:1.3}
+.full{grid-column:1/-1}
+.seg{display:flex;border:1px solid var(--line2);border-radius:6px;overflow:hidden;background:#fff}
+.seg button{flex:1;border:0;background:none;padding:6px 8px;cursor:pointer;font-size:12.5px}
+.seg button.on{background:var(--ink);color:#fff}
+.chk{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:3px 0}
+.chk input{accent-color:var(--accent);width:16px;height:16px}
+.hidden{display:none!important}
+main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.topbar{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap}
+.tabs{display:flex;gap:4px;background:#ece7df;padding:3px;border-radius:8px}
+.tabs button{border:0;background:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-weight:500;font-size:13px;color:var(--muted)}
+.tabs button.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.spacer{flex:1}
+.btn{border:1px solid var(--line2);background:#fff;border-radius:7px;padding:7px 12px;cursor:pointer;font-weight:500;font-size:13px;white-space:nowrap}
+.btn:hover{border-color:#a99f90}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{filter:brightness(1.05)}
+.view{flex:1;position:relative;min-height:0;overflow:hidden}
+.view{background:radial-gradient(ellipse at 50% 40%,#fbf9f5 0%,#ebe5db 100%)}
+#gl{position:absolute;inset:0;width:100%;height:100%;display:block}
+#cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#cv:active{cursor:grabbing}
+.v3dctl{position:absolute;left:14px;bottom:14px;display:flex;gap:12px;align-items:center;background:rgba(255,253,249,.92);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:12.5px;flex-wrap:wrap;max-width:calc(100% - 28px)}
+.v3dctl input[type=range]{accent-color:var(--accent);width:110px}
+.v3dctl select{border:1px solid var(--line2);border-radius:6px;padding:3px 6px;background:#fff;font-size:12.5px}
+.dims{position:absolute;right:14px;top:14px;background:rgba(255,253,249,.92);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:12px;font-family:var(--mono);line-height:1.6;pointer-events:none}
+.dims b{font-family:var(--sans);font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+#sheets{position:absolute;inset:0;overflow:auto;padding:18px;background:#e9e4dc}
+.sheet{margin:0 auto 22px;max-width:1100px}
+.sheet .cap{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:var(--muted);margin-bottom:6px;gap:8px}
+.sheet .cap b{color:var(--ink)}
+.sheet svg{width:100%;height:auto;background:#fff;border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+#guide{position:absolute;inset:0;overflow:auto;padding:22px 26px;background:var(--panel)}
+#guide h3{margin:0 0 6px;font-size:18px}
+#guide ol{padding-left:20px;line-height:1.6;max-width:760px}
+#guide table{border-collapse:collapse;font-size:13px;margin-top:10px;min-width:420px}
+#guide td,#guide th{border-bottom:1px solid var(--line);padding:6px 12px 6px 0;text-align:left}
+#guide th{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+#guide td.m{font-family:var(--mono)}
+.statbar{display:flex;gap:20px;padding:10px 16px;border-top:1px solid var(--line);background:var(--panel);font-size:12.5px;flex-wrap:wrap;align-items:center}
+.stat span{color:var(--muted);margin-right:5px}
+.stat b{font-family:var(--mono);font-weight:500}
+.warns{padding:0 16px 10px;background:var(--panel);display:flex;flex-direction:column;gap:5px}
+.warn{background:var(--warn-soft);color:var(--warn);border-radius:6px;padding:6px 10px;font-size:12.5px}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:9px 16px;border-radius:8px;font-size:13px;opacity:0;transition:.25s;pointer-events:none;z-index:50}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.menu{position:relative}
+.menu .pop{position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid var(--line2);border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.14);padding:6px;min-width:250px;z-index:20}
+.menu .pop button{display:block;width:100%;text-align:left;border:0;background:none;padding:8px 10px;border-radius:6px;cursor:pointer;font-size:13px}
+.menu .pop button small{display:block;color:var(--muted);font-size:11.5px}
+.menu .pop button:hover{background:#f3efe8}
+.btn.sm{padding:5px 9px;font-size:12px}
+.art{border:1px solid var(--line2);border-radius:8px;padding:8px;margin-top:8px;background:#fff}
+.art .hd{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;font-weight:600;margin-bottom:6px;gap:6px}
+.art .hd span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.art .grid3{gap:6px}
+.pp{fill:transparent;stroke:none;cursor:pointer}
+.pp:hover{fill:rgba(226,70,27,.06)}
+.pp.sel{fill:rgba(226,70,27,.14);stroke:#e2461b;stroke-width:2px;vector-effect:non-scaling-stroke}
+#selInfo{position:absolute;left:14px;top:14px;background:rgba(255,253,249,.94);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:12.5px;max-width:calc(100% - 28px)}
+#selInfo span{color:var(--muted)}
+#costBox{display:block;font-size:12.5px;line-height:1.6;background:#f6f2ec;border-radius:8px;padding:8px 10px}
+#costBox b{font-family:var(--mono);font-weight:500}
+.foot{padding:14px 20px;color:var(--muted);font-size:11.5px;line-height:1.5}
+@media (max-width:860px){
+  .app{grid-template-columns:1fr;height:auto}
+  main{order:-1;height:72vh;position:sticky;top:0;z-index:5;border-bottom:1px solid var(--line)}
+  aside{border-right:0}
+  .dims{display:none}
+  .topbar{padding:8px 10px}
+  .statbar{gap:12px;padding:8px 10px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+<aside>
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 32 32"><rect x="3" y="9" width="20" height="20" fill="#e2461b"/><path d="M3 9l6-6h20l-6 6z" fill="#f08a63"/><path d="M23 9l6-6v20l-6 6z" fill="#b3330f"/><path d="M3 13h3v4H3zm0 8h3v4H3zm17-12h3v4h-3z" fill="#fffdf9" opacity=".9"/></svg>
+    <div><h1>Boxsmith</h1><p>Laser-cut box generator · 10 box styles</p></div>
+  </div>
+
+  <div class="sec">
+    <h2>Box style</h2>
+    <div class="types" id="types"></div>
+  </div>
+
+  <div class="sec" data-hide="kerftest">
+    <h2>Size <div class="seg" style="width:120px" id="unitSeg"><button data-u="mm">mm</button><button data-u="in">in</button></div></h2>
+    <div class="seg" id="dimSeg" style="margin-bottom:10px"><button data-m="outside">Outside dims</button><button data-m="inside">Inside dims</button></div>
+    <div class="grid3">
+      <div class="f"><label id="lblW">Width</label><input type="number" data-k="W" data-len></div>
+      <div class="f" data-hide="polygon"><label>Depth</label><input type="number" data-k="D" data-len></div>
+      <div class="f" data-show="polygon"><label>Sides</label><input type="number" data-k="sides" min="3" max="16" step="1"></div>
+      <div class="f"><label>Height</label><input type="number" data-k="H" data-len></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>Material &amp; laser</h2>
+    <div class="grid2">
+      <div class="f full"><label>My materials</label><div style="display:flex;gap:6px"><select id="matLib" style="flex:1"></select><button class="btn sm" id="matDel" title="Delete this material">✕</button></div></div>
+      <div class="f"><label>Thickness</label><input type="number" data-k="t" data-len step="0.01"></div>
+      <div class="f"><label>Preset</label><select id="tPreset">
+        <option value="">Measured…</option><option value="3">3 mm</option><option value="3.175">1/8" (3.18)</option><option value="4">4 mm</option><option value="5.2">5.2 mm (lauan)</option><option value="6">6 mm</option><option value="6.35">1/4" (6.35)</option><option value="1.5">1.5 mm card</option></select></div>
+      <div class="f"><label>Kerf (beam width)</label><input type="number" data-k="kerf" step="0.01" data-len></div>
+      <div class="f" data-hide="kerftest"><label>Finger width</label><input type="number" data-k="fw" data-len></div>
+      <div class="f full"><label>Save these settings as a material</label><div style="display:flex;gap:6px"><input type="text" id="matName" placeholder="e.g. 3 mm birch, Richmond batch" style="flex:1"><button class="btn sm" id="matSave">Save</button></div></div>
+      <div class="f full" data-hide="kerftest polygon rounded book card"><label>Corner construction</label><div class="seg" id="cornerSeg"><button data-c="classic">Front &amp; back</button><button data-c="edge">Pinwheel</button><button data-c="pinwheel">Diagonal pinwheel</button></div><span class="hint" id="cornerHint"></span></div>
+      <div class="f full hint" style="color:var(--muted);font-size:11.5px">Measure thickness with calipers. Kerf: cut a 20 mm square, measure it, kerf = 20 − measured. Not sure? Run the <a href="#" id="toKerf">Kerf test</a> first.</div>
+    </div>
+  </div>
+
+  <div class="sec" data-hide="kerftest">
+    <h2>Joints &amp; fit</h2>
+    <div class="grid2">
+      <div class="f"><label>Fit</label><select data-k="fit"><option value="press">Press-fit (no glue)</option><option value="snug">Extra snug</option><option value="glue">Glue gap (looser)</option></select></div>
+      <div class="f"><label>Screw joints</label><select data-k="tslot"><option value="off">Off</option><option value="M2.5">M2.5 T-slots</option><option value="M3">M3 T-slots</option><option value="M4">M4 T-slots</option></select></div>
+      <div class="f" data-showk="tslot"><label>Screw length</label><input type="number" data-k="screwLen" data-len></div>
+      <div class="f"><label>CNC bit ⌀ (dogbones)</label><input type="number" data-k="bit" data-len step="0.1"><span class="hint">0 = laser. Set a bit size to add dogbone corners for the router.</span></div>
+    </div>
+  </div>
+
+  <div class="sec" data-show="liftoff split sliding hinged drawer polygon rounded open pencil card nested puzzle display">
+    <h2>Fit &amp; lid</h2>
+    <div class="grid2">
+      <div class="f"><label>Clearance</label><input type="number" data-k="clr" step="0.05" data-len><span class="hint">Gap for sliding / lift-off fits</span></div>
+      <div class="f" data-show="split hinged"><label>Lid height</label><input type="number" data-k="lidH" data-len></div>
+      <div class="f" data-show="liftoff"><label>Lid overhang</label><input type="number" data-k="overhang" data-len></div>
+      <div class="f" data-show="liftoff polygon rounded display"><label>Locator ring width</label><input type="number" data-k="ringW" data-len></div>
+      <div class="f" data-show="hinged pencil puzzle"><label>Pin ⌀</label><input type="number" data-k="pin" data-len step="0.1"><span class="hint">Dowel, nail or filament</span></div>
+      <div class="f" data-show="sliding puzzle"><label>Lid capture lip</label><input type="number" data-k="capLip" data-len></div>
+      <div class="f" data-show="pencil"><label>Rim width</label><input type="number" data-k="rimW" data-len></div>
+      <div class="f" data-show="card"><label>Front height %</label><input type="number" data-k="frontPct" min="20" max="95" step="5"></div>
+      <div class="f" data-show="card"><label>Index cards</label><input type="number" data-k="cardDivs" min="0" max="12" step="1"></div>
+      <div class="f" data-show="nested"><label>Boxes in the set</label><input type="number" data-k="nestN" min="2" max="6" step="1"></div>
+      <div class="f" data-show="display"><label>Acrylic thickness</label><input type="number" data-k="tAcr" data-len step="0.01"></div>
+      <div class="f" data-show="display"><label>Base margin</label><input type="number" data-k="baseM" data-len></div>
+      <div class="f" data-show="polygon rounded"><label>Top</label><select data-k="polyTop"><option value="lift">Lift-off lid</option><option value="glued">Fixed top (closed)</option><option value="none">Open</option></select></div>
+      <div class="f" data-show="polygon rounded"><label>Plate lip</label><input type="number" data-k="lip" data-len><span class="hint">Plate edge past the walls</span></div>
+      <label class="chk full" data-show="split"><input type="checkbox" data-k="strips"> Add locator strips (lid self-aligns)</label>
+    </div>
+  </div>
+
+  <div class="sec" data-show="drawer">
+    <h2>Drawers</h2>
+    <div class="grid2">
+      <div class="f"><label>Number of drawers</label><input type="number" data-k="drawers" min="1" max="8" step="1"></div>
+      <div class="f"><label>Pull</label><select data-k="pull"><option value="slot">Finger slot</option><option value="knob">Knob screw hole</option><option value="none">None</option></select></div>
+    </div>
+  </div>
+
+  <div class="sec" data-show="rounded book">
+    <h2>Living hinge</h2>
+    <div class="grid3">
+      <div class="f" data-show="rounded"><label>Corner radius</label><input type="number" data-k="radius" data-len></div>
+      <div class="f"><label>Cut pitch</label><input type="number" data-k="hPitch" data-len step="0.1"></div>
+      <div class="f"><label>Bridge</label><input type="number" data-k="hBridge" data-len step="0.1"></div>
+      <div class="f full hint">Pitch 1.5–2.5 mm and 3–5 mm bridges suit 3 mm plywood. Test-flex a strip first.</div>
+    </div>
+  </div>
+
+  <div class="sec" data-show="open liftoff split sliding hinged drawer pencil">
+    <h2>Dividers</h2>
+    <div class="grid3">
+      <div class="f"><label>Columns</label><input type="number" data-k="cols" min="1" max="12" step="1"></div>
+      <div class="f"><label>Rows</label><input type="number" data-k="rows" min="1" max="12" step="1"></div>
+      <div class="f"><label>Height %</label><input type="number" data-k="divPct" min="20" max="100" step="5"></div>
+    </div>
+  </div>
+
+  <div class="sec" data-show="kerftest">
+    <h2>Kerf test</h2>
+    <div class="grid2">
+      <div class="f"><label>Step between slots</label><input type="number" data-k="kStep" step="0.01" data-len></div>
+      <div class="f"><label>Finger width</label><input type="number" data-k="fw" data-len></div>
+      <div class="f full hint">Cuts a comb with 7 slots compensated for kerf values around your current setting. Push a scrap of the same sheet into each slot: the snug one is your kerf. A matched finger-joint pair tests the real joint.</div>
+    </div>
+  </div>
+
+  <div class="sec" data-hide="kerftest">
+    <h2>Decorate</h2>
+    <label class="chk" data-show="open liftoff split"><input type="checkbox" data-k="handles"> Hand-hold cutouts on the ends</label>
+    <label class="chk" data-show="open"><input type="checkbox" data-k="notch"> Finger notch on the front wall</label>
+    <div class="grid2" style="margin-top:8px">
+      <div class="f full"><label>Text on the lid / top</label><textarea data-k="text" rows="3" placeholder="e.g. Ashlen's Treasures&#10;Est. 2026 — press Return for a new line"></textarea></div>
+      <div class="f full"><label>Alignment</label><div class="seg" id="alignSeg"><button data-al="left">Left</button><button data-al="center">Center</button><button data-al="right">Right</button></div></div>
+      <div class="f"><label>Text size</label><input type="number" data-k="textSize" data-len></div>
+      <div class="f"><label>Font</label><select data-k="font">
+        <option value="Georgia, serif">Serif</option><option value="'Playfair Display', serif">Elegant serif</option><option value="Helvetica, Arial, sans-serif">Sans</option><option value="'Bebas Neue', sans-serif">Tall caps</option><option value="'Pacifico', cursive">Script</option><option value="'Caveat', cursive">Handwritten</option><option value="'Rye', serif">Western</option><option value="'Stardos Stencil', sans-serif">Stencil (for cut-through)</option><option value="'Courier New', monospace">Typewriter</option></select></div>
+      <div class="f full"><label>Text is…</label><select data-k="textMode"><option value="engrave">Raster — filled engraving</option><option value="score">Vector — outline only</option><option value="cut">Cut through</option></select><span class="hint">Text is converted to outlines, so it cuts exactly as you see it.</span></div>
+      <div class="f"><label>Corner accents</label><select data-k="accent" id="accentSel"><option value="none">None</option></select></div>
+      <div class="f" data-showk="accent"><label>Accent on</label><select data-k="accentOn"><option value="top">Top only</option><option value="all">Top + four sides</option></select></div>
+      <div class="f" data-showk="accent"><label>Accent size</label><input type="number" data-k="accentSize" data-len></div>
+      <div class="f" data-showk="accent"><label>Line weight</label><input type="number" data-k="accentLine" data-len step="0.1"></div>
+      <div class="f full" data-showk="accent"><label>Etch as</label><select data-k="accentMode"><option value="fill">Raster — filled engraving</option><option value="score">Vector — single lines</option></select></div>
+      <div class="f"><label>Cut-out pattern</label><select data-k="deco"><option value="none">None</option><option value="hex">Honeycomb</option><option value="lattice">Diamond lattice</option><option value="voronoi">Voronoi</option><option value="circles">Dots</option><option value="stars">Stars</option><option value="leaves">Leaves</option><option value="slots">Slots</option></select></div>
+      <div class="f" data-showk="deco"><label>On</label><select data-k="decoOn"><option value="walls">Walls</option><option value="lid">Lid / top</option><option value="all">Everything</option></select></div>
+      <div class="f" data-showk="deco"><label>Pattern size</label><input type="number" data-k="decoCell" data-len></div>
+      <div class="f" data-showk="deco"><label>Web (wood between)</label><input type="number" data-k="decoWeb" data-len step="0.5"></div>
+      <div class="f" data-showk="deco"><label>Shuffle</label><input type="number" data-k="decoSeed" step="1"></div>
+      <div class="f"><label>Lid corners</label><select data-k="cornerStyle"><option value="square">Square</option><option value="round">Rounded</option><option value="chamfer">Chamfered</option></select></div>
+      <div class="f" data-showk="cornerStyle"><label>Corner size</label><input type="number" data-k="cornerR" data-len></div>
+    </div>
+    <div style="margin-top:12px">
+      <label class="btn" style="display:inline-block;cursor:pointer">＋ Add artwork (PNG, JPG or SVG)<input type="file" id="artFile" accept=".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml" class="hidden"></label>
+      <div id="artList"></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>Laser bed &amp; file</h2>
+    <div class="grid2">
+      <div class="f full"><label>Bed / sheet preset</label><select id="bedPreset">
+        <option value="">Custom…</option><option value="600x400">600 × 400 mm</option><option value="700x500">700 × 500 mm</option><option value="900x600">900 × 600 mm</option><option value="1000x700">1000 × 700 mm</option><option value="1300x900">1300 × 900 mm</option><option value="495x279">Glowforge 495 × 279</option><option value="609.6x304.8">24 × 12 in sheet</option><option value="457.2x304.8">18 × 12 in sheet</option><option value="304.8x304.8">12 × 12 in sheet</option></select></div>
+      <div class="f"><label>Sheet width</label><input type="number" data-k="sheetW" data-len></div>
+      <div class="f"><label>Sheet height</label><input type="number" data-k="sheetH" data-len></div>
+      <div class="f"><label>Part spacing</label><input type="number" data-k="gap" data-len step="0.5"></div>
+      <div class="f"><label>Stroke</label><select data-k="stroke"><option value="0.1">0.1 mm</option><option value="0.01">Hairline 0.01 mm</option><option value="0.001">0.001 mm (Epilog)</option></select></div>
+      <div class="f full"><label>Layers</label><select data-k="layerScheme"><option value="simple">Simple — red cut, blue score, black engrave</option><option value="lightburn">LightBurn ordered — 00 engrave · 01 score · 02 inner cuts · 03 outer cuts</option></select></div>
+      <label class="chk full"><input type="checkbox" data-k="grain"> Grain lock — never rotate parts on the sheet</label>
+      <label class="chk full"><input type="checkbox" data-k="labels"> Engrave part names</label>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>Production</h2>
+    <div class="grid2">
+      <div class="f"><label>Boxes to cut</label><input type="number" data-k="qty" min="1" max="50" step="1"></div>
+      <div class="f"><label>Hold tabs per part</label><input type="number" data-k="holdTabs" min="0" max="8" step="1"><span class="hint">Kit mode: parts stay in the sheet</span></div>
+      <div class="f" data-showk="holdTabs"><label>Tab width</label><input type="number" data-k="holdW" data-len step="0.05"></div>
+      <div class="f full" style="margin-top:4px"><label style="font-weight:600;color:var(--ink)">Cost estimate</label></div>
+      <div class="f"><label>Sheet price ($)</label><input type="number" data-k="sheetPrice" step="0.5"></div>
+      <div class="f"><label>Machine rate ($/hr)</label><input type="number" data-k="rate" step="1"></div>
+      <div class="f"><label>Cut speed (mm/s)</label><input type="number" data-k="speed" step="1"></div>
+      <div class="f"><label>Markup %</label><input type="number" data-k="markup" step="5"></div>
+      <div class="f full" id="costBox"></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>Saved recipes</h2>
+    <div class="grid2">
+      <div class="f full"><div style="display:flex;gap:6px"><select id="recSel" style="flex:1"></select><button class="btn sm" id="recLoad">Load</button><button class="btn sm" id="recDel" title="Delete recipe">✕</button></div></div>
+      <div class="f full"><label class="btn sm" style="cursor:pointer;text-align:center">Open a saved settings file (.json)<input type="file" class="hidden openSettings" accept=".json,application/json"></label></div>
+      <div class="f full"><div style="display:flex;gap:6px"><input type="text" id="recName" placeholder="Name this box, e.g. Gift box small" style="flex:1"><button class="btn sm" id="recSave">Save</button></div></div>
+    </div>
+  </div>
+  <div class="foot">Every cut line is pushed outward by half the kerf, so fingers come out kerf-wider and slots kerf-narrower and the joints press-fit. Settings, materials and recipes save in this browser. <a href="#" id="resetAll">Reset everything</a></div>
+</aside>
+
+
+<main>
+  <div class="topbar">
+    <div class="tabs" id="tabs"><button data-v="3d" class="on">3D preview</button><button data-v="sheets">Cut sheets</button><button data-v="guide">Assembly</button></div>
+    <div class="spacer"></div>
+    <label class="btn" style="cursor:pointer">Open…<input type="file" class="hidden openSettings" accept=".json,application/json"></label>
+    <button class="btn" id="copySvg">Copy SVG</button>
+    <div class="menu"><button class="btn primary" id="dlBtn">Download ▾</button>
+      <div class="pop hidden" id="dlPop">
+        <button data-dl="svg">SVG cut file<small>All sheets — one file each (zipped if more than one)</small></button>
+        <button data-dl="dxf">DXF cut file (zip)<small>For CAD / CNC software, mm units</small></button>
+        <button data-dl="json">Settings file (.json)<small>Re-open this exact box later with Open…</small></button>
+        
+      </div>
+    </div>
+    
+  </div>
+  <div class="view">
+    <canvas id="gl"></canvas><canvas id="cv"></canvas>
+    <div class="v3dctl" id="v3dctl">
+      <label>Explode <input type="range" id="explode" min="0" max="100" value="0"></label>
+      <button class="btn" id="playBtn" style="padding:3px 10px;font-size:12px">▶ Show it work</button>
+      <label id="hwLbl"><input type="checkbox" id="hwChk" checked> Screws</label>
+      <label><input type="checkbox" id="spin"> Spin</label>
+      <select id="matSel"><option value="birch">Birch ply</option><option value="walnut">Walnut</option><option value="mdf">MDF</option><option value="clear">Clear acrylic</option><option value="black">Black acrylic</option><option value="pink">Pink acrylic</option><option value="card">Cardboard</option></select>
+      <button class="btn" id="resetView" style="padding:3px 9px;font-size:12px">Reset view</button>
+    </div>
+    <div class="dims" id="dims"></div><div id="selInfo" class="hidden"></div>
+    <div id="sheets" class="hidden"></div>
+    <div id="guide" class="hidden"></div>
+  </div>
+  <div class="warns" id="warns"></div>
+  <div class="statbar" id="stats"></div>
+</main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="three.min.js"></script>
+<script src="tools.js"></script>
+<script src="app.js"></script>
+
+</body>
+</html>
