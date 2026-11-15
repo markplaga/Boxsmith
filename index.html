@@ -80,6 +80,24 @@ main{display:flex;flex-direction:column;min-width:0;min-height:0}
 #guide td,#guide th{border-bottom:1px solid var(--line);padding:6px 12px 6px 0;text-align:left}
 #guide th{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
 #guide td.m{font-family:var(--mono)}
+#help{position:absolute;inset:0;overflow:auto;padding:22px 26px 60px;background:var(--panel)}
+.help{max-width:780px;line-height:1.6;font-size:14px}
+.help h1{font-size:24px;margin:0 0 6px}
+.help h2{font-size:18px;margin:30px 0 8px;padding-top:6px;border-top:1px solid var(--line)}
+.help h3{font-size:14.5px;margin:16px 0 4px}
+.help .lead{color:var(--muted);font-size:15px}
+.help .toc{background:#f6f2ec;border-radius:10px;padding:12px 16px;margin:14px 0}
+.help .toc ol{margin:6px 0 0;padding-left:22px;columns:2;column-gap:28px}
+.help .toc a,.help a{color:var(--accent)}
+.help table{border-collapse:collapse;width:100%;font-size:13px;margin:8px 0}
+.help td,.help th{border-bottom:1px solid var(--line);padding:6px 10px 6px 0;text-align:left;vertical-align:top}
+.help th{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.help td:first-child{font-weight:600;white-space:nowrap}
+.help dt{font-weight:600;margin-top:10px}
+.help dd{margin:2px 0 0 0;color:#3b3833}
+.help ul,.help ol{padding-left:22px}
+.help li{margin:3px 0}
+@media (max-width:860px){ .help .toc ol{columns:1} .help td:first-child{white-space:normal} }
 .statbar{display:flex;gap:20px;padding:10px 16px;border-top:1px solid var(--line);background:var(--panel);font-size:12.5px;flex-wrap:wrap;align-items:center}
 .stat span{color:var(--muted);margin-right:5px}
 .stat b{font-family:var(--mono);font-weight:500}
@@ -295,7 +313,7 @@ main{display:flex;flex-direction:column;min-width:0;min-height:0}
 
 <main>
   <div class="topbar">
-    <div class="tabs" id="tabs"><button data-v="3d" class="on">3D preview</button><button data-v="sheets">Cut sheets</button><button data-v="guide">Assembly</button></div>
+    <div class="tabs" id="tabs"><button data-v="3d" class="on">3D preview</button><button data-v="sheets">Cut sheets</button><button data-v="guide">Assembly</button><button data-v="help">Help</button></div>
     <div class="spacer"></div>
     <label class="btn" style="cursor:pointer">Open…<input type="file" class="hidden openSettings" accept=".json,application/json"></label>
     <button class="btn" id="copySvg">Copy SVG</button>
@@ -322,6 +340,233 @@ main{display:flex;flex-direction:column;min-width:0;min-height:0}
     <div class="dims" id="dims"></div><div id="selInfo" class="hidden"></div>
     <div id="sheets" class="hidden"></div>
     <div id="guide" class="hidden"></div>
+    <div id="help" class="hidden"><div class="help">
+<h1>Boxsmith Help</h1>
+<p class="lead">Boxsmith designs finger-jointed boxes for laser cutters (and CNC routers), shows them in 3D, packs the parts onto your sheet, and exports cut-ready SVG and DXF files. Everything runs in your browser, so nothing is uploaded.</p>
+
+<nav class="toc">
+<b>Contents</b>
+<ol>
+<li><a href="#h-start">Quick start</a></li>
+<li><a href="#h-screen">The screen at a glance</a></li>
+<li><a href="#h-styles">The 16 box styles</a></li>
+<li><a href="#h-size">Size and units</a></li>
+<li><a href="#h-material">Material, kerf and fingers</a></li>
+<li><a href="#h-corners">Corner construction</a></li>
+<li><a href="#h-joints">Joints and fit: press-fit, screws, CNC</a></li>
+<li><a href="#h-lid">Fit and lid options</a></li>
+<li><a href="#h-dividers">Dividers, drawers and living hinges</a></li>
+<li><a href="#h-decorate">Decorating: text, accents, patterns, artwork</a></li>
+<li><a href="#h-3d">The 3D preview</a></li>
+<li><a href="#h-sheets">Cut sheets and nesting</a></li>
+<li><a href="#h-export">Exporting files</a></li>
+<li><a href="#h-production">Production: batches, kits, cost</a></li>
+<li><a href="#h-saving">Saving your work</a></li>
+<li><a href="#h-kerftest">Dialing in fit with the kerf test</a></li>
+<li><a href="#h-trouble">Troubleshooting</a></li>
+<li><a href="#h-glossary">Glossary</a></li>
+</ol>
+</nav>
+
+<h2 id="h-start">1. Quick start</h2>
+<ol>
+<li><b>Measure your sheet</b> with calipers and enter it as <i>Thickness</i>. Real “3 mm” ply is often 2.8–3.2 mm, and that difference matters.</li>
+<li><b>Set your kerf.</b> If you don't know it, pick <i>Kerf test</i> first, cut it, and read the answer off the comb (see <a href="#h-kerftest">section 16</a>).</li>
+<li><b>Pick a box style</b> from the grid at the top of the left panel. It plays a short demo of how it opens.</li>
+<li><b>Enter the size.</b> Choose <i>Outside dims</i> if the box must fit a shelf, <i>Inside dims</i> if something must fit inside it.</li>
+<li><b>Check the Cut sheets tab</b> to see every part laid out on your bed.</li>
+<li><b>Download</b> the SVG (or DXF) and cut. Cut one corner joint first on a new material.</li>
+</ol>
+
+<h2 id="h-screen">2. The screen at a glance</h2>
+<ul>
+<li><b>Left panel:</b> every setting, grouped into sections. On a phone it sits below the preview, so scroll down.</li>
+<li><b>Tabs:</b> <i>3D preview</i>, <i>Cut sheets</i>, <i>Assembly</i> and <i>Help</i>.</li>
+<li><b>Top-right buttons:</b> <i>Open…</i> loads a saved settings file, <i>Copy SVG</i> copies the cut file to the clipboard, and <i>Download</i> saves SVG, DXF or settings files.</li>
+<li><b>Dimension card</b> (top right of the 3D view): outside and inside measurements of the finished box.</li>
+<li><b>Warnings</b> (yellow bars at the bottom): things that won't cut or assemble well, with a suggested fix.</li>
+<li><b>Status bar:</b> number of parts and sheets, how much of the bed is used, total cut length, laser time, cost per box and suggested price.</li>
+</ul>
+
+<h2 id="h-styles">3. The 16 box styles</h2>
+<table>
+<tr><th>Style</th><th>What it is</th><th>Notes</th></tr>
+<tr><td>Closed box</td><td>All six sides finger-jointed.</td><td>A sealed box, good for gifts or as a base for other ideas.</td></tr>
+<tr><td>Open tray</td><td>Five sides, no top.</td><td>Optional hand-holds, finger notch and dividers.</td></tr>
+<tr><td>Lift-off lid</td><td>Open tray plus a flat lid with a locator ring glued underneath.</td><td>The ring drops inside the walls so the lid can't slide off. <i>Lid overhang</i> makes the lid larger than the box.</td></tr>
+<tr><td>Split lid</td><td>A closed box cut into a base and a deep cap.</td><td><i>Lid height</i> sets where it splits. Locator strips make the lid self-align.</td></tr>
+<tr><td>Sliding lid</td><td>Walls, a spacer U-frame and a cap U-frame. The lid slides between them.</td><td><i>Lid capture lip</i> is how far the cap overlaps the lid.</td></tr>
+<tr><td>Hinged lid</td><td>The base side walls grow rounded “ears.” A pin through the ears and the lid sides is the hinge.</td><td>The lid has no back wall so it can open about 100°. Glue the pin to the lid side only.</td></tr>
+<tr><td>Drawer cabinet</td><td>A case with 1–8 drawers, shelves that tab into the side walls, and overlay false fronts.</td><td>Pulls: finger slot, knob screw hole or none.</td></tr>
+<tr><td>Polygon box</td><td>3–16 walls tabbed into polygon top and bottom plates.</td><td><i>Width</i> becomes “Across flats.” Walls meet at their inside corners, leaving small V-grooves outside.</td></tr>
+<tr><td>Rounded box</td><td>One wall strip with living-hinge corners wrapped around rounded plates.</td><td>Long strips are split in two automatically if they don't fit your bed.</td></tr>
+<tr><td>Pencil box</td><td>Open tray, a rim frame, and a lid that swivels sideways on a corner pin.</td><td>Glue the pin into the rim only.</td></tr>
+<tr><td>Card file box</td><td>Sides slope from a tall back to a low front, with index cards that have staggered tabs.</td><td><i>Front height %</i> and the number of index cards are adjustable.</td></tr>
+<tr><td>Nested set</td><td>2–6 open trays, each sized to drop inside the last.</td><td>Uses the clearance setting between boxes.</td></tr>
+<tr><td>Puzzle box</td><td>A sliding-lid box locked by a hidden gravity pin, plus a decoy rivet.</td><td>Upright, the pin drops into the lid and locks it. Upside-down, it falls into the rivet and the lid slides free.</td></tr>
+<tr><td>Book box</td><td>A cover strip (back cover, living-hinge spine, front cover) with a tray for the “pages.”</td><td>Text goes on the front cover. Bend the spine slowly around a can or dowel.</td></tr>
+<tr><td>Display case</td><td>A clear acrylic cover on a wood base with a locator frame.</td><td>Two materials, two sets of cut sheets. Set <i>Acrylic thickness</i> separately.</td></tr>
+<tr><td>Kerf test</td><td>A slotted comb and a finger-joint pair.</td><td>Use this before your first real box on a new material.</td></tr>
+</table>
+
+<h2 id="h-size">4. Size and units</h2>
+<ul>
+<li><b>mm / in</b> switches every length field. Files are always written in millimetres, which every laser program reads correctly.</li>
+<li><b>Outside dims</b> means the numbers are the box's overall size. <b>Inside dims</b> means they're the usable space inside, and Boxsmith adds the wall thickness for you.</li>
+<li>For the polygon box, <i>Width</i> is the distance across opposite flat sides. For the book box, <i>Width</i> runs from spine to fore-edge, <i>Depth</i> is the book's height, and <i>Height</i> is its thickness.</li>
+</ul>
+
+<h2 id="h-material">5. Material, kerf and fingers</h2>
+<dl>
+<dt>Thickness</dt><dd>Your measured sheet thickness. The <i>Preset</i> menu fills common values.</dd>
+<dt>Kerf (beam width)</dt><dd>The width of material the laser burns away. Every cut line is moved outward by half the kerf, so fingers come out slightly wider and slots slightly narrower, and joints press-fit. Typical CO₂ lasers run 0.1–0.2 mm. Quick check: cut a 20 mm square, measure it, and kerf = 20 − measured.</dd>
+<dt>Finger width</dt><dd>The target width of each finger. Boxsmith picks an odd number of fingers per edge so both ends match, so actual widths vary slightly. Keep it at least 2.5× the thickness so fingers don't snap.</dd>
+<dt>My materials</dt><dd>A list of saved materials (thickness, kerf, sheet price and 3D look). Choosing one fills those fields. To add your own, set thickness and kerf, type a name under <i>Save these settings as a material</i>, and press Save. ✕ deletes the selected material.</dd>
+</dl>
+
+<h2 id="h-corners">6. Corner construction</h2>
+<p>Every corner of a box is a small cube where three panels meet, and exactly one panel must own it. This setting decides which.</p>
+<ul>
+<li><b>Front &amp; back</b>: the front and back own all eight corners, and the top, bottom and sides have none. The classic layout.</li>
+<li><b>Pinwheel</b>: the top and bottom have no corners. Each wall owns both corners of one vertical edge, rotating around the box.</li>
+<li><b>Diagonal pinwheel</b>: each wall owns one top corner and the diagonally opposite bottom corner, spiralling around the box. On a square box all four walls are identical, so you can't put one in the wrong place.</li>
+</ul>
+
+<h2 id="h-joints">7. Joints and fit: press-fit, screws, CNC</h2>
+<dl>
+<dt>Fit</dt><dd><i>Press-fit</i> uses your kerf as-is. <i>Extra snug</i> tightens joints by 0.04 mm for slippery or springy materials. <i>Glue gap</i> loosens them by 0.06 mm so glue has room and parts don't need hammering.</dd>
+<dt>Screw joints (T-slots)</dt><dd>Adds captive-nut joints for M2.5, M3 or M4 hardware. Wall panels get a screw hole in a finger, and the matching panel gets a T-shaped slot for the nut. Set <i>Screw length</i> to the screws you own. These need stock thicker than the screw: M3 wants about 4.5 mm or more. Boxsmith warns you when holes would break through the edge. The 3D view shows the screws and nuts. Untick <i>Screws</i> to hide them.</dd>
+<dt>CNC bit ⌀ (dogbones)</dt><dd>For router cutting. A round bit can't cut a sharp inside corner, so Boxsmith adds a small round “dogbone” relief at every inside corner. Enter your bit diameter and set kerf to 0, because your CAM software handles tool compensation. Leave it at 0 for laser cutting.</dd>
+</dl>
+
+<h2 id="h-lid">8. Fit and lid options</h2>
+<p>This section shows only the settings your chosen style uses.</p>
+<ul>
+<li><b>Clearance</b>: the gap for anything that slides or lifts off, such as lids, drawers, nested boxes and dividers. 0.3 mm suits most wood.</li>
+<li><b>Lid height</b> (split and hinged), <b>Lid overhang</b> (lift-off), <b>Locator ring width</b>, <b>Pin ⌀</b> (hinged, pencil, puzzle), <b>Lid capture lip</b> (sliding, puzzle), <b>Rim width</b> (pencil), <b>Front height %</b> and <b>Index cards</b> (card box), <b>Boxes in the set</b> (nested), <b>Acrylic thickness</b> and <b>Base margin</b> (display case).</li>
+<li><b>Top</b> (polygon and rounded boxes): lift-off lid, fixed top, or open. <b>Plate lip</b> is how far the plates extend past the walls.</li>
+</ul>
+
+<h2 id="h-dividers">9. Dividers, drawers and living hinges</h2>
+<dl>
+<dt>Dividers</dt><dd>Set columns and rows for an egg-crate grid that slots together and sits loose in the box. <i>Height %</i> sets how tall they are compared with the inside height. In the exploded view they lift straight up out of the box, with the ↔ pieces sliding off the ↕ pieces along their slots.</dd>
+<dt>Drawers</dt><dd>Number of drawers and pull style. Each drawer is an open tray with a false front that overlaps the case and acts as a stop. Dividers apply inside each drawer.</dd>
+<dt>Living hinge</dt><dd>Used by the rounded box and book box. <i>Cut pitch</i> is the spacing between cut lines and <i>Bridge</i> is the solid wood left between cuts. For 3 mm ply, start with a pitch of 1.5–2.5 mm and 3–5 mm bridges. Smaller pitch bends more but is more fragile. Always test-flex a strip, and cut hinges with air assist.</dd>
+</dl>
+
+<h2 id="h-decorate">10. Decorating: text, accents, patterns, artwork</h2>
+<h3>Text</h3>
+<ul>
+<li>Type in the <b>Text on the lid / top</b> box. Press Return for a new line.</li>
+<li><b>Alignment</b>: Left, Center or Right. Lines line up against each other and the block stays centred on the panel.</li>
+<li><b>Text is…</b>: <i>Raster, filled engraving</i> (solid letters), <i>Vector, outline only</i> (a fast scored outline), or <i>Cut through</i>.</li>
+<li>Text is converted to outlines inside Boxsmith, so your laser software doesn't need the font and you don't need a “convert to path” step.</li>
+<li>For cut-through text use the <b>Stencil</b> font. Other fonts lose the middles of letters like O, A and B.</li>
+</ul>
+<h3>Corner accents</h3>
+<ul>
+<li>Eleven etched corner designs: simple bracket, double line + diamond, Art Deco steps, sunburst fan, filigree scroll, leaf sprig, solid triangle, dot cascade, chevrons, star + rules, scalloped edge.</li>
+<li><b>Accent on</b>: <i>Top only</i> or <i>Top + four sides</i>. On sides they sit inside the finger joints. Drawer insides and inner nested boxes are left plain.</li>
+<li><b>Accent size</b>, <b>Line weight</b>, and <b>Etch as</b> (raster fill or vector single lines).</li>
+</ul>
+<h3>Cut-out patterns</h3>
+<ul>
+<li>Honeycomb, diamond lattice, Voronoi, dots, stars, leaves or slots, cut through the <b>walls</b>, the <b>lid</b>, or <b>everything</b>.</li>
+<li><b>Pattern size</b> is the cell size. <b>Web</b> is the wood left between holes; keep it at least the material thickness for strength. <b>Shuffle</b> re-randomises Voronoi.</li>
+<li>Patterns automatically steer around holes, text, accents and artwork.</li>
+</ul>
+<h3>Artwork</h3>
+<ul>
+<li>Tap <b>＋ Add artwork</b> and choose a PNG, JPG or SVG. Each image gets its own card with <b>Panel</b>, <b>As</b> (engrave, score lines or cut through), <b>Width</b>, <b>Rotate</b> and <b>Move →/↓</b> from the panel centre.</li>
+<li>SVGs are read as vector shapes, which is best for cutting and scoring. Photos and PNGs engrave as images. For score or cut, Boxsmith traces their dark areas.</li>
+<li>Only closed shapes can be cut through. Open lines are skipped, with a warning.</li>
+</ul>
+<h3>Lid corners</h3>
+<p><b>Rounded</b> or <b>Chamfered</b> corners on flat lids and plates (lift-off lids, pencil lid and rim, book cover, display base), with an adjustable <b>Corner size</b>.</p>
+
+<h2 id="h-3d">11. The 3D preview</h2>
+<ul>
+<li><b>Rotate</b>: drag. <b>Zoom</b>: pinch or mouse wheel. <b>Reset</b>: double-tap, or <i>Reset view</i>.</li>
+<li><b>Explode</b> pulls the parts apart so you can see how they fit.</li>
+<li><b>▶ Show it work</b> loops the box's motion: lids slide, lift or swing, drawers pull out, the puzzle pin drops. Tap again to stop. Each style also plays once when you pick it.</li>
+<li><b>Screws</b> shows or hides the screw-joint hardware.</li>
+<li><b>Spin</b> turns the model slowly. The material menu changes the look: birch, walnut, MDF, clear or coloured acrylic, cardboard. Clear acrylic is handy for seeing inside.</li>
+<li><b>Tap a panel</b> to select it. It turns orange, its name and size appear at top left, and it's highlighted on the cut sheet too. Tap it again to deselect.</li>
+<li>Engraving, accents and artwork show on the model where they'll appear on the finished box.</li>
+</ul>
+
+<h2 id="h-sheets">12. Cut sheets and nesting</h2>
+<ul>
+<li>Set your bed or sheet size with the <b>Bed / sheet preset</b> or type it in. <b>Part spacing</b> is the gap between parts.</li>
+<li>Parts are packed tightly, and small parts are placed inside the cut-outs of big ones (for example inside a locator ring) to save material. Extra sheets are added when needed.</li>
+<li><b>Grain lock</b> stops parts being rotated, so the wood grain runs the same way on every panel.</li>
+<li>Tap a part on a sheet to find it in 3D. Each sheet has its own <b>Download this sheet</b> button.</li>
+<li>The display case puts wood and acrylic on separate sheets, labelled with their material.</li>
+</ul>
+
+<h2 id="h-export">13. Exporting files</h2>
+<dl>
+<dt>Download → SVG</dt><dd>One file per sheet (zipped when there's more than one). Best for LightBurn, Inkscape, Glowforge and most lasers. Engraved images travel only in the SVG.</dd>
+<dt>Download → DXF</dt><dd>Zipped, in mm, with layers CUT_OUTER, CUT_INNER, SCORE and ENGRAVE. Best for CAD and CNC software.</dd>
+<dt>Copy SVG</dt><dd>Copies the file to the clipboard so you can paste it straight into your laser software.</dd>
+<dt>Layers</dt><dd><i>Simple</i>: red = cut, blue = score, black = engrave. <i>LightBurn ordered</i>: 00 engrave (black), 01 score (blue), 02 inner cuts (red), 03 outer cuts (green). In LightBurn these run in that order, so holes are cut before the part drops free.</dd>
+<dt>Stroke</dt><dd>Line thickness in the file. Use <i>Hairline</i> or <i>0.001 mm</i> if your laser software only treats very thin lines as cuts (Epilog, for example).</dd>
+<dt>Engrave part names</dt><dd>Adds each part's name in small engraved text, which helps with assembly.</dd>
+</dl>
+
+<h2 id="h-production">14. Production: batches, kits, cost</h2>
+<dl>
+<dt>Boxes to cut</dt><dd>Lays out that many complete boxes (up to 50) across your sheets. Parts are numbered #1, #2…</dd>
+<dt>Hold tabs per part</dt><dd>Kit mode: leaves tiny uncut bridges (set by <i>Tab width</i>) so parts stay in the sheet until someone snaps them out. Good for paintable kits and shipping flat.</dd>
+<dt>Assembly card</dt><dd>On the <i>Assembly</i> tab. Downloads a printable page with a picture of the box, the parts list and step-by-step instructions, ready to tuck into a kit.</dd>
+<dt>Cost estimate</dt><dd>Enter <i>Sheet price</i>, <i>Machine rate</i> ($/hour), <i>Cut speed</i> (mm/s) and <i>Markup %</i>. Boxsmith estimates laser time, the share of material used, cost per box and a suggested price. Times are estimates; check them against your real job times and adjust the cut speed to match.</dd>
+</dl>
+
+<h2 id="h-saving">15. Saving your work</h2>
+<ul>
+<li>Your current settings are remembered in this browser automatically.</li>
+<li><b>Saved recipes</b>: type a name and press Save. Pick one and press Load to bring it back, or ✕ to delete it. Recipes stay in this browser on this device.</li>
+<li><b>Settings file</b>: <i>Download → Settings file (.json)</i> saves a file you can keep, back up or send to someone. Open it with the <b>Open…</b> button at the top, or with <i>Open a saved settings file</i> in the Saved recipes section.</li>
+<li><b>Reset everything</b> (bottom of the left panel) returns every setting to its default.</li>
+</ul>
+
+<h2 id="h-kerftest">16. Dialing in fit with the kerf test</h2>
+<ol>
+<li>Choose <b>Kerf test</b>. Enter your thickness and your best guess at kerf (0.15 mm is a good start).</li>
+<li>Cut the comb and the joint pair.</li>
+<li>Push an offcut of the same sheet into each comb slot. Each slot is labelled with a kerf value. The one that grips firmly without forcing is your kerf. Enter it.</li>
+<li>Press the joint pair together. Too tight: lower kerf by 0.02. Too loose: raise it by 0.02.</li>
+<li>Save the result under <b>My materials</b>. Kerf changes with material, thickness, power, speed and focus, so test each new sheet type.</li>
+</ol>
+
+<h2 id="h-trouble">17. Troubleshooting</h2>
+<dl>
+<dt>Joints are too tight / won't go in</dt><dd>Lower the kerf by 0.02 mm, or choose <i>Glue gap</i>. Check the thickness you entered against the actual sheet; it varies across a sheet too.</dd>
+<dt>Joints are loose</dt><dd>Raise the kerf by 0.02 mm, or choose <i>Extra snug</i>.</dd>
+<dt>A part doesn't fit my bed</dt><dd>A warning names it. Make the box smaller, use a bigger sheet size, or turn off grain lock so the part can rotate.</dd>
+<dt>Text looks like the wrong font</dt><dd>The special fonts load from the internet. Give them a moment, or check your connection. Text is still cut correctly in whatever font is showing.</dd>
+<dt>Middles of letters fall out</dt><dd>That happens with cut-through text. Use the Stencil font, or switch to raster or vector engraving.</dd>
+<dt>Screw holes break through the edge</dt><dd>The material is too thin for that screw. Use thicker stock or a smaller screw size.</dd>
+<dt>Living hinge cracks</dt><dd>Increase the bridge, reduce the pitch, use a larger corner radius, bend slowly, or mist the hinge area lightly with water.</dd>
+<dt>Download doesn't start</dt><dd>Some views ask you to confirm each download, so accept the prompt. If it's blocked, use <i>Copy SVG</i> and paste into your laser software or a text file saved as .svg.</dd>
+<dt>Settings or recipes disappeared</dt><dd>They live in one browser on one device. Clearing browser data removes them. Keep a settings file (.json) as a backup.</dd>
+</dl>
+
+<h2 id="h-glossary">18. Glossary</h2>
+<dl class="gloss">
+<dt>Kerf</dt><dd>The width of material the laser (or bit) removes.</dd>
+<dt>Finger joint</dt><dd>Interlocking rectangular tabs and slots that join two panels at a right angle.</dd>
+<dt>Corner ownership</dt><dd>Which panel fills the small cube where three panels meet.</dd>
+<dt>T-slot</dt><dd>A T-shaped cut-out in a panel's edge that holds a nut, so a screw from the next panel can clamp the joint.</dd>
+<dt>Dogbone</dt><dd>A small round relief at an inside corner so a round router bit can fully clear it.</dd>
+<dt>Living hinge</dt><dd>A pattern of cuts that lets rigid sheet material bend.</dd>
+<dt>Raster engraving</dt><dd>The laser sweeps back and forth to fill an area.</dd>
+<dt>Vector scoring</dt><dd>The laser traces a line at low power without cutting through.</dd>
+<dt>Hold tab</dt><dd>A tiny uncut bridge that keeps a part attached to the sheet.</dd>
+<dt>Nesting</dt><dd>Packing parts onto a sheet to use as little material as possible.</dd>
+</dl>
+</div>
+</div>
   </div>
   <div class="warns" id="warns"></div>
   <div class="statbar" id="stats"></div>

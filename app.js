@@ -1063,8 +1063,9 @@ $('#resetAll').addEventListener('click',e=>{ e.preventDefault(); S=Object.assign
 let curView='3d';
 $('#tabs').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; curView=b.dataset.v;
   $$('#tabs button').forEach(x=>x.classList.toggle('on',x===b));
-  $('#sheets').classList.toggle('hidden',curView!=='sheets'); $('#guide').classList.toggle('hidden',curView!=='guide');
+  $('#sheets').classList.toggle('hidden',curView!=='sheets'); $('#guide').classList.toggle('hidden',curView!=='guide'); $('#help').classList.toggle('hidden',curView!=='help');
   $('#v3dctl').classList.toggle('hidden',curView!=='3d'); $('#dims').classList.toggle('hidden',curView!=='3d'); if(curView==='3d') render(); });
+$('#help').addEventListener('click',e=>{ const a=e.target.closest('a[href^="#h-"]'); if(!a) return; e.preventDefault(); const t=document.getElementById(a.getAttribute('href').slice(1)); if(t) t.scrollIntoView({behavior:'smooth',block:'start'}); });
 $('#explode').addEventListener('input',e=>{ view.explode=e.target.value/100; render(); });
 function syncPlayBtn(){ const b=$('#playBtn'); const on=view.play>0&&view.loop; const txt=on?'■ Stop':'▶ Show it work'; if(b.textContent!==txt) b.textContent=txt; }
 function playDemo(loop){ view.loop=!!loop; view.play=loop?1:1; view.phase=0; syncPlayBtn(); }

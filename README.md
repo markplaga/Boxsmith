@@ -16,9 +16,11 @@ Closed box · open tray · lift-off lid · split lid · sliding lid · hinged li
 - Sheet nesting with hole filling and grain lock, batch quantity, kit-mode hold tabs
 - SVG and DXF export (simple or LightBurn-ordered layers), printable assembly card
 - Cost estimate, saved materials and recipes (stored in the browser)
+- Built-in Help tab; standalone guide in `help.html`
 
 ## Files
 - `index.html` — page and styles
 - `app.js` — box geometry, layout, export, UI
 - `tools.js` — tracing, text outlines, artwork, dogbones, patterns, nesting, accents
+- `help.html` — standalone help guide
 - `three.min.js` — three.js r128 (MIT)
