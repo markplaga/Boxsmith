@@ -589,9 +589,30 @@ function assignAnims(parts,ty,W,D,H){
 /* ================= DECORATION (text, artwork, patterns, corners) ================= */
 function textMarkLoops(t){ return placeLoops(textLoops(t.text, t.font||S.font, t.size, t.align||S.textAlign||'center'), t.x, t.y, t.rot||0); }
 function pointIn(pt,poly){ let c=false; for(let i=0,j=poly.length-1;i<poly.length;j=i++){ const a=poly[i], b=poly[j]; if(((a[1]>pt[1])!==(b[1]>pt[1])) && pt[0]<(b[0]-a[0])*(pt[1]-a[1])/(b[1]-a[1])+a[0]) c=!c; } return c; }
+// Laser engraves the face that is up on the bed. Make that face the OUTSIDE of the box:
+// any panel whose bed-up face would point inward is mirrored in the cut file (and its 3D map
+// flipped to match), so the assembled box is identical and text/cut-outs read correctly outside.
+function orientParts(parts){
+  const cen=p=>{ const b=bbox(p.outline), {o,u,v,n}=p.map, cx=b.x+b.w/2, cy=b.y+b.h/2, h=(p.th||G.t)/2; return [0,1,2].map(i=>o[i]+u[i]*cx+v[i]*cy+n[i]*h); };
+  const mapped=parts.filter(p=>p.map && !p.solids && !p.noKerf && !p.noCut);
+  if(!mapped.length) return;
+  const cs=mapped.map(cen), mn=[0,1,2].map(i=>Math.min(...cs.map(c=>c[i]))), mx=[0,1,2].map(i=>Math.max(...cs.map(c=>c[i])));
+  const C=[0,1,2].map(i=>(mn[i]+mx[i])/2);
+  mapped.forEach((p,k)=>{
+    const {u,v}=p.map, eng=[-(u[1]*v[2]-u[2]*v[1]), -(u[2]*v[0]-u[0]*v[2]), -(u[0]*v[1]-u[1]*v[0])], c=cs[k];
+    const d=eng[0]*(c[0]-C[0])+eng[1]*(c[1]-C[1])+eng[2]*(c[2]-C[2]);
+    if(d>=-1e-6) return;
+    const b=bbox(p.outline), X2=2*b.x+b.w, M=q=>[X2-q[0],q[1]];
+    p.outline=p.outline.map(M); p.holes=p.holes.map(h=>h.map(M)); p.slits=p.slits.map(l=>l.map(M));
+    p.circles.forEach(ci=>{ ci.x=X2-ci.x; }); p.texts.forEach(tx=>{ tx.x=X2-tx.x; });
+    p.map={o:add(p.map.o,mul(u,X2)), u:mul(u,-1), v, n:p.map.n};
+    p.mirrored=true;
+  });
+}
 function decorate(parts, warns){
   const t=G.t;
   parts.forEach((p,i)=>{ p.idx=i; });
+  orientParts(parts);
   for(const p of parts){
     if(p.noCut) continue;
     // rounded / chamfered outer corners on plain rectangular plates
