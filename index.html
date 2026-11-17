@@ -225,6 +225,7 @@ body.max3d main{position:fixed!important;inset:0!important;height:100vh!importan
     <div class="grid2">
       <div class="f"><label>Number of drawers</label><input type="number" data-k="drawers" min="1" max="8" step="1"></div>
       <div class="f"><label>Pull</label><select data-k="pull"><option value="slot">Finger slot</option><option value="knob">Knob screw hole</option><option value="none">None</option></select></div>
+      <div class="f full" id="pullHWrap"><label>Finger slot height: <b id="pullHVal"></b></label><input type="range" data-k="pullH" min="4" max="24" step="0.5" style="width:100%;accent-color:var(--accent)"></div>
     </div>
   </div>
 
@@ -259,7 +260,10 @@ body.max3d main{position:fixed!important;inset:0!important;height:100vh!importan
   <div class="sec" data-hide="kerftest">
     <h2>Decorate</h2>
     <label class="chk" data-show="open liftoff split"><input type="checkbox" data-k="handles"> Hand-hold cutouts on the ends</label>
-    <label class="chk" data-show="open"><input type="checkbox" data-k="notch"> Finger notch on the front wall</label>
+    <div data-show="open liftoff split"><div class="f full" data-showk="handles"><label>Hand-hold height: <b id="handleHVal"></b></label><input type="range" data-k="handleH" min="8" max="40" step="0.5" style="width:100%;accent-color:var(--accent)"></div></div>
+
+    <label class="chk" data-show="open liftoff"><input type="checkbox" data-k="notch"> Finger notch on the front wall</label>
+    <div data-show="open liftoff"><div class="f full" data-showk="notch"><label>Finger notch depth: <b id="notchHVal"></b></label><input type="range" data-k="notchH" min="4" max="30" step="0.5" style="width:100%;accent-color:var(--accent)"></div></div>
     <div class="grid2" style="margin-top:8px">
       <div class="f full"><label>Text on the lid / top</label><textarea data-k="text" rows="3" placeholder="e.g. Ashlen's Treasures&#10;Est. 2026 — press Return for a new line"></textarea></div>
       <div class="f full"><label>Alignment</label><div class="seg" id="alignSeg"><button data-al="left">Left</button><button data-al="center">Center</button><button data-al="right">Right</button></div></div>
@@ -272,6 +276,7 @@ body.max3d main{position:fixed!important;inset:0!important;height:100vh!importan
       <div class="f" data-showk="frame"><label>How many times</label><select data-k="frameCount"><option value="1">Once</option><option value="2">Twice</option><option value="3">3 times</option><option value="4">4 times</option><option value="5">5 times</option><option value="6">6 times</option></select></div>
       <div class="f" data-showk="frame"><label>Line weight</label><input type="number" data-k="frameLine" data-len step="0.1"></div>
       <div class="f full" id="frameSpWrap"><label>Space between the frames: <b id="frameSpVal"></b></label><input type="range" data-k="frameSpacing" min="0.5" max="15" step="0.5" style="width:100%;accent-color:var(--accent)"></div>
+      <div class="f full hidden" id="bandWrap"><label>Fill between the frames <span style="font-weight:400;color:var(--muted);font-size:12px">(3D only)</span></label><div id="bandRows"></div></div>
       </div></div>
       <div class="subsec full" data-name="Preview colors"><div class="subhd"><span class="chev">▼</span>Preview colors <span style="font-weight:400;color:var(--muted);font-size:12px">(3D only, never changes the cut)</span></div><div class="subbody grid2">
         <div class="f"><label>Fill color</label><div style="display:flex;gap:8px;align-items:center"><input type="color" data-k="textColor" class="cpick"><button class="btn sm" id="tcReset" type="button">Burn</button></div></div>
@@ -430,7 +435,7 @@ body.max3d main{position:fixed!important;inset:0!important;height:100vh!importan
 <tr><td>Split lid</td><td>A closed box cut into a base and a deep cap.</td><td><i>Lid height</i> sets where it splits. Locator strips make the lid self-align.</td></tr>
 <tr><td>Sliding lid</td><td>Walls, a spacer U-frame and a cap U-frame. The lid slides between them.</td><td><i>Lid capture lip</i> is how far the cap overlaps the lid.</td></tr>
 <tr><td>Hinged lid</td><td>The base side walls grow rounded “ears.” A pin through the ears and the lid sides is the hinge.</td><td>The lid has no back wall so it can open about 100°. Glue the pin to the lid side only.</td></tr>
-<tr><td>Drawer cabinet</td><td>A case with 1–8 drawers, shelves that tab into the side walls, and overlay false fronts.</td><td>Pulls: finger slot, knob screw hole or none.</td></tr>
+<tr><td>Drawer cabinet</td><td>A case with 1–8 drawers, shelves that tab into the side walls, and overlay false fronts.</td><td>Pulls: finger slot (height adjustable), knob screw hole or none.</td></tr>
 <tr><td>Polygon box</td><td>3–16 walls tabbed into polygon top and bottom plates.</td><td><i>Width</i> becomes “Across flats.” Walls meet at their inside corners, leaving small V-grooves outside.</td></tr>
 <tr><td>Rounded box</td><td>One wall strip with living-hinge corners wrapped around rounded plates.</td><td>Long strips are split in two automatically if they don't fit your bed.</td></tr>
 <tr><td>Pencil box</td><td>Open tray, a rim frame, and a lid that swivels sideways on a corner pin.</td><td>Glue the pin into the rim only.</td></tr>

@@ -21,11 +21,11 @@ const TYPES = [
 const DEFAULTS = {
   type:'closed', corners:'classic', unit:'mm', dimMode:'outside', W:120, D:90, H:70, sides:6,
   t:3, kerf:0.15, fw:10, clr:0.3, lidH:22, overhang:0, ringW:6, pin:3, capLip:5,
-  polyTop:'lift', lip:4, strips:true, drawers:2, pull:'slot', radius:22, hPitch:2, hBridge:4,
+  polyTop:'lift', lip:4, strips:true, drawers:2, pull:'slot', pullH:14, handleH:22, notchH:14, radius:22, hPitch:2, hBridge:4,
   cols:1, rows:1, divPct:85, handles:false, notch:false, text:'', textSize:9, font:'Georgia, serif',
   kStep:0.03, sheetW:600, sheetH:400, gap:4, stroke:'0.1', labels:false,
   fit:'press', tslot:'off', screwLen:12, bit:0, rimW:9, frontPct:55, cardDivs:3, nestN:3, tAcr:3, baseM:10,
-  textMode:'engrave', textAlign:'center', textColor:'#000000', textFill:false, textOutlineOn:false, textOutline:'#1b1b1b', textLine:0, frame:'none', frameGap:4, frameLine:1, frameCount:1, frameSpacing:3, accent:'none', accentOn:'top', accentSize:14, accentLine:0.8, accentMode:'fill', deco:'none', decoOn:'walls', decoCell:16, decoWeb:3, decoSeed:7, cornerStyle:'square', cornerR:6, art:[],
+  textMode:'engrave', textAlign:'center', textColor:'#000000', textFill:false, textOutlineOn:false, textOutline:'#1b1b1b', textLine:0, frame:'none', frameGap:4, frameLine:1, frameCount:1, frameSpacing:3, frameBands:[], accent:'none', accentOn:'top', accentSize:14, accentLine:0.8, accentMode:'fill', deco:'none', decoOn:'walls', decoCell:16, decoWeb:3, decoSeed:7, cornerStyle:'square', cornerR:6, art:[],
   qty:1, holdTabs:0, holdW:0.4, layerScheme:'simple', grain:false, sheetPrice:8, rate:30, speed:18, markup:150, matName:''
 };
 let S = Object.assign({}, DEFAULTS);
@@ -195,7 +195,7 @@ function addText(p,w,h,rot180){
   p.texts.push({x:w/2,y:h/2,size:S.textSize,text:S.text,rot:rot180?180:0,main:true});
 }
 function handleHoles(D,H){
-  const hw=Math.min(75,D*0.42), hh=Math.min(22,H*0.3);
+  const hw=Math.min(75,D*0.42), hh=Math.min(+S.handleH||22,H*0.3);
   if(D-2*G.t<hw+16 || H<hh+30) return [];
   return [stadium(D/2, Math.max(G.t+hh/2+6, Math.min(16+hh/2,H*0.3)), hw, hh)];
 }
@@ -231,18 +231,19 @@ function generate(){
   else if(ty==='open'){
     const hl={}, cu={};
     if(S.handles){ hl.left=handleHoles(D,H); hl.right=handleHoles(D,H); }
-    if(S.notch){ const r=Math.min(14,W*0.12,H*0.35); cu.front_top={pts:[[0,0],[W/2-r,0],...arc(W/2,0,r,PI,0,16).map(([s,d])=>[s,-d+0]).map(([s,d])=>[s,Math.abs(d)]),[W/2+r,0],[W,0]]}; }
+    if(S.notch){ const rx=Math.min(14,W*0.12), ry=Math.max(2,Math.min(+S.notchH||14,H*0.4)); const U=[]; for(let k=0;k<=16;k++){ const th=PI*k/16; U.push([W/2-rx*Math.cos(th), ry*Math.sin(th)]); } cu.front_top={pts:[[0,0],[W/2-rx,0],...U,[W/2+rx,0],[W,0]]}; }
     const b=buildBox({W,D,H,f:fOpen,holes:hl,custom:cu}); addText(b.front,W,H,false); parts=Object.values(b);
     parts.push(...makeDividers(t,t,t,W-2*t,D-2*t,H-t,S.cols,S.rows,S.divPct));
     info.inner=inner(H-t);
     notes.push('Four walls press onto the base; the front/back panels own the corners.');
   }
   else if(ty==='liftoff'){
-    const hl={}; if(S.handles){ hl.left=handleHoles(D,H); hl.right=handleHoles(D,H); }
-    const b=buildBox({W,D,H,f:fOpen,holes:hl}); parts=Object.values(b);
+    const hl={}, cu={}; if(S.handles){ hl.left=handleHoles(D,H); hl.right=handleHoles(D,H); }
+    if(S.notch){ const rx=Math.min(14,W*0.12), ry=Math.max(2,Math.min(+S.notchH||14,H*0.4)); const U=[]; for(let k=0;k<=16;k++){ const th=PI*k/16; U.push([W/2-rx*Math.cos(th), ry*Math.sin(th)]); } cu.front_top={pts:[[0,0],[W/2-rx,0],...U,[W/2+rx,0],[W,0]]}; }
+    const b=buildBox({W,D,H,f:fOpen,holes:hl,custom:cu}); parts=Object.values(b);
     const ov=Math.max(0,S.overhang);
-    const lid=part('Lid', rect(0,0,W+2*ov,D+2*ov), {map:mapOf([-ov,-ov,H],X,Y,Z), kind:'plate', top:true, role:'lid', plainRect:true}); addText(lid,W+2*ov,D+2*ov,true);
     const rw=Math.max(3,S.ringW), Wr=W-2*t-2*c, Dr=D-2*t-2*c;
+    const lid=part('Lid', rect(0,0,W+2*ov,D+2*ov), {map:mapOf([-ov,-ov,H],X,Y,Z), kind:'plate', top:true, role:'lid', plainRect:true}); addText(lid,W+2*ov,D+2*ov,true);
     const ring=part('Locator ring', rect(0,0,Wr,Dr), {holes:[rect(rw,rw,Wr-2*rw,Dr-2*rw)], map:mapOf([t+c,t+c,H-t],X,Y,Z)});
     if(Wr-2*rw<5||Dr-2*rw<5) warns.push('Locator ring is wider than the box allows — reduce ring width.');
     parts.push(lid,ring);
@@ -330,12 +331,12 @@ function generate(){
       const slotZ=zb+Hd-Math.min(14,Hd*0.3), knobZ=fz0+fH/2;
       const pullZ=S.pull==='knob'?knobZ:slotZ;
       const holesF={}, circF={};
-      if(S.pull==='slot' && Hd>20){ holesF.front=[stadium(Wd/2,Hd-(slotZ-zb),Math.min(44,Wd*0.4),Math.min(14,Hd*0.3))]; }
+      if(S.pull==='slot' && Hd>20){ holesF.front=[stadium(Wd/2,Hd-(slotZ-zb),Math.min(44,Wd*0.4),Math.min(+S.pullH||14,Hd*0.3))]; }
       if(S.pull==='knob'&&pullZ<zb+Hd-2&&pullZ>zb+2){ circF.front=[{x:Wd/2,y:Hd-(pullZ-zb),r:2}]; }
       const dr=buildBox({W:Wd,D:Dd,H:Hd,f:fOpen,ox:t+c,oy:0,oz:zb,pre,holes:holesF,circles:circF});
       parts.push(...Object.values(dr));
       const ffW=W-c, ff=part(pre+'false front', rect(0,0,ffW,fH), {map:mapOf([c/2,-t,fz0+fH],X,nZ,Y), role:'wall', size:[ffW,fH], flat:true});
-      if(S.pull==='slot' && Hd>20) ff.holes.push(stadium(ffW/2,fz0+fH-slotZ,Math.min(44,Wd*0.4),Math.min(14,Hd*0.3)));
+      if(S.pull==='slot' && Hd>20) ff.holes.push(stadium(ffW/2,fz0+fH-slotZ,Math.min(44,Wd*0.4),Math.min(+S.pullH||14,Hd*0.3)));
       if(S.pull==='knob') ff.circles.push({x:ffW/2,y:fH/2,r:2});
       parts.push(ff);
       parts.push(...makeDividers(t+c+t,t,zb+t,Wd-2*t,Dd-2*t,Hd-t,S.cols,S.rows,S.divPct,pre));
@@ -634,8 +635,9 @@ function decorate(parts, warns){
         const gap=Math.max(0,+S.frameGap||0), lw=Math.max(0.2,+S.frameLine||1);
         const W=Math.max(Math.abs(bb.x),Math.abs(bb.x+bb.w))+gap+lw/2, H=Math.max(Math.abs(bb.y),Math.abs(bb.y+bb.h))+gap+lw/2;
         const n=Math.max(1,Math.min(6,(+S.frameCount)|0)), sp=Math.max(0.5,+S.frameSpacing||3);
-        const g={C:[],O:[]}; for(let k=0;k<n;k++){ const kx=S.frame==='oval'?k*sp/1.36:k*sp, ky=S.frame==='oval'?k*sp/1.42:k*sp; const gk=frameGeom(S.frame,W+kx,H+ky,lw); g.C.push(...gk.C); g.O.push(...gk.O); }
+        const g={C:[],O:[]}, per=[]; for(let k=0;k<n;k++){ const kx=S.frame==='oval'?k*sp/1.36:k*sp, ky=S.frame==='oval'?k*sp/1.42:k*sp; const gk=frameGeom(S.frame,W+kx,H+ky,lw); g.C.push(...gk.C); g.O.push(...gk.O); per.push(gk.C.length? gk.C.reduce((m,l)=>Math.abs(area(l))>Math.abs(area(m))?l:m):null); }
         const P=l=>placeLoops([l],tx.x,tx.y,tx.rot||0)[0];
+        if(!p.noKerf) for(let k=0;k+1<per.length;k++){ const col=(S.frameBands||[])[k]; if(col && per[k] && per[k+1]) p.marks.push({kind:'fill', loops:[P(per[k+1]),P(per[k])], color:col, preview:true, band:true}); } // preview-only band fills
         if(S.textMode==='score'){ p.marks.push({kind:'score', loops:g.C.map(P), open:g.O.map(P), color:S.textColor, outline:S.textOutlineOn?S.textOutline:null}); }
         else { const loops=[]; for(const l of g.C){ loops.push(P(offsetPoly(l,lw/2)), P(offsetPoly(l,-lw/2))); } for(const l of g.O){ const r=ribbon(l,lw); if(r) loops.push(P(r)); } p.marks.push({kind:'fill', loops, color:S.textColor, outline:S.textOutlineOn?S.textOutline:null}); }
         const fb=bbox(placeLoops(g.C.concat(g.O),tx.x,tx.y,tx.rot||0).flat()), pb=bbox(p.outline);
@@ -1098,8 +1100,15 @@ function syncInputs(){
   $$('[data-show]').forEach(el=>el.classList.toggle('hidden',!el.dataset.show.split(' ').includes(S.type)));
   $$('[data-hide]').forEach(el=>el.classList.toggle('hidden',el.dataset.hide.split(' ').includes(S.type)));
   const hc=$('#hwLbl'); if(hc) hc.classList.toggle('hidden', S.tslot==='off');
+  const ph=$('#pullHVal'); if(ph) ph.textContent=fmt(+S.pullH||0); const pw=$('#pullHWrap'); if(pw) pw.classList.toggle('hidden',S.pull!=='slot');
+  const hh_=$('#handleHVal'); if(hh_) hh_.textContent=fmt(+S.handleH||0); const nh_=$('#notchHVal'); if(nh_) nh_.textContent=fmt(+S.notchH||0);
   const fg=$('#frameGapVal'); if(fg) fg.textContent=fmt(+S.frameGap||0);
   const fs=$('#frameSpVal'); if(fs) fs.textContent=fmt(+S.frameSpacing||0); const fsw=$('#frameSpWrap'); if(fsw) fsw.classList.toggle('hidden', S.frame==='none' || (+S.frameCount||1)<2);
+  { const nb=S.frame==='none'?0:Math.max(0,Math.min(6,(+S.frameCount||1))-1), box=$('#bandRows'); if(box){ $('#bandWrap').classList.toggle('hidden',nb<1);
+    if(box.children.length!==nb){ box.innerHTML=''; for(let k=0;k<nb;k++){ const r=document.createElement('div'); r.style.cssText='display:flex;gap:8px;align-items:center;margin:4px 0'; r.innerHTML='<span style="min-width:120px;font-size:12px">Between '+(k+1)+' and '+(k+2)+'</span><input type="color" class="cpick"><label class="chk" style="padding:0"><input type="checkbox"> None</label>';
+      const ci=r.querySelector('input[type=color]'), ni=r.querySelector('input[type=checkbox]'), set=()=>{ S.frameBands=(S.frameBands||[]).slice(); while(S.frameBands.length<nb) S.frameBands.push(''); S.frameBands[k]=ni.checked?'':ci.value; update(); };
+      ci.addEventListener('input',()=>{ ni.checked=false; set(); }); ni.addEventListener('change',set); box.appendChild(r); } }
+    [...box.children].forEach((r,k)=>{ const c=(S.frameBands||[])[k]||'', ci=r.querySelector('input[type=color]'), ni=r.querySelector('input[type=checkbox]'); ni.checked=!c; if(c&&document.activeElement!==ci) ci.value=c; else if(!c&&document.activeElement!==ci) ci.value='#d9b36c'; }); } }
   $$('[data-show-mode]').forEach(el=>el.classList.toggle('hidden', S.textMode!==el.dataset.showMode));
   $$('[data-showk]').forEach(el=>{ const v=S[el.dataset.showk]; el.classList.toggle('hidden', !v || v==='off' || v==='none' || v==='square'); });
   $('#lblW').textContent=S.type==='polygon'?'Across flats':'Width';
