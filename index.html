@@ -23,7 +23,14 @@ aside{border-right:1px solid var(--line);background:var(--panel);overflow-y:auto
 .brand h1{font-size:17px;margin:0;letter-spacing:-.01em}
 .brand p{margin:1px 0 0;color:var(--muted);font-size:12px}
 .sec{border-bottom:1px solid var(--line);padding:14px 20px 16px}
-.sec h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0 0 10px;font-weight:600;display:flex;justify-content:space-between;align-items:center}
+.sec h2{font-size:15px;letter-spacing:-.005em;color:var(--ink);margin:0 0 10px;font-weight:700;display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none;-webkit-user-select:none;gap:8px}
+.sec h2 .hl{display:flex;align-items:center;gap:8px}
+.sec h2 .chev{display:inline-block;width:14px;color:var(--muted);font-size:11px;transition:transform .2s}
+.sec.collapsed h2{margin-bottom:0}
+.sec.collapsed h2 .chev{transform:rotate(-90deg)}
+.sec.collapsed > :not(h2){display:none!important}
+.sec{padding-top:12px;padding-bottom:12px}
+.sec h2:hover .chev{color:var(--accent)}
 .types{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .type{border:1px solid var(--line2);background:#fff;border-radius:8px;padding:8px 9px;text-align:left;cursor:pointer;display:flex;gap:8px;align-items:center;min-height:46px}
 .type svg{width:30px;height:30px;flex:none}
@@ -100,6 +107,14 @@ main{display:flex;flex-direction:column;min-width:0;min-height:0}
 @media (max-width:860px){ .help .toc ol{columns:1} .help td:first-child{white-space:normal} }
 body.max3d aside,body.max3d .topbar,body.max3d .statbar,body.max3d .warns{display:none!important}
 body.max3d main{position:fixed!important;inset:0!important;height:100vh!important;height:100dvh!important;z-index:30;top:0!important}
+.cpick{width:46px;height:34px;border:1px solid var(--line2);border-radius:6px;padding:2px;background:#fff;cursor:pointer}
+.subsec{border:1px solid var(--line2);border-radius:8px;background:#fbf8f3;padding:0}
+.subhd{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;padding:9px 10px;cursor:pointer;user-select:none;-webkit-user-select:none}
+.subhd .chev{display:inline-block;width:12px;color:var(--muted);font-size:10px;transition:transform .2s}
+.subhd:hover .chev{color:var(--accent)}
+.subbody{padding:0 10px 10px}
+.subsec.collapsed .subbody{display:none!important}
+.subsec.collapsed .subhd .chev{transform:rotate(-90deg)}
 .statbar{display:flex;gap:20px;padding:10px 16px;border-top:1px solid var(--line);background:var(--panel);font-size:12.5px;flex-wrap:wrap;align-items:center}
 .stat span{color:var(--muted);margin-right:5px}
 .stat b{font-family:var(--mono);font-weight:500}
@@ -251,6 +266,19 @@ body.max3d main{position:fixed!important;inset:0!important;height:100vh!importan
       <div class="f"><label>Text size</label><input type="number" data-k="textSize" data-len></div>
       <div class="f"><label>Font</label><select data-k="font">
         <option value="Georgia, serif">Serif</option><option value="'Playfair Display', serif">Elegant serif</option><option value="Helvetica, Arial, sans-serif">Sans</option><option value="'Bebas Neue', sans-serif">Tall caps</option><option value="'Pacifico', cursive">Script</option><option value="'Caveat', cursive">Handwritten</option><option value="'Rye', serif">Western</option><option value="'Stardos Stencil', sans-serif">Stencil (for cut-through)</option><option value="'Courier New', monospace">Typewriter</option></select></div>
+      <div class="subsec full" data-name="Line work around the text"><div class="subhd"><span class="chev">▼</span>Line work around the text</div><div class="subbody grid2">
+      <div class="f full"><label>Style</label><select data-k="frame" id="frameSel"><option value="none">None</option></select></div>
+      <div class="f full" data-showk="frame"><label>Space between text and line work: <b id="frameGapVal"></b></label><input type="range" data-k="frameGap" min="0" max="25" step="0.5" style="width:100%;accent-color:var(--accent)"></div>
+      <div class="f" data-showk="frame"><label>How many times</label><select data-k="frameCount"><option value="1">Once</option><option value="2">Twice</option><option value="3">3 times</option><option value="4">4 times</option><option value="5">5 times</option><option value="6">6 times</option></select></div>
+      <div class="f" data-showk="frame"><label>Line weight</label><input type="number" data-k="frameLine" data-len step="0.1"></div>
+      <div class="f full" id="frameSpWrap"><label>Space between the frames: <b id="frameSpVal"></b></label><input type="range" data-k="frameSpacing" min="0.5" max="15" step="0.5" style="width:100%;accent-color:var(--accent)"></div>
+      </div></div>
+      <div class="subsec full" data-name="Preview colors"><div class="subhd"><span class="chev">▼</span>Preview colors <span style="font-weight:400;color:var(--muted);font-size:12px">(3D only, never changes the cut)</span></div><div class="subbody grid2">
+        <div class="f"><label>Fill color</label><div style="display:flex;gap:8px;align-items:center"><input type="color" data-k="textColor" class="cpick"><button class="btn sm" id="tcReset" type="button">Burn</button></div></div>
+        <div class="f"><label>Outline color</label><div style="display:flex;gap:8px;align-items:center"><input type="color" data-k="textOutline" class="cpick"><label class="chk" style="padding:0"><input type="checkbox" data-k="textOutlineOn"> Show</label></div></div>
+        <div class="f"><label>Line thickness (mm)</label><input type="number" data-k="textLine" data-len step="0.1" min="0" placeholder="auto"><span class="hint">0 = automatic</span></div>
+        <label class="chk full" data-show-mode="score"><input type="checkbox" data-k="textFill"> Show the letters filled in</label>
+      </div></div>
       <div class="f full"><label>Text is…</label><select data-k="textMode"><option value="engrave">Raster — filled engraving</option><option value="score">Vector — outline only</option><option value="cut">Cut through</option></select><span class="hint">Text is converted to outlines, so it cuts exactly as you see it.</span></div>
       <div class="f"><label>Corner accents</label><select data-k="accent" id="accentSel"><option value="none">None</option></select></div>
       <div class="f" data-showk="accent"><label>Accent on</label><select data-k="accentOn"><option value="top">Top only</option><option value="all">Top + four sides</option></select></div>
@@ -465,6 +493,8 @@ body.max3d main{position:fixed!important;inset:0!important;height:100vh!importan
 <li>Type in the <b>Text on the lid / top</b> box. Press Return for a new line.</li>
 <li><b>Alignment</b>: Left, Center or Right. Lines line up against each other and the block stays centred on the panel.</li>
 <li><b>Text is…</b>: <i>Raster, filled engraving</i> (solid letters), <i>Vector, outline only</i> (a fast scored outline), or <i>Cut through</i>.</li>
+<li><b>Preview colors</b> (3D only): a <b>Fill color</b> and an optional <b>Outline color</b> for the text and its line work, so you can see the box as it'll look painted or inlaid. <i>Burn</i> resets the fill to the normal burnt look. In <i>Vector, outline</i> mode, <b>Show the letters filled in</b> previews a filled version. <b>Line thickness</b> sets how heavy the outlines are drawn (0 = automatic). None of these change the cut files.</li>
+<li><b>Line work around the text</b>: rectangle, rounded rectangle, double rectangle, oval, notched label, Art Deco steps, scalloped edge, banner ribbon, brackets, or rules above and below. The <b>Space</b> slider sets the gap between the text and the frame, and <b>Line weight</b> its thickness. <b>How many times</b> repeats the frame (up to six, nested one inside the next), and <b>Space between the frames</b> sets the distance between the rings. Frames follow the text mode (filled or outline). With cut-through text they're engraved, so the lid stays in one piece.</li>
 <li>Text is converted to outlines inside Boxsmith, so your laser software doesn't need the font and you don't need a “convert to path” step.</li>
 <li>For cut-through text use the <b>Stencil</b> font. Other fonts lose the middles of letters like O, A and B.</li>
 </ul>

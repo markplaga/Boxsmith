@@ -324,3 +324,27 @@ function ribbon(pl,w){
   }
   return left.concat(right.reverse());
 }
+
+/* ---------- line-work frames around text (centred at 0,0; half-size W×H) ---------- */
+const FRAMES={rect:'Rectangle',rounded:'Rounded rectangle',double:'Double rectangle',oval:'Oval',notched:'Notched label',deco:'Art Deco steps',scallop:'Scalloped edge',banner:'Banner ribbon',brackets:'Brackets',rules:'Rules above & below'};
+function frameGeom(style, W, H, lw){
+  const C=[], O=[]; // C: closed centre-lines, O: open centre-lines
+  const ell=(a,b,n=64)=>{ const p=[]; for(let i=0;i<n;i++){ const t=i/n*2*Math.PI; p.push([a*Math.cos(t),b*Math.sin(t)]); } return p; };
+  const rr=(w,h,r)=>{ r=Math.max(0.01,Math.min(r,w,h)); const p=[]; const q=(cx,cy,a0)=>{ for(let k=0;k<=8;k++){ const a=a0+k/8*Math.PI/2; p.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]); } }; q(w-r,-h+r,-Math.PI/2); q(w-r,h-r,0); q(-w+r,h-r,Math.PI/2); q(-w+r,-h+r,Math.PI); return p; };
+  const rect=(w,h)=>[[-w,-h],[w,-h],[w,h],[-w,h]];
+  switch(style){
+    case 'rect': C.push(rect(W,H)); break;
+    case 'rounded': C.push(rr(W,H,Math.min(W,H)*0.45)); break;
+    case 'double': { const d=Math.max(lw*2.5,2); C.push(rect(W,H), rect(W+d,H+d)); break; }
+    case 'oval': C.push(ell(W*1.36,H*1.42)); break;
+    case 'notched': { const r=Math.min(W,H)*0.38, p=[]; const q=(cx,cy,a0,a1)=>{ for(let k=0;k<=8;k++){ const a=a0+(a1-a0)*k/8; p.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]); } };
+      q(W,-H,Math.PI,Math.PI/2); q(W,H,-Math.PI/2,-Math.PI); q(-W,H,0,-Math.PI/2); q(-W,-H,Math.PI/2,0); C.push(p); break; }
+    case 'deco': { const s=Math.min(W,H)*0.22, p=[[-W+2*s,-H],[W-2*s,-H],[W-2*s,-H+s],[W-s,-H+s],[W-s,-H+2*s],[W,-H+2*s],[W,H-2*s],[W-s,H-2*s],[W-s,H-s],[W-2*s,H-s],[W-2*s,H],[-W+2*s,H],[-W+2*s,H-s],[-W+s,H-s],[-W+s,H-2*s],[-W,H-2*s],[-W,-H+2*s],[-W+s,-H+2*s],[-W+s,-H+s],[-W+2*s,-H+s]]; C.push(p); break; }
+    case 'scallop': { const b=Math.max(3,lw*5), p=[]; const edge=(x0,y0,x1,y1,nx,ny)=>{ const L=Math.hypot(x1-x0,y1-y0), n=Math.max(2,Math.round(L/(2*b))); for(let i=0;i<n;i++){ for(let k=0;k<=8;k++){ const t=(i+k/8)/n, s=Math.sin(Math.PI*k/8)*L/n/2*0.9; p.push([x0+(x1-x0)*t+nx*s, y0+(y1-y0)*t+ny*s]); } } };
+      edge(-W,-H,W,-H,0,-1); edge(W,-H,W,H,1,0); edge(W,H,-W,H,0,1); edge(-W,H,-W,-H,-1,0); C.push(p); break; }
+    case 'banner': { const t=H*1.1; C.push([[-W-t,-H],[W+t,-H],[W+t*0.45,0],[W+t,H],[-W-t,H],[-W-t*0.45,0]]); break; }
+    case 'brackets': { const k=Math.min(H*0.7,W*0.3); O.push([[-W+k,-H],[-W,-H],[-W,H],[-W+k,H]], [[W-k,-H],[W,-H],[W,H],[W-k,H]]); break; }
+    case 'rules': { const d=Math.max(2,lw*2.5); O.push([[-W,-H],[W,-H]],[[-W,H],[W,H]]); for(const y of [-H,H]) for(const x of [-W-d*1.6,W+d*1.6]) C.push([[x-d,y],[x,y-d],[x+d,y],[x,y+d]]); break; }
+  }
+  return {C,O};
+}
