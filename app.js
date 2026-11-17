@@ -791,7 +791,7 @@ const MATS={
   birch:{face:[226,196,150],side:[176,138,92],a:1}, walnut:{face:[122,82,54],side:[84,54,34],a:1}, mdf:{face:[168,124,82],side:[120,84,52],a:1},
   clear:{face:[190,225,235],side:[120,170,185],a:0.42}, black:{face:[48,48,52],side:[22,22,24],a:1}, pink:{face:[244,150,180],side:[214,100,140],a:0.85}, card:{face:[196,160,112],side:[150,118,78],a:1}
 };
-const view={yaw:-0.6,pitch:0.5,zoom:1,explode:0,spin:false,mat:'birch',animT:0,play:0,phase:0,loop:false,hw:true,pan:[0,0,0]};
+const view={yaw:-0.6,pitch:0.5,zoom:1,explode:0,spin:false,mat:'birch',animT:0,play:0,phase:0,loop:false,hw:true,pan:[0,0,0],stereo:'off',stereoDeg:3.5};
 let scene=null, selPi=-1;
 function circlePts(c){ return arc(c.x,c.y,c.r,0,2*PI,18).slice(0,18); }
 function buildScene(parts){
@@ -927,10 +927,14 @@ function renderGL(){
   glColors();
   const up0=scene.divLift? (scene.divLift*1.15*1.25+0.6)*scene.R*view.explode : 0;
   const C=[scene.ctr[0]+view.pan[0],scene.ctr[1]+view.pan[1],scene.ctr[2]+up0*0.45+view.pan[2]], cy=Math.cos(view.yaw), sy=Math.sin(view.yaw), cp=Math.cos(view.pitch), sp=Math.sin(view.pitch);
-  const scale=Math.min(w,h)*0.40/(scene.R*(1+view.explode*0.9)+up0*0.45)*view.zoom;
-  const away=[cp*sy,cp*cy,-sp], up=[sp*sy,sp*cy,cp], dist=scene.R*20;
-  const cam=GL.cam; cam.position.set(C[0]-away[0]*dist,C[1]-away[1]*dist,C[2]-away[2]*dist); cam.up.set(up[0],up[1],up[2]); cam.lookAt(C[0],C[1],C[2]);
-  cam.left=-w/2/scale; cam.right=w/2/scale; cam.top=h/2/scale; cam.bottom=-h/2/scale; cam.near=0.1; cam.far=dist*4; cam.updateProjectionMatrix();
+  const stereo=view.stereo==='cross'||view.stereo==='parallel', vw=stereo?w/2:w;
+  const scale=Math.min(vw,h)*(stereo?0.42:0.40)/(scene.R*(1+view.explode*0.9)+up0*0.45)*view.zoom;
+  const away=[cp*sy,cp*cy,-sp], up=[sp*sy,sp*cy,cp], dist=scene.R*20, right=[cy,-sy,0];
+  const cam=GL.cam;
+  const setCam=(eye)=>{ const e=eye*dist*Math.tan((view.stereoDeg||3.5)/2*PI/180);
+    cam.position.set(C[0]-away[0]*dist+right[0]*e,C[1]-away[1]*dist+right[1]*e,C[2]-away[2]*dist); cam.up.set(up[0],up[1],up[2]); cam.lookAt(C[0],C[1],C[2]);
+    cam.left=-vw/2/scale; cam.right=vw/2/scale; cam.top=h/2/scale; cam.bottom=-h/2/scale; cam.near=0.1; cam.far=dist*4; cam.updateProjectionMatrix(); };
+  setCam(0);
   const ex=view.explode*1.1, M=new THREE.Matrix4(), Tm=new THREE.Matrix4();
   for(const ob of GL.objs){ const s=ob.s, off=explodeOff(s,scene.ctr,ex), A=animState(s);
     M.identity();
@@ -944,11 +948,19 @@ function renderGL(){
     const sel=ob.s.pi===selPi && selPi>=0;
     ob.mesh.material = sel ? [GL.hiCap,GL.hiSide] : (ob.s.look==='clear'?[GL.clearCap,GL.clearSide]:[GL.cap,GL.side]);
   }
-  GL.r.render(GL.sc,cam);
+  if(!stereo){ GL.r.setScissorTest(false); GL.r.setViewport(0,0,w,h); GL.r.render(GL.sc,cam); }
+  else {
+    // cross-eyed: the left picture is what the RIGHT eye sees; parallel: left picture = left eye
+    const eyes = view.stereo==='cross' ? [1,-1] : [-1,1];
+    GL.r.setScissorTest(true); GL.r.setClearColor(0x000000,0); GL.r.clear();
+    eyes.forEach((eye,i)=>{ setCam(eye); GL.r.setViewport(i*vw,0,vw,h); GL.r.setScissor(i*vw,0,vw,h); GL.r.render(GL.sc,cam); });
+    GL.r.setScissorTest(false); GL.r.setViewport(0,0,w,h); setCam(0);
+  }
   // soft ground shadow on the overlay canvas
   const dpr=window.devicePixelRatio||1;
   if(cv.width!==Math.round(w*dpr)||cv.height!==Math.round(h*dpr)){ cv.width=Math.round(w*dpr); cv.height=Math.round(h*dpr); }
   ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+  if(stereo){ ctx.strokeStyle='rgba(120,100,80,0.25)'; ctx.setLineDash([4,6]); ctx.beginPath(); ctx.moveTo(w/2,10); ctx.lineTo(w/2,h-10); ctx.stroke(); ctx.setLineDash([]); }
 }
 function render(){
   if(!scene) return;
@@ -1013,7 +1025,7 @@ function render(){
 })();
 
 function pick3D(e){
-  if(!GL||!scene) return; const r=cv.getBoundingClientRect();
+  if(!GL||!scene||view.stereo!=='off') return; const r=cv.getBoundingClientRect();
   const ndc=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1);
   const rc=new THREE.Raycaster(); rc.setFromCamera(ndc,GL.cam);
   GL.root.updateMatrixWorld(true);
@@ -1097,6 +1109,12 @@ $('#explode').addEventListener('input',e=>{ view.explode=e.target.value/100; ren
 function syncPlayBtn(){ const b=$('#playBtn'); const on=view.play>0&&view.loop; const txt=on?'■ Stop':'▶ Show it work'; if(b.textContent!==txt) b.textContent=txt; }
 function playDemo(loop){ view.loop=!!loop; view.play=loop?1:1; view.phase=0; syncPlayBtn(); }
 $('#playBtn').addEventListener('click',()=>{ if(view.play>0&&view.loop){ view.play=0; view.loop=false; view.animT=0; render(); syncPlayBtn(); } else playDemo(true); });
+function setMax(on){ document.body.classList.toggle('max3d',on); $('#maxBtn').textContent=on?'✕ Exit maximize':'⤢ Maximize';
+  if(on && curView!=='3d') $('#tabs [data-v="3d"]').click(); requestAnimationFrame(()=>render()); }
+$('#maxBtn').addEventListener('click',()=>setMax(!document.body.classList.contains('max3d')));
+addEventListener('keydown',e=>{ if(e.key==='Escape' && document.body.classList.contains('max3d')) setMax(false); });
+$('#stereoSel').addEventListener('change',e=>{ view.stereo=e.target.value; $('#stereoDepth').classList.toggle('hidden',view.stereo==='off'); if(view.stereo!=='off') toast(view.stereo==='cross'?'Cross your eyes until the two boxes merge into a third in the middle':'Look through the screen until the two boxes merge'); render(); });
+$('#stereoDepthIn').addEventListener('input',e=>{ view.stereoDeg=+e.target.value; render(); });
 $('#hwChk').addEventListener('change',e=>{ view.hw=e.target.checked; buildGL(); render(); });
 $('#spin').addEventListener('change',e=>{ view.spin=e.target.checked; });
 $('#matSel').addEventListener('change',e=>{ view.mat=e.target.value; render(); });
