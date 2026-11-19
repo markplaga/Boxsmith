@@ -988,7 +988,7 @@ function buildGL(){
     try{
       const V2=q=>new THREE.Vector2(q[0],q[1]);
       const shape=new THREE.Shape(s.pts.map(V2));
-      for(const h of s.holes) shape.holes.push(new THREE.Path(h.map(V2)));
+      for(const h of s.holes){ const hv=h.map(V2); if(THREE.ShapeUtils.isClockWise(hv)) hv.reverse(); shape.holes.push(new THREE.Path(hv)); }
       const geo=new THREE.ExtrudeGeometry(shape,{depth:s.th,bevelEnabled:false,curveSegments:1,steps:1});
       const {o,u,v,n}=s.map;
       const base=new THREE.Matrix4().set(u[0],v[0],n[0],o[0], u[1],v[1],n[1],o[1], u[2],v[2],n[2],o[2], 0,0,0,1);
