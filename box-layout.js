@@ -17,7 +17,7 @@ function switchBoxLayoutCamera(){
   }
 }
 
-function makeLayoutBox(settings, position=[0,0,0], angle=0, hidden=false){
+function makeLayoutBox(settings, position=[0,0,0], rotation=[0,0,0], hidden=false){
   const previousSettings=S, previousGeometry=G;
   try{
     S=Object.assign({},DEFAULTS,settings);
@@ -26,7 +26,7 @@ function makeLayoutBox(settings, position=[0,0,0], angle=0, hidden=false){
     decorate(result.parts,result.warns);
     const model=makeScene(result.parts);
     if(!model.solids.length) throw new Error('No box geometry');
-    return {settings,position,angle,hidden,model};
+    return {settings,position,rotation,hidden,model};
   } finally {
     S=previousSettings;
     G=previousGeometry;
@@ -34,11 +34,22 @@ function makeLayoutBox(settings, position=[0,0,0], angle=0, hidden=false){
 }
 
 function transformLayoutBox(box){
-  const {min,max,ctr}=box.model;
-  box.pose=new THREE.Matrix4().makeRotationZ(box.angle*PI/180)
-    .multiply(new THREE.Matrix4().makeTranslation(-ctr[0],-ctr[1],-min[2]));
-  box.pose.premultiply(new THREE.Matrix4().makeTranslation(...box.position));
-  box.bounds=new THREE.Box3(new THREE.Vector3(...min),new THREE.Vector3(...max)).applyMatrix4(box.pose);
+  const {ctr,solids}=box.model;
+  const [rx,ry,rz]=box.rotation.map(degrees=>degrees*PI/180);
+  box.pose=new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rx,ry,rz,'ZYX'))
+    .multiply(new THREE.Matrix4().makeTranslation(-ctr[0],-ctr[1],-ctr[2]));
+
+  // Use the lowest point of the rotated geometry as the base height.
+  const bounds=new THREE.Box3(), point=new THREE.Vector3();
+  for(const solid of solids){
+    for(const loop of [solid.bot[0],solid.top[0]]){
+      for(const vertex of loop) bounds.expandByPoint(point.fromArray(vertex).applyMatrix4(box.pose));
+    }
+  }
+  const [x,y,z]=box.position;
+  const offset=new THREE.Vector3(x,y,z-bounds.min.z);
+  box.pose.setPosition(point.setFromMatrixPosition(box.pose).add(offset));
+  box.bounds=bounds.translate(offset);
 }
 
 function fitBoxLayout(){
@@ -62,17 +73,18 @@ function loadBoxLayout(){
   const stored=lsGet(BOX_LAYOUT_KEY,[]);
   if(!Array.isArray(stored)) return;
   for(const entry of stored){
+    const rotation=entry?.rotation??[0,0,entry?.angle];
     if(!entry?.settings || !TYPES.some(type=>type.id===entry.settings.type)
       || !Array.isArray(entry.position) || entry.position.length!==3 || !entry.position.every(Number.isFinite)
-      || !Number.isFinite(entry.angle)) continue;
-    try{ layoutBoxes.push(makeLayoutBox(entry.settings,entry.position,entry.angle,entry.hidden===true)); }
+      || !Array.isArray(rotation) || rotation.length!==3 || !rotation.every(Number.isFinite)) continue;
+    try{ layoutBoxes.push(makeLayoutBox(entry.settings,entry.position,rotation,entry.hidden===true)); }
     catch(error){ console.warn('Could not load a box in the layout',error); }
   }
   rebuildBoxLayout();
 }
 
 function saveBoxLayout(){
-  if(!window.BOX?.noSave) lsSet(BOX_LAYOUT_KEY,layoutBoxes.map(({settings,position,angle,hidden})=>({settings,position,angle,hidden})));
+  if(!window.BOX?.noSave) lsSet(BOX_LAYOUT_KEY,layoutBoxes.map(({settings,position,rotation,hidden})=>({settings,position,rotation,hidden})));
 }
 
 function layoutBoxLabel(box,index){
@@ -99,8 +111,11 @@ function syncBoxLayout(){
     input.value=box?(unit==='in'?+(box.position[index]/scale).toFixed(3):box.position[index]):'';
     input.disabled=!box;
   });
-  $('#layoutAngle').value=box?box.angle:'';
-  for(const id of ['layoutAngle','layoutPlace','layoutDuplicate','layoutHide','layoutRemove']) $('#'+id).disabled=!box;
+  $$('[data-layout-rotation]').forEach(input=>{
+    input.value=box?box.rotation[+input.dataset.layoutRotation]:'';
+    input.disabled=!box;
+  });
+  for(const id of ['layoutPlace','layoutDuplicate','layoutHide','layoutRemove']) $('#'+id).disabled=!box;
   $('#layoutHide').textContent=box?.hidden?'Show box':'Hide box';
   $('#layoutTop').disabled=!layoutBoxes.length;
   $('#layoutFit').disabled=!layoutBoxes.length;
@@ -122,7 +137,7 @@ function addLayoutBox(source){
   try{
     const settings=JSON.parse(JSON.stringify(source?source.settings:S));
     delete settings.assembly;
-    const box=makeLayoutBox(settings,[0,0,0],source?.angle||0);
+    const box=makeLayoutBox(settings,[0,0,0],source?.rotation.slice());
     transformLayoutBox(box);
     if(layoutBoxes.length){
       const right=Math.max(...layoutBoxes.map(item=>item.bounds.max.x));
@@ -167,14 +182,15 @@ function initBoxLayout(){
   $('#layoutAdd').addEventListener('click',()=>addLayoutBox());
   $('#layoutDuplicate').addEventListener('click',()=>addLayoutBox(layoutBoxes[layoutSelection]));
   $('#layoutObjects').addEventListener('change',e=>selectLayoutBox(e.target.value===''?-1:+e.target.value));
-  for(const input of $$('[data-layout-axis],#layoutAngle')){
+  for(const input of $$('[data-layout-axis],[data-layout-rotation]')){
     input.addEventListener('change',()=>{
       const box=layoutBoxes[layoutSelection];
       if(!box) return;
-      const isAngle=input.id==='layoutAngle';
+      const rotationAxis=input.dataset.layoutRotation;
+      const isAngle=rotationAxis!==undefined;
       const value=input.valueAsNumber*(isAngle?1:layoutCoordinateScale());
       if(Number.isFinite(value)&&input.validity.valid){
-        if(isAngle) box.angle=value;
+        if(isAngle) box.rotation[+rotationAxis]=value;
         else box.position[+input.dataset.layoutAxis]=value;
         moveLayoutBox();
       }

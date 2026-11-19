@@ -870,7 +870,7 @@ function makeScene(parts){
   const R=Math.hypot(mx[0]-mn[0],mx[1]-mn[1],mx[2]-mn[2])/2||1;
   const divs=solids.filter(x=>x.part&&x.part.explode);
   const divTop=divs.length?Math.max(...divs.map(x=>Math.max(...x.bot[0].map(q=>q[2])))):Infinity, divLift=divs.length?Math.max(...divs.map(x=>x.part.explode.lift)):0;
-  return {solids,ctr,min:mn,max:mx,R:R*(solids.some(x=>x.anim)?1.28:1),divTop,divLift,hardware:G.ts,screwLen:S.screwLen};
+  return {solids,ctr,R:R*(solids.some(x=>x.anim)?1.28:1),divTop,divLift,hardware:G.ts,screwLen:S.screwLen};
 }
 function buildScene(parts){
   scene=makeScene(parts);
