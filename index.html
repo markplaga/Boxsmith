@@ -71,6 +71,7 @@ main{display:flex;flex-direction:column;min-width:0;min-height:0}
 #cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
 #cv:active{cursor:grabbing}
 .v3dctl{position:absolute;left:14px;bottom:14px;display:flex;gap:12px;align-items:center;background:rgba(255,253,249,.92);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:12.5px;flex-wrap:wrap;max-width:calc(100% - 28px)}
+#assemblyAngle{display:inline-block;min-width:5ch;text-align:right;font-variant-numeric:tabular-nums}
 .v3dctl input[type=range]{accent-color:var(--accent);width:110px}
 .v3dctl select{border:1px solid var(--line2);border-radius:6px;padding:3px 6px;background:#fff;font-size:12.5px}
 .dims{position:absolute;right:14px;top:14px;background:rgba(255,253,249,.92);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:12px;font-family:var(--mono);line-height:1.6;pointer-events:none}
@@ -363,7 +364,7 @@ body.max3d main{position:fixed!important;inset:0!important;height:100vh!importan
 
 <main>
   <div class="topbar">
-    <div class="tabs" id="tabs"><button data-v="3d" class="on">3D preview</button><button data-v="sheets">Cut sheets</button><button data-v="guide">Assembly</button><button data-v="help">Help</button></div>
+    <div class="tabs" id="tabs"><button data-v="3d" class="on">3D preview</button><button data-v="sheets">Cut sheets</button><button data-v="assemble">Build assembly</button><button data-v="guide">Assembly guide</button><button data-v="help">Help</button></div>
     <div class="spacer"></div>
     <label class="btn" style="cursor:pointer">Open…<input type="file" class="hidden openSettings" accept=".json,application/json"></label>
     <button class="btn" id="copySvg">Copy SVG</button>
@@ -390,6 +391,16 @@ body.max3d main{position:fixed!important;inset:0!important;height:100vh!importan
       <button class="btn" id="lampBtn" style="padding:3px 9px;font-size:12px" title="Put an LED inside and see the light and shadows it throws on the walls of a room">💡 Lamp</button>
       <button class="btn" id="maxBtn" style="padding:3px 9px;font-size:12px" title="Fill the window with the 3D view (Esc to exit)">⤢ Maximize</button>
       <button class="btn" id="resetView" style="padding:3px 9px;font-size:12px">Reset view</button>
+    </div>
+    <div class="v3dctl hidden" id="assemblyCtl">
+      <span id="assemblyStatus" role="status"></span>
+      <label>Spread parts <input type="range" id="assemblySpread" min="0" max="100" value="0"></label>
+      <label>Rotate around face
+        <input type="range" id="assemblyRotation" min="-180" max="180" value="0" disabled>
+        <span id="assemblyAngle" aria-hidden="true">0°</span>
+      </label>
+      <button class="btn" id="assemblyCancel" disabled>Cancel selection</button>
+      <button class="btn" id="assemblyUndo" disabled>Undo join</button>
     </div>
     <div class="lamp-ctl hidden" id="lampCtl">
       <div class="lrow"><span>💡 Light</span><input type="range" id="lampGain" min="0" max="300" step="5" value="100"><b id="lampPct">100%</b></div>
@@ -444,7 +455,8 @@ body.max3d main{position:fixed!important;inset:0!important;height:100vh!importan
 <h2 id="h-screen">2. The screen at a glance</h2>
 <ul>
 <li><b>Left panel:</b> every setting, grouped into sections. On a phone it sits below the preview, so scroll down.</li>
-<li><b>Tabs:</b> <i>3D preview</i>, <i>Cut sheets</i>, <i>Assembly</i> and <i>Help</i>.</li>
+<li><b>Tabs:</b> <i>3D preview</i>, <i>Cut sheets</i>, <i>Build assembly</i>, <i>Assembly guide</i> and <i>Help</i>.</li>
+<li><b>Build assembly:</b> Click a point on the face of the part you want to move, then click the matching point on a face of another part. Use <i>Rotate around face</i> after the first click to turn the selected part around the contact point before joining. Use <i>Spread parts</i> or drag to reveal hidden faces. Joined parts move together. Return the slider to zero to see the assembled positions, or click <i>Undo join</i> to reverse the last join.</li>
 <li><b>Top-right buttons:</b> <i>Open…</i> loads a saved settings file, <i>Copy SVG</i> copies the cut file to the clipboard, and <i>Download</i> saves SVG, DXF or settings files.</li>
 <li><b>Dimension card</b> (top right of the 3D view): outside and inside measurements of the finished box.</li>
 <li><b>Warnings</b> (yellow bars at the bottom): things that won't cut or assemble well, with a suggested fix.</li>
@@ -589,7 +601,7 @@ body.max3d main{position:fixed!important;inset:0!important;height:100vh!importan
 <dl>
 <dt>Boxes to cut</dt><dd>Lays out that many complete boxes (up to 50) across your sheets. Parts are numbered #1, #2…</dd>
 <dt>Hold tabs per part</dt><dd>Kit mode: leaves tiny uncut bridges (set by <i>Tab width</i>) so parts stay in the sheet until someone snaps them out. Good for paintable kits and shipping flat.</dd>
-<dt>Assembly card</dt><dd>On the <i>Assembly</i> tab. Downloads a printable page with a picture of the box, the parts list and step-by-step instructions, ready to tuck into a kit.</dd>
+<dt>Assembly card</dt><dd>On the <i>Assembly guide</i> tab. Downloads a printable page with a picture of the box, the parts list and step-by-step instructions, ready to tuck into a kit.</dd>
 <dt>Cost estimate</dt><dd>Enter <i>Sheet price</i>, <i>Machine rate</i> ($/hour), <i>Cut speed</i> (mm/s) and <i>Markup %</i>. Boxsmith estimates laser time, the share of material used, cost per box and a suggested price. Times are estimates; check them against your real job times and adjust the cut speed to match.</dd>
 </dl>
 
@@ -648,6 +660,7 @@ body.max3d main{position:fixed!important;inset:0!important;height:100vh!importan
 <script src="three.min.js"></script>
 <script src="designs.js"></script>
 <script src="tools.js"></script>
+<script src="assembly.js"></script>
 <script src="app.js"></script>
 
 </body>

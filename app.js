@@ -842,6 +842,8 @@ const MATS={
 };
 const view={yaw:-0.6,pitch:0.5,zoom:1,explode:0,spin:false,mat:'birch',animT:0,play:0,phase:0,loop:false,hw:true,pan:[0,0,0],stereo:'off',stereoDeg:3.5};
 let scene=null, selPi=-1;
+let assembly=null, movingFace=null, assemblySpread=0;
+const assembling=()=>curView==='assemble';
 function circlePts(c){ return arc(c.x,c.y,c.r,0,2*PI,18).slice(0,18); }
 function buildScene(parts){
   const solids=[];
@@ -871,7 +873,12 @@ function buildScene(parts){
   const divs=solids.filter(x=>x.part&&x.part.explode);
   const divTop=divs.length?Math.max(...divs.map(x=>Math.max(...x.bot[0].map(q=>q[2])))):Infinity, divLift=divs.length?Math.max(...divs.map(x=>x.part.explode.lift)):0;
   scene={solids,ctr,R:R*(solids.some(x=>x.anim)?1.28:1),divTop,divLift};
+  if(GL){
+    assembly=new FaceAssembly(solids,S.type,S.assembly);
+    movingFace=null;
+  }
   buildGL();
+  showAssemblyStatus();
 }
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 /* ---- WebGL renderer (three.js) with true depth; 2D painter is the fallback ---- */
@@ -891,7 +898,7 @@ function lampBuild(){
 // called every frame: switches the whole scene between normal lighting and lamp mode
 function lampFrame(){
   if(!GL||!scene) return;
-  const on=LAMP.on; const viewEl=document.querySelector('.view'); if(viewEl) viewEl.classList.toggle('lamp',on);
+  const on=LAMP.on&&!assembling(); const viewEl=document.querySelector('.view'); if(viewEl) viewEl.classList.toggle('lamp',on);
   if(on){
     lampBuild(); const L=GL.lamp, R=scene.R, C=scene.ctr;
     if(!L.light.parent){ GL.sc.add(L.light); GL.sc.add(L.room); }
@@ -929,7 +936,12 @@ function initGL(){
     const cap=new THREE.MeshLambertMaterial(), side=new THREE.MeshLambertMaterial(), line=new THREE.LineBasicMaterial({transparent:true});
     const cl=(c,o)=>new THREE.MeshLambertMaterial({color:c,transparent:true,opacity:o,depthWrite:false,side:THREE.DoubleSide});
     const hiCap=new THREE.MeshLambertMaterial({color:0xf08a63,emissive:0x5a1a05}), hiSide=new THREE.MeshLambertMaterial({color:0xd0562c,emissive:0x3a1003});
-    GL={r,sc,cam,root,amb,dl,dl2,cap,side,line,steel:new THREE.MeshLambertMaterial({color:0xb7bcc2,emissive:0x1a1c1f}),nutMat:new THREE.MeshLambertMaterial({color:0x8c9299,emissive:0x111214}),clearCap:cl(0xc4e4ee,0.32),clearSide:cl(0x8fc3d2,0.6),hiCap,hiSide,objs:[]};
+    const contact=new THREE.Mesh(new THREE.SphereGeometry(1,16,12),
+      new THREE.MeshBasicMaterial({color:0xff5c26,depthTest:false,depthWrite:false}));
+    contact.renderOrder=1;
+    contact.visible=false;
+    root.add(contact);
+    GL={r,sc,cam,root,contact,amb,dl,dl2,cap,side,line,steel:new THREE.MeshLambertMaterial({color:0xb7bcc2,emissive:0x1a1c1f}),nutMat:new THREE.MeshLambertMaterial({color:0x8c9299,emissive:0x111214}),clearCap:cl(0xc4e4ee,0.32),clearSide:cl(0x8fc3d2,0.6),hiCap,hiSide,objs:[]};
   }catch(e){ GL=null; }
 }
 function glColors(){
@@ -1020,36 +1032,51 @@ function renderGL(){
   const w=cv.clientWidth, h=cv.clientHeight; if(!w||!h) return;
   GL.r.setPixelRatio(window.devicePixelRatio||1); GL.r.setSize(w,h,false);
   glColors(); lampFrame();
-  const up0=scene.divLift? (scene.divLift*1.15*1.25+0.6)*scene.R*view.explode : 0;
-  const C=[scene.ctr[0]+view.pan[0],scene.ctr[1]+view.pan[1],scene.ctr[2]+up0*0.45+view.pan[2]], cy=Math.cos(view.yaw), sy=Math.sin(view.yaw), cp=Math.cos(view.pitch), sp=Math.sin(view.pitch), cp0=Math.cos(LAMP.pitch), sp0=Math.sin(LAMP.pitch); let cp_=0;
-  const stereo=view.stereo==='cross'||view.stereo==='parallel', vw=stereo?w/2:w;
-  const scale=Math.min(vw,h)*(stereo?0.42:0.40)/(scene.R*(1+view.explode*0.9)+up0*0.45)*view.zoom;
-  const away=[cp*sy,cp*cy,-sp], up=[sp*sy,sp*cy,cp], dist=scene.R*20, right=[cy,-sy,0];
-  let Rl=null; if(LAMP.on){ // the room stays put; the model turns inside it
+  const editing=assembling(), lamp=LAMP.on&&!editing;
+  const center=editing?assembly.center:scene.ctr, radius=editing?assembly.radius:scene.R;
+  const explode=editing?assemblySpread:view.explode;
+  const up0=!editing&&scene.divLift? (scene.divLift*1.15*1.25+0.6)*scene.R*view.explode : 0;
+  const C=[center[0]+view.pan[0],center[1]+view.pan[1],center[2]+up0*0.45+view.pan[2]], cy=Math.cos(view.yaw), sy=Math.sin(view.yaw), cp=Math.cos(view.pitch), sp=Math.sin(view.pitch), cp0=Math.cos(LAMP.pitch), sp0=Math.sin(LAMP.pitch); let cp_=0;
+  const stereo=!editing&&(view.stereo==='cross'||view.stereo==='parallel'), vw=stereo?w/2:w;
+  const scale=Math.min(vw,h)*(stereo?0.42:0.40)/(radius*(1+explode*0.9)+up0*0.45)*view.zoom;
+  const away=[cp*sy,cp*cy,-sp], up=[sp*sy,sp*cy,cp], dist=radius*20, right=[cy,-sy,0];
+  let Rl=null; if(lamp){ // the room stays put; the model turns inside it
     const r0=[Math.cos(LAMP.yaw),-Math.sin(LAMP.yaw),0], a0=[cp0*Math.sin(LAMP.yaw),cp0*Math.cos(LAMP.yaw),-sp0], u0=[sp0*Math.sin(LAMP.yaw),sp0*Math.cos(LAMP.yaw),cp0];
     const Bm=[[right[0],up[0],away[0]],[right[1],up[1],away[1]],[right[2],up[2],away[2]]], B0=[[r0[0],u0[0],a0[0]],[r0[1],u0[1],a0[1]],[r0[2],u0[2],a0[2]]];
     const Q=[0,1,2].map(i=>[0,1,2].map(j=>B0[i][0]*Bm[j][0]+B0[i][1]*Bm[j][1]+B0[i][2]*Bm[j][2]));
     Rl=new THREE.Matrix4().set(Q[0][0],Q[0][1],Q[0][2],0, Q[1][0],Q[1][1],Q[1][2],0, Q[2][0],Q[2][1],Q[2][2],0, 0,0,0,1);
     const c0=scene.ctr; Rl.premultiply(new THREE.Matrix4().makeTranslation(c0[0],c0[1],c0[2])); Rl.multiply(new THREE.Matrix4().makeTranslation(-c0[0],-c0[1],-c0[2]));
     cp_=cp0; }
-  const CAMV=LAMP.on?{away:[cp0*Math.sin(LAMP.yaw),cp0*Math.cos(LAMP.yaw),-sp0],up:[sp0*Math.sin(LAMP.yaw),sp0*Math.cos(LAMP.yaw),cp0],right:[Math.cos(LAMP.yaw),-Math.sin(LAMP.yaw),0]}:{away,up,right};
+  const CAMV=lamp?{away:[cp0*Math.sin(LAMP.yaw),cp0*Math.cos(LAMP.yaw),-sp0],up:[sp0*Math.sin(LAMP.yaw),sp0*Math.cos(LAMP.yaw),cp0],right:[Math.cos(LAMP.yaw),-Math.sin(LAMP.yaw),0]}:{away,up,right};
   const cam=GL.cam;
   const setCam=(eye)=>{ const e=eye*dist*Math.tan((view.stereoDeg||3.5)/2*PI/180);
     cam.position.set(C[0]-CAMV.away[0]*dist+CAMV.right[0]*e,C[1]-CAMV.away[1]*dist+CAMV.right[1]*e,C[2]-CAMV.away[2]*dist); cam.up.set(CAMV.up[0],CAMV.up[1],CAMV.up[2]); cam.lookAt(C[0],C[1],C[2]);
     cam.left=-vw/2/scale; cam.right=vw/2/scale; cam.top=h/2/scale; cam.bottom=-h/2/scale; cam.near=0.1; cam.far=dist*4; cam.updateProjectionMatrix(); };
   setCam(0);
+  const preview=editing&&movingFace?.angle?assembly.rotationPreview(movingFace.face,movingFace.angle):null;
   const ex=view.explode*1.1, M=new THREE.Matrix4(), Tm=new THREE.Matrix4();
-  for(const ob of GL.objs){ const s=ob.s, off=explodeOff(s,scene.ctr,ex), A=animState(s);
+  for(const ob of GL.objs){ const s=ob.s;
+    const off=editing?assembly.offsets.get(s.pi).clone().multiplyScalar(assemblySpread*1.1).toArray():explodeOff(s,scene.ctr,ex);
+    const A=editing?null:animState(s);
     M.identity();
     let tx=off[0],ty=off[1],tz=off[2]; if(A&&A.tr){ tx+=A.tr[0]; ty+=A.tr[1]; tz+=A.tr[2]; }
     M.makeTranslation(tx,ty,tz);
     if(A&&A.rot){ const p=A.rot.p, ax=A.rot.axis; M.multiply(Tm.makeTranslation(p[0],p[1],p[2])); M.multiply(new THREE.Matrix4()[ax==='z'?'makeRotationZ':ax==='y'?'makeRotationY':'makeRotationX'](A.rot.a)); M.multiply(Tm.makeTranslation(-p[0],-p[1],-p[2])); }
+    if(editing){
+      if(preview&&assembly.sameGroup(s.pi,movingFace.face.pi)) M.multiply(preview);
+      M.multiply(assembly.poses.get(s.pi));
+    }
     M.multiply(ob.base); if(Rl) M.premultiply(Rl);
     ob.mesh.matrix.copy(M); ob.edges.matrix.copy(M);
     if(ob.decal){ ob.decal.matrix.copy(M).multiply(Tm.makeTranslation(0,0,ob.dz)); }
     if(ob.hw){ ob.hw.matrix.copy(M); ob.hw.matrixWorldNeedsUpdate=true; }
-    const sel=ob.s.pi===selPi && selPi>=0;
+    const sel=!editing && ob.s.pi===selPi && selPi>=0;
     ob.mesh.material = sel ? [GL.hiCap,GL.hiSide] : (ob.s.look==='clear'?[GL.clearCap,GL.clearSide]:[GL.cap,GL.side]);
+  }
+  GL.contact.visible=editing&&!!movingFace;
+  if(GL.contact.visible){
+    GL.contact.position.copy(movingFace.local).applyMatrix4(movingFace.mesh.matrix);
+    GL.contact.scale.setScalar(5/scale);
   }
   if(!stereo){ GL.r.setScissorTest(false); GL.r.setViewport(0,0,w,h); GL.r.render(GL.sc,cam); }
   else {
@@ -1109,11 +1136,12 @@ function render(){
 (function(){
   const ptrs=new Map(); let last=null, pinch0=null, zoom0=1;
   let down=null;
-  cv.addEventListener('pointerdown',e=>{ down=[e.clientX,e.clientY]; cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId,[e.clientX,e.clientY]); last=[e.clientX,e.clientY]; if(ptrs.size===2){ const [a,b]=[...ptrs.values()]; pinch0=Math.hypot(a[0]-b[0],a[1]-b[1]); zoom0=view.zoom; } });
+  cv.addEventListener('pointerdown',e=>{ down=[e.clientX,e.clientY]; cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId,[e.clientX,e.clientY]); last=[e.clientX,e.clientY]; if(ptrs.size===2){ down=null; const [a,b]=[...ptrs.values()]; pinch0=Math.hypot(a[0]-b[0],a[1]-b[1]); zoom0=view.zoom; } });
   cv.addEventListener('pointermove',e=>{ if(!ptrs.has(e.pointerId)) return; ptrs.set(e.pointerId,[e.clientX,e.clientY]);
     if(ptrs.size===2&&pinch0){ const [a,b]=[...ptrs.values()]; view.zoom=Math.max(0.3,Math.min(5,zoom0*Math.hypot(a[0]-b[0],a[1]-b[1])/pinch0)); render(); return; }
+    if(down && Math.hypot(e.clientX-down[0],e.clientY-down[1])>=6) down=null;
     if(last){ view.yaw-=(e.clientX-last[0])*0.01; view.pitch=Math.max(-1.45,Math.min(1.45,view.pitch+(e.clientY-last[1])*0.01)); last=[e.clientX,e.clientY]; render(); } });
-  const up=e=>{ if(down && Math.hypot(e.clientX-down[0],e.clientY-down[1])<6 && ptrs.size===1) pick3D(e); down=null; ptrs.delete(e.pointerId); if(ptrs.size<2) pinch0=null; last=ptrs.size?[...ptrs.values()][0]:null; };
+  const up=e=>{ if(e.type==='pointerup' && down && Math.hypot(e.clientX-down[0],e.clientY-down[1])<6 && ptrs.size===1) pick3D(e); down=null; ptrs.delete(e.pointerId); if(ptrs.size<2) pinch0=null; last=ptrs.size?[...ptrs.values()][0]:null; };
   cv.addEventListener('pointerup',up); cv.addEventListener('pointercancel',up);
   cv.addEventListener('wheel',e=>{ e.preventDefault(); view.zoom=Math.max(0.3,Math.min(5,view.zoom*Math.exp(-e.deltaY*0.0015))); render(); },{passive:false});
   cv.addEventListener('dblclick',()=>{ view.yaw=-0.6; view.pitch=0.5; view.zoom=1; render(); });
@@ -1128,19 +1156,66 @@ function render(){
 })();
 
 function pick3D(e){
-  if(!GL||!scene||view.stereo!=='off') return; const r=cv.getBoundingClientRect();
+  if(!GL||!scene||(!assembling()&&(curView!=='3d'||view.stereo!=='off'))) return; const r=cv.getBoundingClientRect();
   const ndc=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1);
   const rc=new THREE.Raycaster(); rc.setFromCamera(ndc,GL.cam);
   GL.root.updateMatrixWorld(true);
   const hits=rc.intersectObjects(GL.objs.map(o=>o.mesh),false);
+  if(assembling()) {
+    if(hits.length) pickAssemblyFace(hits[0]);
+    return;
+  }
   selectPart(hits.length?hits[0].object.userData.pi:-1);
+}
+function pickAssemblyFace(hit){
+  const ob=GL.objs.find(o=>o.mesh===hit.object);
+  const local=hit.object.worldToLocal(hit.point.clone());
+  const face={
+    pi:ob.s.pi,
+    point:local.clone().applyMatrix4(ob.base).toArray(),
+    normal:hit.face.normal.clone().transformDirection(ob.base).toArray()
+  };
+  if(!movingFace){
+    movingFace={face,local,mesh:ob.mesh,name:ob.s.part.name,angle:0};
+    showAssemblyStatus();
+  } else {
+    if(!assembly.join(movingFace.face,face,movingFace.angle)){
+      showAssemblyStatus('Choose a face on a different part or group.');
+      return;
+    }
+    movingFace=null;
+    assembly.fit();
+    saveAssembly();
+  }
+  render();
+}
+function showAssemblyStatus(message){
+  const count=assembly?.joints.length||0;
+  const instruction=movingFace?'Selected '+movingFace.name+'. Click the target face.':'Click a face on the part you want to move.';
+  $('#assemblyStatus').textContent=!GL?'Face snapping requires WebGL.':(count?count+(count===1?' join. ':' joins. '):'')+(message||instruction);
+  $('#assemblySpread').disabled=!GL;
+  syncAssemblyRotation();
+  $('#assemblyCancel').disabled=!movingFace;
+  $('#assemblyUndo').disabled=!count;
+}
+function syncAssemblyRotation(){
+  const angle=movingFace?.angle||0, control=$('#assemblyRotation');
+  control.disabled=!movingFace;
+  control.value=angle;
+  control.setAttribute('aria-valuetext',angle+' degrees');
+  $('#assemblyAngle').textContent=angle+'°';
+}
+function saveAssembly(){
+  S.assembly={key:assembly.key,joints:assembly.joints};
+  save();
+  showAssemblyStatus();
 }
 function selectPart(pi){
   selPi=(pi===selPi?-1:pi); render(); markSheetSel(); showSel();
 }
 function markSheetSel(){ $$('#sheets .pp').forEach(el=>el.classList.toggle('sel',+el.dataset.pi===selPi)); }
 function showSel(){ const el=$('#selInfo'); if(!el) return; const f=LAST&&LAST.fparts.find(x=>x.idx===selPi);
-  if(!f){ el.classList.add('hidden'); return; } el.classList.remove('hidden');
+  if(!f||assembling()){ el.classList.add('hidden'); return; } el.classList.remove('hidden');
   el.innerHTML='<b>'+esc(f.name)+'</b> · '+fmt(f.bb.w)+' × '+fmt(f.bb.h)+' <span>— also highlighted on the cut sheet</span>'; }
 /* ================= UI ================= */
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
@@ -1221,7 +1296,29 @@ let curView='3d';
 $('#tabs').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; curView=b.dataset.v;
   $$('#tabs button').forEach(x=>x.classList.toggle('on',x===b));
   $('#sheets').classList.toggle('hidden',curView!=='sheets'); $('#guide').classList.toggle('hidden',curView!=='guide'); $('#help').classList.toggle('hidden',curView!=='help');
-  $('#v3dctl').classList.toggle('hidden',curView!=='3d'); $('#dims').classList.toggle('hidden',curView!=='3d'); if(curView==='3d') render(); });
+  $('#v3dctl').classList.toggle('hidden',curView!=='3d'); $('#dims').classList.toggle('hidden',curView!=='3d');
+  $('#lampCtl').classList.toggle('hidden',curView!=='3d'||!LAMP.on);
+  $('#assemblyCtl').classList.toggle('hidden',!assembling());
+  movingFace=null;
+  showAssemblyStatus();
+  showSel();
+  if(curView==='3d'||assembling()) render();
+});
+$('#assemblySpread').addEventListener('input',e=>{ assemblySpread=e.target.value/100; render(); });
+$('#assemblyRotation').addEventListener('input',e=>{
+  if(!movingFace) return;
+  movingFace.angle=+e.target.value;
+  syncAssemblyRotation();
+  render();
+});
+$('#assemblyCancel').addEventListener('click',()=>{ movingFace=null; showAssemblyStatus(); render(); });
+$('#assemblyUndo').addEventListener('click',()=>{
+  if(!assembly?.joints.length) return;
+  movingFace=null;
+  assembly.undo();
+  saveAssembly();
+  render();
+});
 $('#help').addEventListener('click',e=>{ const a=e.target.closest('a[href^="#h-"]'); if(!a) return; e.preventDefault(); const t=document.getElementById(a.getAttribute('href').slice(1)); if(t) t.scrollIntoView({behavior:'smooth',block:'start'}); });
 $('#explode').addEventListener('input',e=>{ view.explode=e.target.value/100; render(); });
 function syncPlayBtn(){ const b=$('#playBtn'); const on=view.play>0&&view.loop; const txt=on?'■ Stop':'▶ Show it work'; if(b.textContent!==txt) b.textContent=txt; }
