@@ -16,12 +16,13 @@ const TYPES = [
   {id:'puzzle', name:'Puzzle box', d:'Hidden gravity lock', ic:'puzzle'},
   {id:'book', name:'Book box', d:'Living-hinge spine', ic:'book'},
   {id:'display', name:'Display case', d:'Acrylic cover, wood base', ic:'display'},
+  {id:'frame', name:'Frame (torus)', d:'Ring box with a hole through it', ic:'frame'},
   {id:'kerftest', name:'Kerf test', d:'Dial in your fit', ic:'kerftest'},
 ];
 const DEFAULTS = {
   type:'closed', corners:'classic', unit:'mm', dimMode:'outside', W:120, D:90, H:70, sides:6,
   t:3, kerf:0.15, fw:10, clr:0.3, lidH:22, overhang:0, ringW:6, pin:3, capLip:5,
-  polyTop:'lift', lip:4, strips:true, drawers:2, pull:'slot', pullH:14, handleH:22, notchH:14, decoScale:100, radius:22, hPitch:2, hBridge:4,
+  polyTop:'lift', frameW:24, lip:4, strips:true, drawers:2, pull:'slot', pullH:14, handleH:22, notchH:14, decoScale:100, radius:22, hPitch:2, hBridge:4,
   cols:1, rows:1, divPct:85, handles:false, notch:false, text:'', textSize:9, font:'Georgia, serif',
   kStep:0.03, sheetW:600, sheetH:400, gap:4, stroke:'0.1', labels:false,
   fit:'press', tslot:'off', screwLen:12, bit:0, rimW:9, frontPct:55, cardDivs:3, nestN:3, tAcr:3, baseM:10,
@@ -539,6 +540,38 @@ function generate(){
     notes.push('Two materials: the base and locator frame cut from your '+fmt(tB)+' sheet, the cover from '+fmt(tA)+' clear acrylic (separate cut sheets).');
     notes.push('Glue the locator frame centred on the base. Assemble the acrylic cover with acrylic cement (Weld-On 4) — peel the film after gluing. The cover lifts straight off the frame.');
   }
+  else if(ty==='frame'){
+    const top='glued', savedCorners=S.corners, savedTs=G.ts;
+    if(ins){ W+=2*t; D+=2*t; H+=(top==='none'||top==='lift'?t:2*t); }
+    S.corners='classic';
+    const fwid=Math.max(8,S.frameW), ox=t+fwid, oy=t+fwid, Wt=W-2*ox, Dt=D-2*oy;
+    if(Wt<2*t+10||Dt<2*t+10){ warns.push('The ring is too wide for this size — the centre hole has vanished. Reduce the ring width or enlarge the box.'); }
+    else {
+      const fOut= top==='glued'? fAll : fOpen;
+      const hole=(base)=>panelOutline(Wt,Dt,['M','M','M','M']).map(q=>[q[0]+ox,q[1]+oy]);
+      const out=buildBox({W,D,H,f:fOut,pre:'Outer ',holes:{bottom:[hole()],top:[hole()]}});
+      G.ts=null;
+      const tubeF= top==='glued'? {top:1,bottom:1,front:1,back:1,left:1,right:1} : {bottom:1,front:1,back:1,left:1,right:1};
+      const tube=buildBox({W:Wt,D:Dt,H,f:tubeF,ox,oy,pre:'Inner '});
+      G.ts=savedTs;
+      delete tube.top; delete tube.bottom;
+      if(out.top){ out.top.texts=[]; addText(out.top,W,D,true); if(out.top.texts[0]){ out.top.texts[0].y=ox/2; } }
+      parts=[...Object.values(out),...Object.values(tube)];
+      if(top==='lift'){
+        const lid=part('Lid', rect(0,0,W,D), {holes:[rect(ox,oy,Wt,Dt)], map:mapOf([0,0,H],X,Y,Z), kind:'plate', top:true, role:'lid', plainRect:true});
+        addText(lid,W,D,true); if(lid.texts[0]) lid.texts[0].y=ox/2;
+        const Wr=W-2*t-2*c, Dr=D-2*t-2*c, g=fwid-c;
+        if(fwid-2*c<4) warns.push('The ring is too narrow for a locator ring — widen the ring or reduce the clearance.');
+        parts.push(lid, part('Locator ring', rect(0,0,Wr,Dr), {holes:[rect(g,g,Wt+2*c,Dt+2*c)], map:mapOf([t+c,t+c,H-t],X,Y,Z)}));
+        notes.push('Glue the locator ring centred under the lid. It drops into the ring-shaped cavity and keeps the lid from sliding off.');
+      }
+      info={W,D,H:H+(top==='lift'?t:0), inner:{W:fwid,D:fwid,H:H-(top==='glued'?2*t:t),label:'ring width'}};
+      info.hole={W:Wt-2*t,D:Dt-2*t};
+      notes.unshift('Build the outer box and the inner tube (the wall around the centre hole) separately, then slot the tube into the base plate. The base and top plates are rings: the centre opening is '+fmt(Wt-2*t)+' × '+fmt(Dt-2*t)+'.');
+      if(savedCorners!=='classic') notes.push('Frame boxes always use the classic corner style.');
+    }
+    S.corners=savedCorners;
+  }
   else if(ty==='kerftest'){
     const vals=[]; for(let i=-3;i<=3;i++) vals.push(+(S.kerf+i*S.kStep).toFixed(3));
     const pitch=Math.max(14,t+10), Wc=vals.length*pitch+8, Hc=34, depth=14;
@@ -584,6 +617,8 @@ function assignAnims(parts,ty,W,D,H){
     if(ty==='puzzle' && n==='Lock pin') p.anim={tr:[0,0,2.5*t],e:0.3};
     if(ty==='puzzle' && n==='Sliding lid') p.anim={tr:[0,-D*0.85,0],d:0.38};
     if(ty==='display' && n.startsWith('Cover ')) p.anim=up(H*0.8);
+    if(ty==='frame' && (n==='Lid'||n==='Locator ring')) p.anim=up(H*0.65);
+    if(ty==='frame' && n==='Outer Top') p.anim=up(H*0.6);
   }
 }
 
@@ -1126,6 +1161,7 @@ const ICONS={
   nested:'<rect x="3" y="12" width="20" height="15" fill="#e2461b"/><rect x="8" y="7" width="14" height="10" fill="#f08a63"/><rect x="12" y="3" width="9" height="7" fill="#f2b398"/>',
   puzzle:'<rect x="4" y="13" width="22" height="13" fill="#e2461b"/><path d="M4 13l5-5h22l-5 5z" fill="#f2b398"/><path d="M26 13l5-5v13l-5 5z" fill="#b3330f"/><circle cx="12" cy="10.5" r="2" fill="#3a2b22"/><text x="20" y="22" font-size="9" font-weight="700" fill="#fff" font-family="sans-serif">?</text>',
   book:'<path d="M8 6h20v20H8a5 5 0 0 1-5-5V11a5 5 0 0 1 5-5z" fill="#e2461b"/><rect x="9" y="9" width="17" height="14" fill="#fbe6dd"/><path d="M5 10v12" stroke="#fbe6dd" stroke-dasharray="1 1.4"/>',
+  frame:'<path fill-rule="evenodd" d="M3 8h26v18H3zM10 14h12v6H10z" fill="#e2461b"/><path d="M3 8l4-4h22l-0 4z" fill="#f2b398"/><path d="M10 14l3-2h9l-0 2z" fill="#b3330f"/>',
   display:'<rect x="2" y="24" width="28" height="4" fill="#b3330f"/><rect x="6" y="7" width="20" height="17" fill="#c4e4ee" stroke="#5f9fb3"/><circle cx="16" cy="18" r="4" fill="#e2461b"/>',
   kerftest:'<path d="M3 10h4v6h2v-6h4v6h2v-6h4v6h2v-6h8v14H3z" fill="#e2461b"/><rect x="11" y="4" width="2" height="12" fill="#3a2b22"/>'
 };
