@@ -1,6 +1,8 @@
 'use strict';
 
 const BOX_LAYOUT_KEY='boxsmith-box-layout-v1';
+const BOX_LAYOUT_UNIT_KEY='boxsmith-box-layout-unit';
+let layoutUnit;
 let layoutBoxes=[], layoutSelection=-1, placingBox=false;
 let boxLayoutScene={solids:[],ctr:[0,0,0],R:100};
 const layingOut=()=>curView==='layout';
@@ -79,6 +81,10 @@ function layoutBoxLabel(box,index){
   return (index+1)+'. '+TYPES.find(type=>type.id===box.settings.type).name+(box.hidden?' (hidden)':'');
 }
 
+function layoutCoordinateScale(){
+  return (layoutUnit||S.unit)==='in'?25.4:1;
+}
+
 function syncBoxLayout(){
   const box=layoutBoxes[layoutSelection];
   const type=TYPES.find(type=>type.id===S.type);
@@ -88,7 +94,13 @@ function syncBoxLayout(){
     .map((item,index)=>'<option value="'+index+'">'+esc(layoutBoxLabel(item,index))+'</option>').join('');
   $('#layoutObjects').value=box?String(layoutSelection):'';
   $('#layoutObjects').disabled=!layoutBoxes.length;
-  $$('[data-layout-axis]').forEach((input,index)=>{ input.value=box?box.position[index]:''; input.disabled=!box; });
+  const unit=layoutUnit||S.unit, scale=layoutCoordinateScale();
+  $('#layoutUnits').value=unit;
+  $$('.layout-unit').forEach(label=>{ label.textContent=unit; });
+  $$('[data-layout-axis]').forEach((input,index)=>{
+    input.value=box?(unit==='in'?+(box.position[index]/scale).toFixed(3):box.position[index]):'';
+    input.disabled=!box;
+  });
   $('#layoutAngle').value=box?box.angle:'';
   for(const id of ['layoutAngle','layoutPlace','layoutDuplicate','layoutHide','layoutRemove']) $('#'+id).disabled=!box;
   $('#layoutHide').textContent=box?.hidden?'Show box':'Hide box';
@@ -152,7 +164,14 @@ function pickLayoutBox(raycaster,hit){
 }
 
 function initBoxLayout(){
+  const savedUnit=lsGet(BOX_LAYOUT_UNIT_KEY,null);
+  if(savedUnit==='mm'||savedUnit==='in') layoutUnit=savedUnit;
   if(GL) loadBoxLayout();
+  $('#layoutUnits').addEventListener('change',e=>{
+    layoutUnit=e.target.value;
+    if(!window.BOX?.noSave) lsSet(BOX_LAYOUT_UNIT_KEY,layoutUnit);
+    syncBoxLayout();
+  });
   $('#layoutAdd').addEventListener('click',()=>addLayoutBox());
   $('#layoutDuplicate').addEventListener('click',()=>addLayoutBox(layoutBoxes[layoutSelection]));
   $('#layoutObjects').addEventListener('change',e=>selectLayoutBox(e.target.value===''?-1:+e.target.value));
@@ -160,9 +179,10 @@ function initBoxLayout(){
     input.addEventListener('change',()=>{
       const box=layoutBoxes[layoutSelection];
       if(!box) return;
-      const value=input.valueAsNumber;
+      const isAngle=input.id==='layoutAngle';
+      const value=input.valueAsNumber*(isAngle?1:layoutCoordinateScale());
       if(Number.isFinite(value)&&input.validity.valid){
-        if(input.id==='layoutAngle') box.angle=value;
+        if(isAngle) box.angle=value;
         else box.position[+input.dataset.layoutAxis]=value;
         moveLayoutBox();
       }
