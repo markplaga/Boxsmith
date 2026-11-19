@@ -182,7 +182,9 @@ function clipHalf(poly, px,py, nx,ny){ // keep points with (p-P)·n <= 0
   return out;
 }
 function decoShapes(type, x0,y0,x1,y1, cell, web, seed, avoid){
-  const W=x1-x0, H=y1-y0, shapes=[]; if(W<cell*0.6||H<cell*0.6) return shapes;
+  const W=x1-x0, H=y1-y0, shapes=[];
+  if(type.startsWith('art')){ const Dz=(typeof FACE_DESIGNS!=='undefined')&&FACE_DESIGNS[type]; if(!Dz||W<8||H<8) return shapes; const sc=Math.min(W,H)/300*Math.max(0.2,Math.min(1,(+S.decoScale||100)/100)), ox=(x0+x1)/2-150*sc, oy=(y0+y1)/2-150*sc;
+    for(const f of Dz.p){ const poly=[]; for(let i=0;i<f.length;i+=2) poly.push([ox+f[i]*sc, oy+f[i+1]*sc]); shapes.push(poly); } return shapes; } if(W<cell*0.6||H<cell*0.6) return shapes;
   const R=rng(seed), cx0=(x0+x1)/2, cy0=(y0+y1)/2;
   const grid=(dx,dy,stagger,fn)=>{ const nx=Math.ceil(W/dx)+2, ny=Math.ceil(H/dy)+2;
     for(let j=-ny;j<=ny;j++) for(let i=-nx;i<=nx;i++){ const x=cx0+i*dx+(stagger&&(j&1)?dx/2:0), y=cy0+j*dy; const s=fn(x,y,i,j); if(s) shapes.push(s); } };

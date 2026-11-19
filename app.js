@@ -21,7 +21,7 @@ const TYPES = [
 const DEFAULTS = {
   type:'closed', corners:'classic', unit:'mm', dimMode:'outside', W:120, D:90, H:70, sides:6,
   t:3, kerf:0.15, fw:10, clr:0.3, lidH:22, overhang:0, ringW:6, pin:3, capLip:5,
-  polyTop:'lift', lip:4, strips:true, drawers:2, pull:'slot', pullH:14, handleH:22, notchH:14, radius:22, hPitch:2, hBridge:4,
+  polyTop:'lift', lip:4, strips:true, drawers:2, pull:'slot', pullH:14, handleH:22, notchH:14, decoScale:100, radius:22, hPitch:2, hBridge:4,
   cols:1, rows:1, divPct:85, handles:false, notch:false, text:'', textSize:9, font:'Georgia, serif',
   kStep:0.03, sheetW:600, sheetH:400, gap:4, stroke:'0.1', labels:false,
   fit:'press', tslot:'off', screwLen:12, bit:0, rimW:9, frontPct:55, cardDivs:3, nestN:3, tAcr:3, baseM:10,
@@ -843,19 +843,60 @@ function buildScene(parts){
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 /* ---- WebGL renderer (three.js) with true depth; 2D painter is the fallback ---- */
 let GL=null;
+const LAMP={on:false,gain:1,color:'#ffd6a0',size:1,off:[0,0,0],yaw:-0.32,pitch:0.16,_was:false};
+try{ const c=localStorage.getItem('boxsmith-lampcolor'); if(c) LAMP.color=c; }catch(e){}
+function lampBuild(){
+  if(GL.lamp) return;
+  const light=new THREE.PointLight(0xffd6a0,1.6,0,0); light.castShadow=true; light.shadow.mapSize.set(2048,2048); light.shadow.bias=-0.0006; light.shadow.normalBias=0.15;
+  const wm=new THREE.MeshStandardMaterial({color:0xd9d3c9,roughness:0.95,metalness:0,side:THREE.FrontSide});
+  const mk=()=>{ const m=new THREE.Mesh(new THREE.PlaneGeometry(1,1,24,24),wm); m.receiveShadow=true; return m; };
+  const walls={back:mk(),left:mk(),right:mk(),floor:mk(),ceil:mk()};
+  walls.back.rotation.x=PI/2; walls.left.rotation.y=PI/2; walls.right.rotation.y=-PI/2; walls.ceil.rotation.x=PI;
+  const room=new THREE.Group(); Object.values(walls).forEach(w=>room.add(w));
+  GL.lamp={light,room,walls};
+}
+// called every frame: switches the whole scene between normal lighting and lamp mode
+function lampFrame(){
+  if(!GL||!scene) return;
+  const on=LAMP.on; const viewEl=document.querySelector('.view'); if(viewEl) viewEl.classList.toggle('lamp',on);
+  if(on){
+    lampBuild(); const L=GL.lamp, R=scene.R, C=scene.ctr;
+    if(!L.light.parent){ GL.sc.add(L.light); GL.sc.add(L.room); }
+    L.light.color.set(LAMP.color); L.light.intensity=0.95*LAMP.gain; L.light.distance=R*9; L.light.decay=1.6; L.light.position.set(C[0],C[1],C[2]);
+    L.light.shadow.camera.near=Math.max(0.2,R*0.02); L.light.shadow.camera.far=R*16;
+    const D=R*LAMP.size, off=[LAMP.off[0]*D*2, LAMP.off[2]*D*2, LAMP.off[1]*D*2]; // x right, farther(+Y), up(+Z)
+    const E=[Math.max(2.3*D,R*1.2+Math.abs(off[0])), Math.max(2.0*D,R*1.2+Math.abs(off[1])), Math.max(1.5*D,R*1.2+Math.abs(off[2]))];
+    const W=L.walls, mid=[C[0]+off[0],C[1]+off[1],C[2]+off[2]];
+    const wy=Math.max(mid[1]+E[1],C[1]+R*1.15), wxl=Math.min(mid[0]-E[0],C[0]-R*1.15), wxr=Math.max(mid[0]+E[0],C[0]+R*1.15), wzf=Math.min(mid[2]-E[2],C[2]-R*1.15), wzc=Math.max(mid[2]+E[2],C[2]+R*1.15);
+    W.back.position.set(mid[0],wy,mid[2]); W.back.scale.set(2*E[0],2*E[2],1);
+    W.left.position.set(wxl,mid[1],mid[2]); W.left.scale.set(2*E[2],2*E[1],1);
+    W.right.position.set(wxr,mid[1],mid[2]); W.right.scale.set(2*E[2],2*E[1],1);
+    W.floor.position.set(mid[0],mid[1],wzf); W.floor.scale.set(2*E[0],2*E[1],1);
+    W.ceil.position.set(mid[0],mid[1],wzc); W.ceil.scale.set(2*E[0],2*E[1],1);
+    GL.amb.intensity=0.11; GL.dl.intensity=0; GL.dl2.intensity=0;
+    const trans=MATS[view.mat].a<1;
+    for(const ob of GL.objs){ ob.mesh.castShadow=!(trans||ob.s.look==='clear'); ob.edges.visible=false; if(ob.decal) ob.decal.visible=false; }
+    LAMP._was=true;
+  } else if(LAMP._was){
+    if(GL.lamp&&GL.lamp.light.parent){ GL.sc.remove(GL.lamp.light); GL.sc.remove(GL.lamp.room); }
+    GL.amb.intensity=0.62; GL.dl.intensity=0.55; GL.dl2.intensity=0.12;
+    for(const ob of GL.objs){ ob.mesh.castShadow=false; ob.edges.visible=true; if(ob.decal) ob.decal.visible=true; }
+    LAMP._was=false;
+  }
+}
 function initGL(){
   if(!window.THREE) return;
   try{
     const r=new THREE.WebGLRenderer({canvas:document.getElementById('gl'),antialias:true,alpha:true});
     const sc=new THREE.Scene(), cam=new THREE.OrthographicCamera(-1,1,1,-1,-100000,100000);
-    sc.add(cam); sc.add(new THREE.AmbientLight(0xffffff,0.62));
+    sc.add(cam); const amb=new THREE.AmbientLight(0xffffff,0.62); sc.add(amb);
     const dl=new THREE.DirectionalLight(0xffffff,0.55); dl.position.set(-0.45,0.7,1); cam.add(dl); cam.add(dl.target); dl.target.position.set(0,0,0);
-    const dl2=new THREE.DirectionalLight(0xffffff,0.12); dl2.position.set(0.6,-0.3,0.4); cam.add(dl2); cam.add(dl2.target);
+    const dl2=new THREE.DirectionalLight(0xffffff,0.12); dl2.position.set(0.6,-0.3,0.4); cam.add(dl2); cam.add(dl2.target); r.shadowMap.enabled=true; r.shadowMap.type=THREE.PCFShadowMap;
     const root=new THREE.Group(); sc.add(root);
     const cap=new THREE.MeshLambertMaterial(), side=new THREE.MeshLambertMaterial(), line=new THREE.LineBasicMaterial({transparent:true});
     const cl=(c,o)=>new THREE.MeshLambertMaterial({color:c,transparent:true,opacity:o,depthWrite:false,side:THREE.DoubleSide});
     const hiCap=new THREE.MeshLambertMaterial({color:0xf08a63,emissive:0x5a1a05}), hiSide=new THREE.MeshLambertMaterial({color:0xd0562c,emissive:0x3a1003});
-    GL={r,sc,cam,root,cap,side,line,steel:new THREE.MeshLambertMaterial({color:0xb7bcc2,emissive:0x1a1c1f}),nutMat:new THREE.MeshLambertMaterial({color:0x8c9299,emissive:0x111214}),clearCap:cl(0xc4e4ee,0.32),clearSide:cl(0x8fc3d2,0.6),hiCap,hiSide,objs:[]};
+    GL={r,sc,cam,root,amb,dl,dl2,cap,side,line,steel:new THREE.MeshLambertMaterial({color:0xb7bcc2,emissive:0x1a1c1f}),nutMat:new THREE.MeshLambertMaterial({color:0x8c9299,emissive:0x111214}),clearCap:cl(0xc4e4ee,0.32),clearSide:cl(0x8fc3d2,0.6),hiCap,hiSide,objs:[]};
   }catch(e){ GL=null; }
 }
 function glColors(){
@@ -945,15 +986,23 @@ function rotPt(q,R){ const a=R.a, ca=Math.cos(a), sa=Math.sin(a), P0=R.p, x=q[0]
 function renderGL(){
   const w=cv.clientWidth, h=cv.clientHeight; if(!w||!h) return;
   GL.r.setPixelRatio(window.devicePixelRatio||1); GL.r.setSize(w,h,false);
-  glColors();
+  glColors(); lampFrame();
   const up0=scene.divLift? (scene.divLift*1.15*1.25+0.6)*scene.R*view.explode : 0;
-  const C=[scene.ctr[0]+view.pan[0],scene.ctr[1]+view.pan[1],scene.ctr[2]+up0*0.45+view.pan[2]], cy=Math.cos(view.yaw), sy=Math.sin(view.yaw), cp=Math.cos(view.pitch), sp=Math.sin(view.pitch);
+  const C=[scene.ctr[0]+view.pan[0],scene.ctr[1]+view.pan[1],scene.ctr[2]+up0*0.45+view.pan[2]], cy=Math.cos(view.yaw), sy=Math.sin(view.yaw), cp=Math.cos(view.pitch), sp=Math.sin(view.pitch), cp0=Math.cos(LAMP.pitch), sp0=Math.sin(LAMP.pitch); let cp_=0;
   const stereo=view.stereo==='cross'||view.stereo==='parallel', vw=stereo?w/2:w;
   const scale=Math.min(vw,h)*(stereo?0.42:0.40)/(scene.R*(1+view.explode*0.9)+up0*0.45)*view.zoom;
   const away=[cp*sy,cp*cy,-sp], up=[sp*sy,sp*cy,cp], dist=scene.R*20, right=[cy,-sy,0];
+  let Rl=null; if(LAMP.on){ // the room stays put; the model turns inside it
+    const r0=[Math.cos(LAMP.yaw),-Math.sin(LAMP.yaw),0], a0=[cp0*Math.sin(LAMP.yaw),cp0*Math.cos(LAMP.yaw),-sp0], u0=[sp0*Math.sin(LAMP.yaw),sp0*Math.cos(LAMP.yaw),cp0];
+    const Bm=[[right[0],up[0],away[0]],[right[1],up[1],away[1]],[right[2],up[2],away[2]]], B0=[[r0[0],u0[0],a0[0]],[r0[1],u0[1],a0[1]],[r0[2],u0[2],a0[2]]];
+    const Q=[0,1,2].map(i=>[0,1,2].map(j=>B0[i][0]*Bm[j][0]+B0[i][1]*Bm[j][1]+B0[i][2]*Bm[j][2]));
+    Rl=new THREE.Matrix4().set(Q[0][0],Q[0][1],Q[0][2],0, Q[1][0],Q[1][1],Q[1][2],0, Q[2][0],Q[2][1],Q[2][2],0, 0,0,0,1);
+    const c0=scene.ctr; Rl.premultiply(new THREE.Matrix4().makeTranslation(c0[0],c0[1],c0[2])); Rl.multiply(new THREE.Matrix4().makeTranslation(-c0[0],-c0[1],-c0[2]));
+    cp_=cp0; }
+  const CAMV=LAMP.on?{away:[cp0*Math.sin(LAMP.yaw),cp0*Math.cos(LAMP.yaw),-sp0],up:[sp0*Math.sin(LAMP.yaw),sp0*Math.cos(LAMP.yaw),cp0],right:[Math.cos(LAMP.yaw),-Math.sin(LAMP.yaw),0]}:{away,up,right};
   const cam=GL.cam;
   const setCam=(eye)=>{ const e=eye*dist*Math.tan((view.stereoDeg||3.5)/2*PI/180);
-    cam.position.set(C[0]-away[0]*dist+right[0]*e,C[1]-away[1]*dist+right[1]*e,C[2]-away[2]*dist); cam.up.set(up[0],up[1],up[2]); cam.lookAt(C[0],C[1],C[2]);
+    cam.position.set(C[0]-CAMV.away[0]*dist+CAMV.right[0]*e,C[1]-CAMV.away[1]*dist+CAMV.right[1]*e,C[2]-CAMV.away[2]*dist); cam.up.set(CAMV.up[0],CAMV.up[1],CAMV.up[2]); cam.lookAt(C[0],C[1],C[2]);
     cam.left=-vw/2/scale; cam.right=vw/2/scale; cam.top=h/2/scale; cam.bottom=-h/2/scale; cam.near=0.1; cam.far=dist*4; cam.updateProjectionMatrix(); };
   setCam(0);
   const ex=view.explode*1.1, M=new THREE.Matrix4(), Tm=new THREE.Matrix4();
@@ -962,7 +1011,7 @@ function renderGL(){
     let tx=off[0],ty=off[1],tz=off[2]; if(A&&A.tr){ tx+=A.tr[0]; ty+=A.tr[1]; tz+=A.tr[2]; }
     M.makeTranslation(tx,ty,tz);
     if(A&&A.rot){ const p=A.rot.p, ax=A.rot.axis; M.multiply(Tm.makeTranslation(p[0],p[1],p[2])); M.multiply(new THREE.Matrix4()[ax==='z'?'makeRotationZ':ax==='y'?'makeRotationY':'makeRotationX'](A.rot.a)); M.multiply(Tm.makeTranslation(-p[0],-p[1],-p[2])); }
-    M.multiply(ob.base);
+    M.multiply(ob.base); if(Rl) M.premultiply(Rl);
     ob.mesh.matrix.copy(M); ob.edges.matrix.copy(M);
     if(ob.decal){ ob.decal.matrix.copy(M).multiply(Tm.makeTranslation(0,0,ob.dz)); }
     if(ob.hw){ ob.hw.matrix.copy(M); ob.hw.matrixWorldNeedsUpdate=true; }
@@ -1102,6 +1151,7 @@ function syncInputs(){
   const hc=$('#hwLbl'); if(hc) hc.classList.toggle('hidden', S.tslot==='off');
   const ph=$('#pullHVal'); if(ph) ph.textContent=fmt(+S.pullH||0); const pw=$('#pullHWrap'); if(pw) pw.classList.toggle('hidden',S.pull!=='slot');
   const hh_=$('#handleHVal'); if(hh_) hh_.textContent=fmt(+S.handleH||0); const nh_=$('#notchHVal'); if(nh_) nh_.textContent=fmt(+S.notchH||0);
+  { const isArt=String(S.deco).startsWith('art'); $$('.patOnly').forEach(e=>e.classList.toggle('hidden',isArt||S.deco==='none')); $$('.artOnly').forEach(e=>e.classList.toggle('hidden',!isArt||S.deco==='none')); const dv=$('#decoScaleVal'); if(dv) dv.textContent=Math.round(+S.decoScale||100)+'%'; }
   const fg=$('#frameGapVal'); if(fg) fg.textContent=fmt(+S.frameGap||0);
   const fs=$('#frameSpVal'); if(fs) fs.textContent=fmt(+S.frameSpacing||0); const fsw=$('#frameSpWrap'); if(fsw) fsw.classList.toggle('hidden', S.frame==='none' || (+S.frameCount||1)<2);
   { const nb=S.frame==='none'?0:Math.max(0,Math.min(6,(+S.frameCount||1))-1), box=$('#bandRows'); if(box){ $('#bandWrap').classList.toggle('hidden',nb<1);
@@ -1319,7 +1369,45 @@ function update(resetView){
 }
 $('#sheets').addEventListener('click',e=>{ const pp=e.target.closest('.pp'); if(!pp) return; selectPart(+pp.dataset.pi); const f=LAST.fparts.find(x=>x.idx===selPi); if(f) toast(f.name+' — '+fmt(f.bb.w)+' × '+fmt(f.bb.h)); });
 window.update=update;
-window.BOX={ get S(){ return S; }, set(o){ Object.assign(S,o); }, reset(){ S=Object.assign({},DEFAULTS); }, update, render, view, playDemo,
+
+/* ---------- lamp mode controls ---------- */
+(function(){
+  const btn=$('#lampBtn'), ctl=$('#lampCtl'); if(!btn) return;
+  let saved=null;
+  const sync=()=>{ btn.classList.toggle('on',LAMP.on); ctl.classList.toggle('hidden',!LAMP.on); $('#lampPct').textContent=Math.round(LAMP.gain*100)+'%'; $('#lampColor').value=LAMP.color; };
+  btn.addEventListener('click',()=>{
+    if(!GL){ alert('Lamp mode needs WebGL, which is not available here.'); return; }
+    LAMP.on=!LAMP.on;
+    if(LAMP.on){ saved={yaw:view.yaw,pitch:view.pitch,animT:view.animT,play:view.play}; view.yaw=LAMP.yaw; view.pitch=LAMP.pitch; view.zoom=Math.min(view.zoom,1); if(view.stereo!=='off'){ /* stereo still works */ } }
+    else if(saved){ view.yaw=saved.yaw; view.pitch=saved.pitch; }
+    sync(); render();
+  });
+  $('#lampGain').addEventListener('input',e=>{ LAMP.gain=e.target.value/100; sync(); render(); });
+  const setCol=c=>{ LAMP.color=c; try{ localStorage.setItem('boxsmith-lampcolor',c); }catch(e){} sync(); render(); };
+  $('#lampColor').addEventListener('input',e=>setCol(e.target.value));
+  ctl.querySelectorAll('.lc').forEach(b=>b.addEventListener('click',()=>setCol(b.dataset.c)));
+  $('#lampSize').addEventListener('input',e=>{ LAMP.size=e.target.value/100; render(); });
+  ['X','Y','Z'].forEach((k,i)=>$('#lamp'+k).addEventListener('input',e=>{ LAMP.off[i]=e.target.value/100; render(); }));
+  $('#lampReset').addEventListener('click',()=>{ LAMP.off=[0,0,0]; LAMP.size=1; ['X','Y','Z'].forEach(k=>{ $('#lamp'+k).value=0; }); $('#lampSize').value=100; render(); });
+  $('#resetView').addEventListener('click',()=>{ if(LAMP.on){ view.yaw=LAMP.yaw; view.pitch=LAMP.pitch; render(); } });
+  sync();
+})();
+
+
+/* ---------- overlay controls fade out after 10 s; a deliberate tap brings them back ---------- */
+(function(){
+  const sels=['#v3dctl','#lampCtl','#dims','#selInfo'], timers=new Map();
+  const reveal=el=>{ el.classList.remove('faded'); clearTimeout(timers.get(el)); timers.set(el,setTimeout(()=>el.classList.add('faded'),10000)); };
+  sels.forEach(s=>{ const el=$(s); if(!el) return; el.classList.add('ov');
+    el.addEventListener('click',e=>{ if(el.classList.contains('faded')){ e.preventDefault(); e.stopPropagation(); reveal(el); } },true);
+    ['pointerdown','input','change','wheel'].forEach(ev=>el.addEventListener(ev,()=>{ if(!el.classList.contains('faded')) reveal(el); },true));
+    reveal(el); });
+  // panels that appear because of another control (lamp panel, selection info) start fresh
+  new MutationObserver(ms=>ms.forEach(m=>{ const t=m.target; if(t.classList&&t.classList.contains('ov')&&/hidden/.test(m.oldValue||'')&&!t.classList.contains('hidden')) reveal(t); }))
+    .observe($('.view'),{attributes:true,subtree:true,attributeFilter:['class'],attributeOldValue:true});
+})();
+
+window.BOX={LAMP, get S(){ return S; }, set(o){ Object.assign(S,o); }, reset(){ S=Object.assign({},DEFAULTS); }, update, render, view, playDemo,
   hwPoints(){ if(!GL) return []; const out=[]; for(const o of GL.objs){ if(!o.hw) continue; const kids=o.hw.children; for(let i=2;i<kids.length;i+=3){ const g=kids[i].geometry; g.computeBoundingSphere(); const c=g.boundingSphere.center.clone().applyMatrix4(o.base); const h=kids[i-1].geometry; h.computeBoundingSphere(); const hc=h.boundingSphere.center.clone().applyMatrix4(o.base); out.push({nut:[c.x,c.y,c.z],head:[hc.x,hc.y,hc.z],part:o.s.part.name}); } } return out; },
   ctr(){ return scene?scene.ctr.slice():[0,0,0]; },
   tab(v){ const b=document.querySelector('#tabs [data-v="'+v+'"]'); if(b) b.click(); }, noSave:false };
