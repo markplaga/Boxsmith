@@ -875,7 +875,6 @@ function makeScene(parts){
 function buildScene(parts){
   scene=makeScene(parts);
   if(!layingOut()) buildGL();
-  syncBoxLayout();
 }
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 /* ---- WebGL renderer (three.js) with true depth; 2D painter is the fallback ---- */
@@ -1229,7 +1228,15 @@ $$('[data-k]').forEach(el=>{
     update(); });
 });
 $('#types').addEventListener('click',e=>{ const b=e.target.closest('.type'); if(!b) return; S.type=b.dataset.type; update(true); if(curView==='3d') playDemo(false); });
-$('#unitSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; S.unit=b.dataset.u; update(); });
+function setMeasurementUnit(unit){
+  if(S.unit===unit) return;
+  S.unit=unit;
+  update();
+}
+$('#unitSeg').addEventListener('click',e=>{
+  const button=e.target.closest('button');
+  if(button) setMeasurementUnit(button.dataset.u);
+});
 $('#cornerSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; S.corners=b.dataset.c; update(); if(curView==='3d'){ const keep=S.type; if(keep==='closed'||keep==='open') playDemo(false); } });
 $('#alignSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; S.textAlign=b.dataset.al; update(); });
 $('#dimSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; S.dimMode=b.dataset.m; update(); });
@@ -1392,7 +1399,7 @@ function geometryContext(){
   return {t:Math.max(0.5,S.t), fw:Math.max(1,S.fw), ts:S.tslot!=='off'?SCREWS[S.tslot]:null, mat:'main'};
 }
 function update(resetView){
-  save(); syncInputs();
+  save(); syncInputs(); syncBoxLayout();
   G=geometryContext();
   let res;
   try{ res=generate(); decorate(res.parts,res.warns); }

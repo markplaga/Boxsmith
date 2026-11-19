@@ -1,8 +1,6 @@
 'use strict';
 
 const BOX_LAYOUT_KEY='boxsmith-box-layout-v1';
-const BOX_LAYOUT_UNIT_KEY='boxsmith-box-layout-unit';
-let layoutUnit;
 let layoutBoxes=[], layoutSelection=-1, placingBox=false;
 let boxLayoutScene={solids:[],ctr:[0,0,0],R:100};
 const layingOut=()=>curView==='layout';
@@ -82,7 +80,7 @@ function layoutBoxLabel(box,index){
 }
 
 function layoutCoordinateScale(){
-  return (layoutUnit||S.unit)==='in'?25.4:1;
+  return S.unit==='in'?25.4:1;
 }
 
 function syncBoxLayout(){
@@ -94,7 +92,7 @@ function syncBoxLayout(){
     .map((item,index)=>'<option value="'+index+'">'+esc(layoutBoxLabel(item,index))+'</option>').join('');
   $('#layoutObjects').value=box?String(layoutSelection):'';
   $('#layoutObjects').disabled=!layoutBoxes.length;
-  const unit=layoutUnit||S.unit, scale=layoutCoordinateScale();
+  const unit=S.unit, scale=layoutCoordinateScale();
   $('#layoutUnits').value=unit;
   $$('.layout-unit').forEach(label=>{ label.textContent=unit; });
   $$('[data-layout-axis]').forEach((input,index)=>{
@@ -164,14 +162,8 @@ function pickLayoutBox(raycaster,hit){
 }
 
 function initBoxLayout(){
-  const savedUnit=lsGet(BOX_LAYOUT_UNIT_KEY,null);
-  if(savedUnit==='mm'||savedUnit==='in') layoutUnit=savedUnit;
   if(GL) loadBoxLayout();
-  $('#layoutUnits').addEventListener('change',e=>{
-    layoutUnit=e.target.value;
-    if(!window.BOX?.noSave) lsSet(BOX_LAYOUT_UNIT_KEY,layoutUnit);
-    syncBoxLayout();
-  });
+  $('#layoutUnits').addEventListener('change',e=>setMeasurementUnit(e.target.value));
   $('#layoutAdd').addEventListener('click',()=>addLayoutBox());
   $('#layoutDuplicate').addEventListener('click',()=>addLayoutBox(layoutBoxes[layoutSelection]));
   $('#layoutObjects').addEventListener('change',e=>selectLayoutBox(e.target.value===''?-1:+e.target.value));
