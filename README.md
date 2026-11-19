@@ -14,7 +14,6 @@ Closed box · open tray · lift-off lid · split lid · sliding lid · hinged li
 - PNG / JPG / SVG artwork on any panel, cut-out patterns, corner accents, rounded or chamfered lid corners
 - 3D preview (three.js) with explode, “show it work” animations, screws and nuts, tap-to-select
 - Arrange intact box designs side by side, inside other boxes or in a Frame opening
-- Face-to-face snapping for generated parts in the Build assembly tab, with linked groups and undo
 - Sheet nesting with hole filling and grain lock, batch quantity, kit-mode hold tabs
 - SVG and DXF export (simple or LightBurn-ordered layers), printable assembly card
 - Cost estimate, saved materials and recipes (stored in the browser)
@@ -24,7 +23,6 @@ Closed box · open tray · lift-off lid · split lid · sliding lid · hinged li
 - `index.html` — page and styles
 - `app.js` — box geometry, layout, export, UI
 - `box-layout.js` — placement and browser storage for whole boxes
-- `assembly.js` — face joints and rigid part placement
 - `tools.js` — tracing, text outlines, artwork, dogbones, patterns, nesting, accents
 - `help.html` — standalone help guide
 - `three.min.js` — three.js r128 (MIT)

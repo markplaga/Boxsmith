@@ -842,8 +842,6 @@ const MATS={
 };
 const view={yaw:-0.6,pitch:0.5,zoom:1,explode:0,spin:false,mat:'birch',animT:0,play:0,phase:0,loop:false,hw:true,pan:[0,0,0],stereo:'off',stereoDeg:3.5};
 let scene=null, selPi=-1;
-let assembly=null, movingFace=null, assemblySpread=0;
-const assembling=()=>curView==='assemble';
 function circlePts(c){ return arc(c.x,c.y,c.r,0,2*PI,18).slice(0,18); }
 function makeScene(parts){
   const solids=[];
@@ -876,12 +874,7 @@ function makeScene(parts){
 }
 function buildScene(parts){
   scene=makeScene(parts);
-  if(GL){
-    assembly=new FaceAssembly(scene.solids,S.type,S.assembly);
-    movingFace=null;
-  }
   if(!layingOut()) buildGL();
-  showAssemblyStatus();
   syncBoxLayout();
 }
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
@@ -902,7 +895,7 @@ function lampBuild(){
 // called every frame: switches the whole scene between normal lighting and lamp mode
 function lampFrame(){
   if(!GL||!scene) return;
-  const on=LAMP.on&&!assembling()&&!layingOut(); const viewEl=document.querySelector('.view'); if(viewEl) viewEl.classList.toggle('lamp',on);
+  const on=LAMP.on&&!layingOut(); const viewEl=document.querySelector('.view'); if(viewEl) viewEl.classList.toggle('lamp',on);
   if(on){
     lampBuild(); const L=GL.lamp, R=scene.R, C=scene.ctr;
     if(!L.light.parent){ GL.sc.add(L.light); GL.sc.add(L.room); }
@@ -940,12 +933,7 @@ function initGL(){
     const cap=new THREE.MeshLambertMaterial(), side=new THREE.MeshLambertMaterial(), line=new THREE.LineBasicMaterial({transparent:true});
     const cl=(c,o)=>new THREE.MeshLambertMaterial({color:c,transparent:true,opacity:o,depthWrite:false,side:THREE.DoubleSide});
     const hiCap=new THREE.MeshLambertMaterial({color:0xf08a63,emissive:0x5a1a05}), hiSide=new THREE.MeshLambertMaterial({color:0xd0562c,emissive:0x3a1003});
-    const contact=new THREE.Mesh(new THREE.SphereGeometry(1,16,12),
-      new THREE.MeshBasicMaterial({color:0xff5c26,depthTest:false,depthWrite:false}));
-    contact.renderOrder=1;
-    contact.visible=false;
-    root.add(contact);
-    GL={r,sc,cam,root,contact,amb,dl,dl2,cap,side,line,steel:new THREE.MeshLambertMaterial({color:0xb7bcc2,emissive:0x1a1c1f}),nutMat:new THREE.MeshLambertMaterial({color:0x8c9299,emissive:0x111214}),clearCap:cl(0xc4e4ee,0.32),clearSide:cl(0x8fc3d2,0.6),hiCap,hiSide,objs:[]};
+    GL={r,sc,cam,root,amb,dl,dl2,cap,side,line,steel:new THREE.MeshLambertMaterial({color:0xb7bcc2,emissive:0x1a1c1f}),nutMat:new THREE.MeshLambertMaterial({color:0x8c9299,emissive:0x111214}),clearCap:cl(0xc4e4ee,0.32),clearSide:cl(0x8fc3d2,0.6),hiCap,hiSide,objs:[]};
   }catch(e){ GL=null; }
 }
 function glColors(){
@@ -1036,13 +1024,13 @@ function renderGL(){
   const w=cv.clientWidth, h=cv.clientHeight; if(!w||!h) return;
   GL.r.setPixelRatio(window.devicePixelRatio||1); GL.r.setSize(w,h,false);
   glColors(); lampFrame();
-  const editing=assembling(), arranging=layingOut(), staticView=editing||arranging, lamp=LAMP.on&&!staticView;
+  const arranging=layingOut(), lamp=LAMP.on&&!arranging;
   const model=arranging?boxLayoutScene:scene;
-  const center=editing?assembly.center:model.ctr, radius=editing?assembly.radius:model.R;
-  const explode=arranging?0:editing?assemblySpread:view.explode;
-  const up0=!staticView&&scene.divLift? (scene.divLift*1.15*1.25+0.6)*scene.R*view.explode : 0;
+  const {ctr:center,R:radius}=model;
+  const explode=arranging?0:view.explode;
+  const up0=!arranging&&scene.divLift? (scene.divLift*1.15*1.25+0.6)*scene.R*view.explode : 0;
   const C=[center[0]+view.pan[0],center[1]+view.pan[1],center[2]+up0*0.45+view.pan[2]], cy=Math.cos(view.yaw), sy=Math.sin(view.yaw), cp=Math.cos(view.pitch), sp=Math.sin(view.pitch), cp0=Math.cos(LAMP.pitch), sp0=Math.sin(LAMP.pitch); let cp_=0;
-  const stereo=!staticView&&(view.stereo==='cross'||view.stereo==='parallel'), vw=stereo?w/2:w;
+  const stereo=!arranging&&(view.stereo==='cross'||view.stereo==='parallel'), vw=stereo?w/2:w;
   const scale=Math.min(vw,h)*(stereo?0.42:0.40)/(radius*(1+explode*0.9)+up0*0.45)*view.zoom;
   const away=[cp*sy,cp*cy,-sp], up=[sp*sy,sp*cy,cp], dist=radius*20, right=[cy,-sy,0];
   let Rl=null; if(lamp){ // the room stays put; the model turns inside it
@@ -1058,19 +1046,14 @@ function renderGL(){
     cam.position.set(C[0]-CAMV.away[0]*dist+CAMV.right[0]*e,C[1]-CAMV.away[1]*dist+CAMV.right[1]*e,C[2]-CAMV.away[2]*dist); cam.up.set(CAMV.up[0],CAMV.up[1],CAMV.up[2]); cam.lookAt(C[0],C[1],C[2]);
     cam.left=-vw/2/scale; cam.right=vw/2/scale; cam.top=h/2/scale; cam.bottom=-h/2/scale; cam.near=0.1; cam.far=dist*4; cam.updateProjectionMatrix(); };
   setCam(0);
-  const preview=editing&&movingFace?.angle?assembly.rotationPreview(movingFace.face,movingFace.angle):null;
   const ex=view.explode*1.1, M=new THREE.Matrix4(), Tm=new THREE.Matrix4();
   for(const ob of GL.objs){ const s=ob.s;
-    const off=arranging?[0,0,0]:editing?assembly.offsets.get(s.pi).clone().multiplyScalar(assemblySpread*1.1).toArray():explodeOff(s,scene.ctr,ex);
-    const A=staticView?null:animState(s);
+    const off=arranging?[0,0,0]:explodeOff(s,scene.ctr,ex);
+    const A=arranging?null:animState(s);
     M.identity();
     let tx=off[0],ty=off[1],tz=off[2]; if(A&&A.tr){ tx+=A.tr[0]; ty+=A.tr[1]; tz+=A.tr[2]; }
     M.makeTranslation(tx,ty,tz);
     if(A&&A.rot){ const p=A.rot.p, ax=A.rot.axis; M.multiply(Tm.makeTranslation(p[0],p[1],p[2])); M.multiply(new THREE.Matrix4()[ax==='z'?'makeRotationZ':ax==='y'?'makeRotationY':'makeRotationX'](A.rot.a)); M.multiply(Tm.makeTranslation(-p[0],-p[1],-p[2])); }
-    if(editing){
-      if(preview&&assembly.sameGroup(s.pi,movingFace.face.pi)) M.multiply(preview);
-      M.multiply(assembly.poses.get(s.pi));
-    }
     if(arranging){
       const visible=!s.layoutBox.hidden;
       ob.mesh.visible=ob.edges.visible=visible;
@@ -1082,13 +1065,8 @@ function renderGL(){
     ob.mesh.matrix.copy(M); ob.edges.matrix.copy(M);
     if(ob.decal){ ob.decal.matrix.copy(M).multiply(Tm.makeTranslation(0,0,ob.dz)); }
     if(ob.hw){ ob.hw.matrix.copy(M); ob.hw.matrixWorldNeedsUpdate=true; }
-    const sel=arranging?s.layoutBox===layoutBoxes[layoutSelection]:!editing&&s.pi===selPi&&selPi>=0;
+    const sel=arranging?s.layoutBox===layoutBoxes[layoutSelection]:s.pi===selPi&&selPi>=0;
     ob.mesh.material = sel ? [GL.hiCap,GL.hiSide] : (ob.s.look==='clear'?[GL.clearCap,GL.clearSide]:[GL.cap,GL.side]);
-  }
-  GL.contact.visible=editing&&!!movingFace;
-  if(GL.contact.visible){
-    GL.contact.position.copy(movingFace.local).applyMatrix4(movingFace.mesh.matrix);
-    GL.contact.scale.setScalar(5/scale);
   }
   if(!stereo){ GL.r.setScissorTest(false); GL.r.setViewport(0,0,w,h); GL.r.render(GL.sc,cam); }
   else {
@@ -1169,67 +1147,20 @@ function render(){
 })();
 
 function pick3D(e){
-  if(!GL||!scene||(!assembling()&&!layingOut()&&(curView!=='3d'||view.stereo!=='off'))) return; const r=cv.getBoundingClientRect();
+  if(!GL||!scene||(!layingOut()&&(curView!=='3d'||view.stereo!=='off'))) return; const r=cv.getBoundingClientRect();
   const ndc=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1);
   const rc=new THREE.Raycaster(); rc.setFromCamera(ndc,GL.cam);
   GL.root.updateMatrixWorld(true);
   const hits=rc.intersectObjects(GL.objs.filter(o=>o.mesh.visible).map(o=>o.mesh),false);
   if(layingOut()){ pickLayoutBox(rc,hits[0]); return; }
-  if(assembling()) {
-    if(hits.length) pickAssemblyFace(hits[0]);
-    return;
-  }
   selectPart(hits.length?hits[0].object.userData.pi:-1);
-}
-function pickAssemblyFace(hit){
-  const ob=GL.objs.find(o=>o.mesh===hit.object);
-  const local=hit.object.worldToLocal(hit.point.clone());
-  const face={
-    pi:ob.s.pi,
-    point:local.clone().applyMatrix4(ob.base).toArray(),
-    normal:hit.face.normal.clone().transformDirection(ob.base).toArray()
-  };
-  if(!movingFace){
-    movingFace={face,local,mesh:ob.mesh,name:ob.s.part.name,angle:0};
-    showAssemblyStatus();
-  } else {
-    if(!assembly.join(movingFace.face,face,movingFace.angle)){
-      showAssemblyStatus('Choose a face on a different part or group.');
-      return;
-    }
-    movingFace=null;
-    assembly.fit();
-    saveAssembly();
-  }
-  render();
-}
-function showAssemblyStatus(message){
-  const count=assembly?.joints.length||0;
-  const instruction=movingFace?'Selected '+movingFace.name+'. Click the target face.':'Click a face on the part you want to move.';
-  $('#assemblyStatus').textContent=!GL?'Face snapping requires WebGL.':(count?count+(count===1?' join. ':' joins. '):'')+(message||instruction);
-  $('#assemblySpread').disabled=!GL;
-  syncAssemblyRotation();
-  $('#assemblyCancel').disabled=!movingFace;
-  $('#assemblyUndo').disabled=!count;
-}
-function syncAssemblyRotation(){
-  const angle=movingFace?.angle||0, control=$('#assemblyRotation');
-  control.disabled=!movingFace;
-  control.value=angle;
-  control.setAttribute('aria-valuetext',angle+' degrees');
-  $('#assemblyAngle').textContent=angle+'°';
-}
-function saveAssembly(){
-  S.assembly={key:assembly.key,joints:assembly.joints};
-  save();
-  showAssemblyStatus();
 }
 function selectPart(pi){
   selPi=(pi===selPi?-1:pi); render(); markSheetSel(); showSel();
 }
 function markSheetSel(){ $$('#sheets .pp').forEach(el=>el.classList.toggle('sel',+el.dataset.pi===selPi)); }
 function showSel(){ const el=$('#selInfo'); if(!el) return; const f=LAST&&LAST.fparts.find(x=>x.idx===selPi);
-  if(!f||assembling()||layingOut()){ el.classList.add('hidden'); return; } el.classList.remove('hidden');
+  if(!f||layingOut()){ el.classList.add('hidden'); return; } el.classList.remove('hidden');
   el.innerHTML='<b>'+esc(f.name)+'</b> · '+fmt(f.bb.w)+' × '+fmt(f.bb.h)+' <span>— also highlighted on the cut sheet</span>'; }
 /* ================= UI ================= */
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
@@ -1312,33 +1243,15 @@ $('#tabs').addEventListener('click',e=>{ const b=e.target.closest('button'); if(
   $('#sheets').classList.toggle('hidden',curView!=='sheets'); $('#guide').classList.toggle('hidden',curView!=='guide'); $('#help').classList.toggle('hidden',curView!=='help');
   $('#v3dctl').classList.toggle('hidden',curView!=='3d'); $('#dims').classList.toggle('hidden',curView!=='3d');
   $('#lampCtl').classList.toggle('hidden',curView!=='3d'||!LAMP.on);
-  $('#assemblyCtl').classList.toggle('hidden',!assembling());
   $('#layoutCtl').classList.toggle('hidden',!layingOut());
   if(wasLayout!==layingOut()){
     switchBoxLayoutCamera();
     buildGL();
   }
-  movingFace=null;
   placingBox=false;
-  showAssemblyStatus();
   syncBoxLayout();
   showSel();
-  if(curView==='3d'||assembling()||layingOut()) render();
-});
-$('#assemblySpread').addEventListener('input',e=>{ assemblySpread=e.target.value/100; render(); });
-$('#assemblyRotation').addEventListener('input',e=>{
-  if(!movingFace) return;
-  movingFace.angle=+e.target.value;
-  syncAssemblyRotation();
-  render();
-});
-$('#assemblyCancel').addEventListener('click',()=>{ movingFace=null; showAssemblyStatus(); render(); });
-$('#assemblyUndo').addEventListener('click',()=>{
-  if(!assembly?.joints.length) return;
-  movingFace=null;
-  assembly.undo();
-  saveAssembly();
-  render();
+  if(curView==='3d'||layingOut()) render();
 });
 $('#help').addEventListener('click',e=>{ const a=e.target.closest('a[href^="#h-"]'); if(!a) return; e.preventDefault(); const t=document.getElementById(a.getAttribute('href').slice(1)); if(t) t.scrollIntoView({behavior:'smooth',block:'start'}); });
 $('#explode').addEventListener('input',e=>{ view.explode=e.target.value/100; render(); });
