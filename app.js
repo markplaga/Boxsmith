@@ -617,8 +617,6 @@ function assignAnims(parts,ty,W,D,H){
     if(ty==='puzzle' && n==='Lock pin') p.anim={tr:[0,0,2.5*t],e:0.3};
     if(ty==='puzzle' && n==='Sliding lid') p.anim={tr:[0,-D*0.85,0],d:0.38};
     if(ty==='display' && n.startsWith('Cover ')) p.anim=up(H*0.8);
-    if(ty==='frame' && (n==='Lid'||n==='Locator ring')) p.anim=up(H*0.65);
-    if(ty==='frame' && n==='Outer Top') p.anim=up(H*0.6);
   }
 }
 
