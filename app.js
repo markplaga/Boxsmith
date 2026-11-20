@@ -517,7 +517,8 @@ function generate(){
     const top='glued', savedCorners=S.corners, savedTs=G.ts;
     if(ins){ W+=2*t; D+=2*t; H+=(top==='none'||top==='lift'?t:2*t); }
     S.corners='classic';
-    const fwid=Math.max(8,S.frameW), ox=t+fwid, oy=t+fwid, Wt=W-2*ox, Dt=D-2*oy;
+    const minRing=Math.max(4,t), fwid=Math.max(minRing,S.frameW), ox=t+fwid, oy=t+fwid, Wt=W-2*ox, Dt=D-2*oy;
+    if(S.frameW<minRing) warns.push('Ring width raised to '+fmt(minRing)+' — the narrowest that leaves a solid web in the plates for this material.');
     if(Wt<2*t+10||Dt<2*t+10){ warns.push('The ring is too wide for this size — the centre hole has vanished. Reduce the ring width or enlarge the box.'); }
     else {
       const fOut= top==='glued'? fAll : fOpen;
