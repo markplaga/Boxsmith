@@ -1126,7 +1126,9 @@ function render(){
     if(ptrs.size===2&&pinch0){ const [a,b]=[...ptrs.values()]; view.zoom=Math.max(0.3,Math.min(5,zoom0*Math.hypot(a[0]-b[0],a[1]-b[1])/pinch0)); render(); return; }
     if(down && Math.hypot(e.clientX-down[0],e.clientY-down[1])>=6) down=null;
     if(last){ view.yaw-=(e.clientX-last[0])*0.01; view.pitch=Math.max(-1.45,Math.min(1.45,view.pitch+(e.clientY-last[1])*0.01)); last=[e.clientX,e.clientY]; render(); } });
-  const up=e=>{ if(e.type==='pointerup' && down && Math.hypot(e.clientX-down[0],e.clientY-down[1])<6 && ptrs.size===1) pick3D(e); down=null; ptrs.delete(e.pointerId); if(ptrs.size<2) pinch0=null; last=ptrs.size?[...ptrs.values()][0]:null; };
+  let tap0=null;
+  const up=e=>{ if(e.type==='pointerup' && e.pointerType==='touch' && down && ptrs.size===1 && Math.hypot(e.clientX-down[0],e.clientY-down[1])<8){ const now=performance.now(); if(tap0 && now-tap0.t<350 && Math.hypot(e.clientX-tap0.x,e.clientY-tap0.y)<30 && maximizedView()){ tap0=null; setMax(false); down=null; ptrs.delete(e.pointerId); if(ptrs.size<2) pinch0=null; last=null; return; } tap0={t:now,x:e.clientX,y:e.clientY}; }
+    if(e.type==='pointerup' && down && Math.hypot(e.clientX-down[0],e.clientY-down[1])<6 && ptrs.size===1) pick3D(e); down=null; ptrs.delete(e.pointerId); if(ptrs.size<2) pinch0=null; last=ptrs.size?[...ptrs.values()][0]:null; };
   cv.addEventListener('pointerup',up); cv.addEventListener('pointercancel',up);
   cv.addEventListener('wheel',e=>{ e.preventDefault(); view.zoom=Math.max(0.3,Math.min(5,view.zoom*Math.exp(-e.deltaY*0.0015))); render(); },{passive:false});
   cv.addEventListener('dblclick',()=>{
@@ -1147,6 +1149,7 @@ function render(){
 })();
 
 function pick3D(e){
+  if(maximizedView() && window.revealOverlays) window.revealOverlays();
   if(maximizedLayout()) return;
   if(!GL||!scene||(!layingOut()&&(curView!=='3d'||view.stereo!=='off'))) return; const r=cv.getBoundingClientRect();
   const x=(e.clientX-r.left)/r.width, y=(e.clientY-r.top)/r.height;
@@ -1301,18 +1304,21 @@ function maximizedLayout(){
   return layingOut()&&maximizedView();
 }
 function setMax(on){
+  on=!!on; if(on===maximizedView()) return;
   document.body.classList.toggle('max3d',on);
   $$('[data-maximize-view]').forEach(button=>{ button.textContent=on?'✕ Exit maximize':'⤢ Maximize'; });
-  if(curView==='3d') $(on?'#previewExitMax':'#maxBtn').focus({preventScroll:true});
-  if(!on&&layingOut()) $('#layoutCtl [data-maximize-view]').focus({preventScroll:true});
-  requestAnimationFrame(render);
+  if(on){ if(window.revealOverlays) window.revealOverlays(); const x=$('#previewExitMax'); if(x) x.focus({preventScroll:true}); }
+  else { const b=layingOut()?$('#layoutCtl [data-maximize-view]'):$('#maxBtn'); if(b) b.focus({preventScroll:true}); }
+  requestAnimationFrame(render); setTimeout(render,120);
 }
 $$('[data-maximize-view]').forEach(button=>button.addEventListener('click',()=>{
   setMax(!maximizedView());
 }));
 $('#previewExitMax').addEventListener('click',()=>setMax(false));
-addEventListener('keydown',e=>{ if(e.key==='Escape' && maximizedView()) setMax(false); });
+addEventListener('keydown',e=>{ if(e.key==='Escape' && maximizedView()){ e.preventDefault(); setMax(false); } });
+addEventListener('orientationchange',()=>setTimeout(render,200));
 function syncStereoControls(){
+  document.body.classList.toggle('stereo-on',stereoActive());
   $$('[data-stereo-mode]').forEach(select=>{
     select.disabled=!GL;
     select.value=view.stereo;
@@ -1568,13 +1574,14 @@ window.update=update;
 
 /* ---------- overlay controls fade out after 10 s; a deliberate tap brings them back ---------- */
 (function(){
-  const sels=['#v3dctl','#lampCtl','#dims','#selInfo'], timers=new Map();
+  const sels=['#v3dctl','#layoutCtl','#lampCtl','#dims','#selInfo'], timers=new Map();
   const reveal=el=>{ el.classList.remove('faded'); clearTimeout(timers.get(el)); timers.set(el,setTimeout(()=>el.classList.add('faded'),10000)); };
   sels.forEach(s=>{ const el=$(s); if(!el) return; el.classList.add('ov');
     el.addEventListener('click',e=>{ if(el.classList.contains('faded')){ e.preventDefault(); e.stopPropagation(); reveal(el); } },true);
     el.addEventListener('focusin',()=>reveal(el));
     ['pointerdown','input','change','wheel'].forEach(ev=>el.addEventListener(ev,()=>{ if(!el.classList.contains('faded')) reveal(el); },true));
     reveal(el); });
+  window.revealOverlays=()=>sels.forEach(s=>{ const el=$(s); if(el&&!el.classList.contains('hidden')) reveal(el); });
   // panels that appear because of another control (lamp panel, selection info) start fresh
   new MutationObserver(ms=>ms.forEach(m=>{ const t=m.target; if(t.classList&&t.classList.contains('ov')&&/hidden/.test(m.oldValue||'')&&!t.classList.contains('hidden')) reveal(t); }))
     .observe($('.view'),{attributes:true,subtree:true,attributeFilter:['class'],attributeOldValue:true});

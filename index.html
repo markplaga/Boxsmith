@@ -115,15 +115,32 @@ main{display:flex;flex-direction:column;min-width:0;min-height:0}
 .help li{margin:3px 0}
 @media (max-width:860px){ .help .toc ol{columns:1} .help td:first-child{white-space:normal} }
 body.max3d aside,body.max3d .topbar,body.max3d .statbar,body.max3d .warns{display:none!important}
-#previewExitMax{display:none;position:absolute;right:14px;top:14px;min-height:40px;z-index:6}
-body.max3d:not(.layout-view) #previewExitMax{display:block}
-body.max3d:not(.layout-view) #maxBtn{display:none}
-body.max3d:not(.layout-view) .dims{top:62px}
-body.max3d.layout-view main{border:0}
-body.max3d.layout-view .view > :not(canvas),body.max3d.layout-view #toast{display:none!important}
-body.max3d.layout-view #cv.layout-placing{cursor:grab}
-body.max3d.layout-view #cv.layout-placing:active{cursor:grabbing}
-body.max3d main{position:fixed!important;inset:0!important;height:100vh!important;height:100dvh!important;z-index:30;top:0!important}
+body.max3d{overflow:hidden}
+#previewExitMax{display:none;position:absolute;right:max(14px,env(safe-area-inset-right));top:max(14px,env(safe-area-inset-top));min-height:42px;padding:0 16px;font-weight:600;z-index:8;background:rgba(255,253,249,.96);box-shadow:0 2px 10px rgba(60,40,20,.18)}
+body.max3d #previewExitMax{display:block}
+body.max3d [data-maximize-view]{display:none!important}
+body.max3d .dims{top:max(66px,calc(env(safe-area-inset-top) + 58px))}
+body.max3d.stereo-on .dims,body.max3d.stereo-on #selInfo{display:none!important}
+body.max3d main{position:fixed!important;inset:0!important;height:100vh!important;height:100dvh!important;z-index:30;top:0!important;border:0}
+body.max3d .v3dctl{left:max(12px,env(safe-area-inset-left));bottom:max(12px,env(safe-area-inset-bottom));max-width:calc(100% - 24px - env(safe-area-inset-left) - env(safe-area-inset-right))}
+body.max3d .lay-adv,body.max3d #layoutCtl .lgrp[data-g="File"],body.max3d #layoutStatus{display:none!important}
+body.max3d .toast{bottom:auto;top:max(14px,env(safe-area-inset-top));left:max(14px,env(safe-area-inset-left));transform:translateY(-20px);max-width:calc(100% - 170px)}
+body.max3d .toast.show{transform:translateY(0)}
+body.max3d #cv.layout-placing{cursor:grab}
+body.max3d #cv.layout-placing:active{cursor:grabbing}
+#layoutCtl{flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:7px;max-height:calc(100% - 28px);overflow-y:auto}
+#layoutCtl .lgrp{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+#layoutCtl .lgrp::before{content:attr(data-g);flex:0 0 58px;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+#layoutCtl .lgrp-xyz{display:inline-flex;flex-wrap:wrap;gap:6px}
+#layoutCtl .lgrp-xyz label{display:inline-flex;align-items:center;gap:4px}
+#layoutCtl input[type=number]{width:5.4em}
+@media (max-width:760px){
+  .v3dctl{max-height:48%;overflow-y:auto}
+  #layoutCtl .lgrp::before{flex-basis:100%}
+  #layoutCtl input[type=number]{width:4.6em}
+  body.max3d #layoutCtl .lgrp[data-g="Boxes"]{display:none!important}
+  #previewExitMax{min-height:44px}
+}
 .cpick{width:46px;height:34px;border:1px solid var(--line2);border-radius:6px;padding:2px;background:#fff;cursor:pointer}
 .subsec{border:1px solid var(--line2);border-radius:8px;background:#fbf8f3;padding:0}
 .subhd{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;padding:9px 10px;cursor:pointer;user-select:none;-webkit-user-select:none}
@@ -185,7 +202,7 @@ body.max3d main{position:fixed!important;inset:0!important;height:100vh!importan
 <aside>
   <div class="brand">
     <svg class="logo" viewBox="0 0 32 32"><rect x="3" y="9" width="20" height="20" fill="#e2461b"/><path d="M3 9l6-6h20l-6 6z" fill="#f08a63"/><path d="M23 9l6-6v20l-6 6z" fill="#b3330f"/><path d="M3 13h3v4H3zm0 8h3v4H3zm17-12h3v4h-3z" fill="#fffdf9" opacity=".9"/></svg>
-    <div><h1>Boxsmith</h1><p>Laser-cut box generator · 10 box styles</p></div>
+    <div><h1>Boxsmith</h1><p>Laser-cut box generator · 17 box styles</p></div>
   </div>
 
   <div class="sec">
@@ -415,32 +432,13 @@ body.max3d main{position:fixed!important;inset:0!important;height:100vh!importan
     </div>
     <div class="v3dctl hidden" id="layoutCtl">
       <span id="layoutStatus" class="layout-status" role="status"></span>
-      <button type="button" class="btn" id="layoutSave">Save layout</button>
-      <button type="button" class="btn" id="layoutOpen">Open layout</button>
-      <button type="button" class="btn" id="layoutClear">Clear layout</button>
-      <input type="file" id="layoutFile" class="hidden" accept=".json,application/json">
-      <button type="button" class="btn primary" id="layoutAdd">Add current box</button>
-      <select id="layoutObjects" aria-label="Box to arrange"></select>
-      <button type="button" class="btn" id="layoutDuplicate">Duplicate</button>
-      <button type="button" class="btn" id="layoutHide">Hide box</button>
-      <button type="button" class="btn" id="layoutRemove">Remove</button>
-      <button type="button" class="btn" id="layoutTop">Top view</button>
-      <button type="button" class="btn" id="layoutFit">Fit layout</button>
-      <button type="button" class="btn" data-maximize-view title="Show only the layout. Press Esc or double-click or double-tap the preview to exit.">⤢ Maximize</button>
-      <select data-stereo-mode aria-label="Viewing mode" title="Stereoscopic 3D"><option value="off">Normal view</option><option value="cross">Stereo · cross-eyed</option><option value="parallel">Stereo · parallel</option></select>
-      <label class="hidden">Stereo depth <input type="range" data-stereo-depth min="1" max="8" step="0.5" value="3.5"></label>
-      <div class="edge-controls" data-edge-controls>
+      <div class="lgrp" data-g="Boxes"><button type="button" class="btn primary" id="layoutAdd">Add current box</button><select id="layoutObjects" aria-label="Box to arrange"></select><button type="button" class="btn" id="layoutDuplicate">Duplicate</button><button type="button" class="btn" id="layoutHide">Hide box</button><button type="button" class="btn" id="layoutRemove">Remove</button><button type="button" class="btn" id="layoutClear">Clear layout</button></div>
+      <div class="lgrp" data-g="View"><button type="button" class="btn" id="layoutTop">Top view</button><button type="button" class="btn" id="layoutFit">Fit layout</button><button type="button" class="btn" id="layoutPlace" aria-pressed="false">Place in top view</button><button type="button" class="btn" data-maximize-view title="Fill the window with the layout. Exit with the ✕ button, Esc, or a double-click / double-tap.">⤢ Maximize</button><select data-stereo-mode aria-label="Viewing mode" title="Stereoscopic 3D"><option value="off">Normal view</option><option value="cross">Stereo · cross-eyed</option><option value="parallel">Stereo · parallel</option></select><label class="hidden">Stereo depth <input type="range" data-stereo-depth min="1" max="8" step="0.5" value="3.5"></label><div class="edge-controls" data-edge-controls>
         <label>Cut edge color <input type="color" data-edge-color></label>
         <button type="button" class="btn" aria-label="Reset cut edge color" data-edge-reset>Reset</button>
-      </div>
-      <button type="button" class="btn" id="layoutPlace" aria-pressed="false">Place in top view</button>
-      <label>Layout units <select id="layoutUnits"><option value="mm">Millimeters (mm)</option><option value="in">Inches (in)</option></select></label>
-      <label>X (<span class="layout-unit">mm</span>) <input type="number" data-layout-axis="0" step="any"></label>
-      <label>Y (<span class="layout-unit">mm</span>) <input type="number" data-layout-axis="1" step="any"></label>
-      <label>Z (<span class="layout-unit">mm</span>) <input type="number" data-layout-axis="2" step="any"></label>
-      <label>Rotate X (°) <input type="number" data-layout-rotation="0" min="-360" max="360" step="any"></label>
-      <label>Rotate Y (°) <input type="number" data-layout-rotation="1" min="-360" max="360" step="any"></label>
-      <label>Rotate Z (°) <input type="number" data-layout-rotation="2" min="-360" max="360" step="any"></label>
+      </div></div>
+      <div class="lgrp lay-adv" data-g="Position"><label>Layout units <select id="layoutUnits"><option value="mm">Millimeters (mm)</option><option value="in">Inches (in)</option></select></label><span class="lgrp-xyz"><label>X <input type="number" data-layout-axis="0" step="any"></label><label>Y <input type="number" data-layout-axis="1" step="any"></label><label>Z <input type="number" data-layout-axis="2" step="any"></label></span><span class="lgrp-xyz"><label>Turn X (°) <input type="number" data-layout-rotation="0" min="-360" max="360" step="any"></label><label>Turn Y (°) <input type="number" data-layout-rotation="1" min="-360" max="360" step="any"></label><label>Turn Z (°) <input type="number" data-layout-rotation="2" min="-360" max="360" step="any"></label></span></div>
+      <div class="lgrp" data-g="File"><button type="button" class="btn" id="layoutSave">Save layout</button><button type="button" class="btn" id="layoutOpen">Open layout</button><input type="file" id="layoutFile" class="hidden" accept=".json,application/json"></div>
     </div>
     <div class="lamp-ctl hidden" id="lampCtl">
       <div class="lrow"><span>💡 Light</span><input type="range" id="lampGain" min="0" max="300" step="5" value="100"><b id="lampPct">100%</b></div>
