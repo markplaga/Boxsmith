@@ -115,6 +115,10 @@ main{display:flex;flex-direction:column;min-width:0;min-height:0}
 .help li{margin:3px 0}
 @media (max-width:860px){ .help .toc ol{columns:1} .help td:first-child{white-space:normal} }
 body.max3d aside,body.max3d .topbar,body.max3d .statbar,body.max3d .warns{display:none!important}
+body.max3d.layout-view main{border:0}
+body.max3d.layout-view .view > :not(canvas),body.max3d.layout-view #toast{display:none!important}
+body.max3d.layout-view #cv.layout-placing{cursor:grab}
+body.max3d.layout-view #cv.layout-placing:active{cursor:grabbing}
 body.max3d main{position:fixed!important;inset:0!important;height:100vh!important;height:100dvh!important;z-index:30;top:0!important}
 .cpick{width:46px;height:34px;border:1px solid var(--line2);border-radius:6px;padding:2px;background:#fff;cursor:pointer}
 .subsec{border:1px solid var(--line2);border-radius:8px;background:#fbf8f3;padding:0}
@@ -417,7 +421,7 @@ body.max3d main{position:fixed!important;inset:0!important;height:100vh!importan
       <button type="button" class="btn" id="layoutRemove">Remove</button>
       <button type="button" class="btn" id="layoutTop">Top view</button>
       <button type="button" class="btn" id="layoutFit">Fit layout</button>
-      <button type="button" class="btn" data-maximize-view title="Fill the window with the layout (Esc to exit)">⤢ Maximize</button>
+      <button type="button" class="btn" data-maximize-view title="Show only the layout. Press Esc or double-click or double-tap the preview to exit.">⤢ Maximize</button>
       <select data-stereo-mode aria-label="Viewing mode" title="Stereoscopic 3D"><option value="off">Normal view</option><option value="cross">Stereo · cross-eyed</option><option value="parallel">Stereo · parallel</option></select>
       <label class="hidden">Stereo depth <input type="range" data-stereo-depth min="1" max="8" step="0.5" value="3.5"></label>
       <div class="edge-controls" data-edge-controls>
@@ -620,7 +624,7 @@ body.max3d main{position:fixed!important;inset:0!important;height:100vh!importan
 <li>Use <b>Rotate X</b> or <b>Rotate Y</b> to tip the box and <b>Rotate Z</b> to turn it in plan view. Use <b>Hide box</b> to see inside an enclosing box. Select the hidden box from the list and click <b>Show box</b> to bring it back.</li>
 <li>Click <b>Save layout</b> to download a JSON copy. Use <b>Open layout</b> to make a saved file active. <b>Remove</b> deletes the selected box. <b>Clear layout</b> removes every box from the current layout after confirmation.</li>
 </ol>
-<p>Click <b>Maximize</b> to fill the window with the layout while keeping its controls available. Click <b>Exit maximize</b> or press Esc to return to the regular view.</p>
+<p>Click <b>Maximize</b> to show only the layout preview across the browser window. Drag to orbit, or zoom with the wheel or by pinching. Press <b>Esc</b> or double-click or double-tap the preview to bring the controls back.</p>
 <p>Choose <b>Stereo · cross-eyed</b> or <b>Stereo · parallel</b> from the viewing menu to see two views of the whole arrangement side by side. Adjust <b>Stereo depth</b> to change the separation. You can select or place boxes in either view. Choose <b>Normal view</b> to return to a single image.</p>
 <p>Try a <b>240 × 180 × 50 mm Frame (torus)</b> with a <b>24 mm ring width</b>. Add three <b>55 × 45 × 30 mm Closed boxes</b>. Set their X coordinates to <b>−60</b>, <b>0</b>, and <b>60 mm</b>, with Y and Z at zero. Click <b>Top view</b> to inspect the fit, then drag to see the layout from the side.</p>
 

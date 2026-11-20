@@ -1129,7 +1129,13 @@ function render(){
   const up=e=>{ if(e.type==='pointerup' && down && Math.hypot(e.clientX-down[0],e.clientY-down[1])<6 && ptrs.size===1) pick3D(e); down=null; ptrs.delete(e.pointerId); if(ptrs.size<2) pinch0=null; last=ptrs.size?[...ptrs.values()][0]:null; };
   cv.addEventListener('pointerup',up); cv.addEventListener('pointercancel',up);
   cv.addEventListener('wheel',e=>{ e.preventDefault(); view.zoom=Math.max(0.3,Math.min(5,view.zoom*Math.exp(-e.deltaY*0.0015))); render(); },{passive:false});
-  cv.addEventListener('dblclick',()=>{ view.yaw=-0.6; view.pitch=0.5; view.zoom=1; render(); });
+  cv.addEventListener('dblclick',()=>{
+    if(maximizedLayout()){
+      setMax(false);
+      return;
+    }
+    view.yaw=-0.6; view.pitch=0.5; view.zoom=1; render();
+  });
   let lastT=0; const loop=(ts)=>{ const dt=lastT?Math.min(50,ts-lastT):0; let dirty=false;
     if(view.spin && curView==='3d'){ view.yaw-=dt*0.0004; dirty=true; }
     if(view.play>0){ view.phase+=dt/1000; const T=[1.3,1.0,1.3,0.5], tot=T[0]+T[1]+T[2]+T[3]; let ph=view.phase;
@@ -1141,6 +1147,7 @@ function render(){
 })();
 
 function pick3D(e){
+  if(maximizedLayout()) return;
   if(!GL||!scene||(!layingOut()&&(curView!=='3d'||view.stereo!=='off'))) return; const r=cv.getBoundingClientRect();
   const x=(e.clientX-r.left)/r.width, y=(e.clientY-r.top)/r.height;
   const stereo=stereoActive(), pane=x<0.5?0:1;
@@ -1250,6 +1257,7 @@ $('#tabs').addEventListener('click',e=>{ const b=e.target.closest('button'); if(
   $('#v3dctl').classList.toggle('hidden',curView!=='3d'); $('#dims').classList.toggle('hidden',curView!=='3d');
   $('#lampCtl').classList.toggle('hidden',curView!=='3d'||!LAMP.on);
   $('#layoutCtl').classList.toggle('hidden',!layingOut());
+  document.body.classList.toggle('layout-view',layingOut());
   if(wasLayout!==layingOut()){
     switchBoxLayoutCamera();
     syncStereoControls();
@@ -1286,9 +1294,13 @@ $('#playBtn').addEventListener('click',()=>{ if(view.play>0&&view.loop){ view.pl
       shut=$$('aside .sec.collapsed > h2').map(x=>x.dataset.name); try{ localStorage.setItem(KEY,JSON.stringify(shut)); }catch(err){} });
   });
 })();
+function maximizedLayout(){
+  return layingOut()&&document.body.classList.contains('max3d');
+}
 function setMax(on){
   document.body.classList.toggle('max3d',on);
   $$('[data-maximize-view]').forEach(button=>{ button.textContent=on?'✕ Exit maximize':'⤢ Maximize'; });
+  if(!on&&layingOut()) $('#layoutCtl [data-maximize-view]').focus({preventScroll:true});
   requestAnimationFrame(render);
 }
 $$('[data-maximize-view]').forEach(button=>button.addEventListener('click',()=>{
