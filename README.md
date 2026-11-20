@@ -15,6 +15,7 @@ Closed box · open tray · lift-off lid · split lid · sliding lid · hinged li
 - 3D preview (three.js) with explode, “show it work” animations, screws and nuts, tap-to-select
 - Paint finish: preview a watercolor wash or acrylic paint color on any box
 - Arrange intact box designs side by side, inside other boxes or in a Frame opening, with snap-to-face, drag to move, overlap warnings, and save and open for layout files
+- Picture mosaic: upload a picture and Boxsmith picks the paint colours and builds a layout of boxes (optional relief and frame)
 - Sheet nesting with hole filling and grain lock, batch quantity, kit-mode hold tabs
 - SVG and DXF export (simple or LightBurn-ordered layers), printable assembly card
 - Cost estimate, saved materials and recipes (stored in the browser)
@@ -29,6 +30,8 @@ Create box designs and whole-box assemblies from JavaScript in Node.js or the br
 - `app.js` — box geometry, layout, export, UI
 - `boxsmith-api.js` — box catalog and portable assembly files
 - `box-layout.js` — placement and browser storage for whole boxes
+- `mosaic-core.js` — picture-to-mosaic algorithm (colour picking, dithering, layout); also usable from Node
+- `mosaic.js` — the Picture mosaic controls
 - `tools.js` — tracing, text outlines, artwork, dogbones, patterns, nesting, accents
 - `help.html` — standalone help guide
 - `three.min.js` — three.js r128 (MIT)

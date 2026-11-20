@@ -212,6 +212,9 @@ body.max3d #layoutCtl .lgrp[data-g="View"]{display:flex!important}
 .ov.faded{opacity:.01!important}
 .ov.faded>*{pointer-events:none}
 .ov.faded::after{content:'';position:absolute;inset:-6px;cursor:pointer;pointer-events:auto}
+.mos-prev{display:block;width:100%;height:auto;margin-top:10px;border:1px solid var(--line2);border-radius:6px;image-rendering:pixelated;background:repeating-conic-gradient(#e9e4dc 0 25%,#fff 0 50%) 0 0/16px 16px}
+.mos-pal{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.mos-pal span{width:24px;height:24px;border-radius:5px;border:1px solid rgba(0,0,0,.25);display:inline-block}
 .uimode{padding:10px 20px 0}
 .uimode .seg{width:100%}
 body.simple-ui [data-adv]{display:none!important}
@@ -390,6 +393,31 @@ body.max3d .lamp-ctl{top:190px}
     <div style="margin-top:12px">
       <label class="btn" style="display:inline-block;cursor:pointer">＋ Add artwork (PNG, JPG or SVG)<input type="file" id="artFile" accept=".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml" class="hidden"></label>
       <div id="artList"></div>
+    </div>
+  </div>
+
+  <div class="sec" data-hide="kerftest" id="mosaicSec">
+    <h2>Picture mosaic</h2>
+    <p class="hint" style="margin:0 0 8px">Turn a picture into a layout of painted boxes. Every tile is a copy of the box designed above, and the colours are picked automatically.</p>
+    <div class="f full"><label class="btn" style="display:inline-block;cursor:pointer;text-align:center">Choose a picture…<input type="file" id="mosFile" accept="image/*" class="hidden"></label><span class="hint" id="mosName">PNG, JPG, GIF, WebP or SVG</span></div>
+    <div id="mosBody" class="hidden">
+      <div class="grid2" style="margin-top:8px">
+        <div class="f"><label for="mosCols">Boxes across</label><input type="number" id="mosCols" data-mos="cols" min="4" max="120" step="1"></div>
+        <div class="f"><label for="mosK">Colours</label><input type="number" id="mosK" data-mos="colors" min="2" max="24" step="1"></div>
+        <div class="f"><label for="mosFaces">Faces up</label><select id="mosFaces" data-mos="faces"><option value="sides">Sides, alternating</option><option value="side">Side, all the same</option><option value="top">Top, as designed</option></select></div>
+        <div class="f"><label for="mosPaint">Paint</label><select id="mosPaint" data-mos="paint"><option value="watercolor">Watercolor wash</option><option value="acrylic">Acrylic (solid)</option></select></div>
+        <div class="f full" id="mosStrWrap"><label for="mosStr">Wash strength: <b id="mosStrVal"></b></label><input type="range" id="mosStr" data-mos="strength" min="10" max="100" step="5" style="width:100%;accent-color:var(--accent)"></div>
+        <label class="chk"><input type="checkbox" data-mos="dither"> Dither</label>
+        <label class="chk"><input type="checkbox" data-mos="skipAlpha"> Skip transparent</label>
+        <div class="f"><label for="mosRelief">Relief</label><select id="mosRelief" data-mos="relief"><option value="none">Flat</option><option value="light">Lighter is higher</option><option value="dark">Darker is higher</option></select></div>
+        <div class="f" id="mosStepsWrap"><label for="mosSteps">Height steps</label><input type="number" id="mosSteps" data-mos="steps" min="2" max="8" step="1"></div>
+        <label class="chk full"><input type="checkbox" data-mos="frame"> Add a frame around it</label>
+        <div class="f full" id="mosRingWrap"><label for="mosRing">Frame ring width</label><input type="number" id="mosRing" step="0.0625"></div>
+      </div>
+      <canvas id="mosPrev" class="mos-prev" aria-label="Preview of the mosaic"></canvas>
+      <div class="mos-pal" id="mosPal"></div>
+      <p class="hint" id="mosInfo" role="status" style="margin:6px 0 8px"></p>
+      <button type="button" class="btn primary" id="mosGo" style="width:100%">Build the layout</button>
     </div>
   </div>
 
@@ -686,6 +714,24 @@ body.max3d .lamp-ctl{top:190px}
 <p>Choose <b>Stereo · cross-eyed</b> or <b>Stereo · parallel</b> from the viewing menu to see two views of the whole arrangement side by side. Adjust <b>Stereo depth</b> to change the separation. You can select or place boxes in either view. Choose <b>Normal view</b> to return to a single image.</p>
 <p>Try a <b>240 × 180 × 50 mm Frame (torus)</b> with a <b>24 mm ring width</b>. Add three <b>55 × 45 × 30 mm Closed boxes</b>. Set their X coordinates to <b>−60</b>, <b>0</b>, and <b>60 mm</b>, with Y and Z at zero. Click <b>Top view</b> to inspect the fit, then drag to see the layout from the side. Or add one box and use <b>Snap to</b> with <b>Inside, centered</b> to drop it into the Frame's opening, then <b>Inside, against left wall</b> to push it to a side.</p>
 
+<h3 id="h-mosaic">Make a mosaic from a picture</h3>
+<p>The <b>Picture mosaic</b> section in the left panel turns any picture into a layout of painted boxes, and picks the colours for you. It runs entirely in your browser; the picture is never uploaded.</p>
+<ol>
+<li>Design the box you want as the tile, for example a 0.5 in closed box. Every tile in the mosaic is a copy of that box.</li>
+<li>Click <b>Choose a picture…</b>. A live preview appears under the settings.</li>
+<li>Set <b>Boxes across</b> (the number of tiles in each row; the rows follow the picture's proportions) and <b>Colours</b> (how many paint colours to use). Boxsmith finds that many colours that best represent the picture, and shows them as swatches under the preview.</li>
+<li>Click <b>Build the layout</b>. The mosaic opens in <b>Arrange boxes</b> in top view.</li>
+</ol>
+<dl>
+<dt>Faces up</dt><dd>Sides, alternating tips every box onto a side so the finger pattern shows, and alternates the two side faces like a checkerboard. Side, all the same uses one side face. Top, as designed leaves the boxes upright.</dd>
+<dt>Paint</dt><dd>Watercolor wash is translucent, so the wood grain shows through (use Wash strength to control it). Acrylic is solid colour. The paint is a 3D preview and never changes the cut files.</dd>
+<dt>Dither</dt><dd>Scatters tiles of neighbouring colours to suggest in-between shades. It helps photographs and usually makes logos and cartoons look noisy.</dd>
+<dt>Skip transparent</dt><dd>Leaves empty spaces where a PNG or SVG is transparent, so only the subject is built.</dd>
+<dt>Relief</dt><dd>Raises lighter (or darker) colours in even steps, each half a tile high, so the picture has depth when you tilt the view.</dd>
+<dt>Add a frame around it</dt><dd>Adds a Frame (torus) sized to hold the whole mosaic, with the ring width you choose. The frame is as tall as the tallest tile.</dd>
+</dl>
+<p>Tips: start with 20 to 40 boxes across and 4 to 8 colours. Pictures with a plain background and bold shapes work best. A mosaic can have up to 4000 boxes; very large ones take a few seconds to build. If you change the tile design, size or unit afterwards, the preview updates, but you need to click <b>Build the layout</b> again. Building replaces the current layout, so use <b>Save layout</b> first if you want to keep it.</p>
+
 <h2 id="h-sheets">12. Cut sheets and nesting</h2>
 <ul>
 <li>Set your bed or sheet size with the <b>Bed / sheet preset</b> or type it in. <b>Part spacing</b> is the gap between parts.</li>
@@ -782,7 +828,9 @@ Boxsmith.browser.showBox(tray);</code></pre>
 <script src="tools.js"></script>
 <script src="boxsmith-api.js"></script>
 <script src="box-layout.js"></script>
+<script src="mosaic-core.js"></script>
 <script src="app.js"></script>
+<script src="mosaic.js"></script>
 
 </body>
 </html>
