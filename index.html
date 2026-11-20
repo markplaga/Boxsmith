@@ -71,6 +71,10 @@ main{display:flex;flex-direction:column;min-width:0;min-height:0}
 #cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
 #cv:active{cursor:grabbing}
 .v3dctl{position:absolute;left:14px;bottom:14px;display:flex;gap:12px;align-items:center;background:rgba(255,253,249,.92);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:12.5px;flex-wrap:wrap;max-width:calc(100% - 28px)}
+.edge-controls{display:inline-flex;align-items:center;gap:6px}
+.edge-controls label{display:inline-flex;align-items:center;gap:5px}
+.edge-controls input{width:26px;height:22px;padding:1px;border:1px solid var(--line2);border-radius:4px;cursor:pointer}
+.edge-controls .btn{padding:3px 7px;font-size:12px}
 #layoutCtl .layout-status{flex-basis:100%}
 #layoutCtl label{white-space:nowrap}
 #layoutCtl input[type=number]{width:6em;padding:4px;border:1px solid var(--line2);border-radius:5px}
@@ -392,6 +396,10 @@ body.max3d main{position:fixed!important;inset:0!important;height:100vh!importan
       <label id="hwLbl"><input type="checkbox" id="hwChk" checked> Screws</label>
       <label><input type="checkbox" id="spin"> Spin</label>
       <select id="matSel"><option value="birch">Birch ply</option><option value="walnut">Walnut</option><option value="mdf">MDF</option><option value="clear">Clear acrylic</option><option value="black">Black acrylic</option><option value="pink">Pink acrylic</option><option value="card">Cardboard</option></select>
+      <div class="edge-controls" data-edge-controls>
+        <label>Cut edge color <input type="color" data-edge-color></label>
+        <button type="button" class="btn" aria-label="Reset cut edge color" data-edge-reset>Reset</button>
+      </div>
       <button class="btn" id="lampBtn" style="padding:3px 9px;font-size:12px" title="Put an LED inside and see the light and shadows it throws on the walls of a room">💡 Lamp</button>
       <button class="btn" id="maxBtn" style="padding:3px 9px;font-size:12px" title="Fill the window with the 3D view (Esc to exit)">⤢ Maximize</button>
       <button class="btn" id="resetView" style="padding:3px 9px;font-size:12px">Reset view</button>
@@ -409,6 +417,10 @@ body.max3d main{position:fixed!important;inset:0!important;height:100vh!importan
       <button type="button" class="btn" id="layoutRemove">Remove</button>
       <button type="button" class="btn" id="layoutTop">Top view</button>
       <button type="button" class="btn" id="layoutFit">Fit layout</button>
+      <div class="edge-controls" data-edge-controls>
+        <label>Cut edge color <input type="color" data-edge-color></label>
+        <button type="button" class="btn" aria-label="Reset cut edge color" data-edge-reset>Reset</button>
+      </div>
       <button type="button" class="btn" id="layoutPlace" aria-pressed="false">Place in top view</button>
       <label>Layout units <select id="layoutUnits"><option value="mm">Millimeters (mm)</option><option value="in">Inches (in)</option></select></label>
       <label>X (<span class="layout-unit">mm</span>) <input type="number" data-layout-axis="0" step="any"></label>
@@ -592,6 +604,7 @@ body.max3d main{position:fixed!important;inset:0!important;height:100vh!importan
 <li><b>Screws</b> shows or hides the screw-joint hardware.</li>
 <li><b>Stereo</b>: the view menu shows two pictures side by side for 3D without glasses. <i>Cross-eyed</i>: cross your eyes until the two boxes merge into a third in the middle. <i>Parallel</i>: relax your eyes and look through the screen until they merge (works best with the pictures small). The <b>Depth</b> slider sets how strong the effect is. Tap-to-select is off in stereo.</li>
 <li><b>Spin</b> turns the model slowly. The material menu changes the look: birch, walnut, MDF, clear or coloured acrylic, cardboard. Clear acrylic is handy for seeing inside.</li>
+<li><b>Cut edge color</b> changes the thin, laser-cut surfaces in <b>3D preview</b> and <b>Arrange boxes</b> for Birch ply, Walnut and MDF. Pick a darker brown for a more pronounced burn, or use <b>Reset</b> next to the swatch to restore the preset. Boxsmith remembers a separate color for each of these materials in this browser.</li>
 <li><b>Tap a panel</b> to select it. It turns orange, its name and size appear at top left, and it's highlighted on the cut sheet too. Tap it again to deselect.</li>
 <li>Engraving, accents and artwork show on the model where they'll appear on the finished box.</li>
 </ul>

@@ -810,10 +810,22 @@ async function saveFile(filename,data){
 
 /* ================= 3D RENDERER ================= */
 const MATS={
-  birch:{face:[226,196,150],side:[176,138,92],a:1}, walnut:{face:[122,82,54],side:[84,54,34],a:1}, mdf:{face:[168,124,82],side:[120,84,52],a:1},
+  birch:{face:[226,196,150],side:[176,138,92],a:1,wood:true}, walnut:{face:[122,82,54],side:[84,54,34],a:1,wood:true}, mdf:{face:[168,124,82],side:[120,84,52],a:1,wood:true},
   clear:{face:[190,225,235],side:[120,170,185],a:0.42}, black:{face:[48,48,52],side:[22,22,24],a:1}, pink:{face:[244,150,180],side:[214,100,140],a:0.85}, card:{face:[196,160,112],side:[150,118,78],a:1}
 };
 const view={yaw:-0.6,pitch:0.5,zoom:1,explode:0,spin:false,mat:'birch',animT:0,play:0,phase:0,loop:false,hw:true,pan:[0,0,0],stereo:'off',stereoDeg:3.5};
+const EDGE_COLOR_KEY='boxsmith-cut-edge-colors';
+const cutEdgeColors={};
+const savedEdgeColors=lsGet(EDGE_COLOR_KEY,{});
+for(const [material,color] of Object.entries(savedEdgeColors)){
+  if(MATS[material]?.wood&&typeof color==='string'&&/^#[0-9a-f]{6}$/i.test(color)) cutEdgeColors[material]=color.toLowerCase();
+}
+function cutEdgeRGB(material){
+  const color=cutEdgeColors[view.mat];
+  if(!color) return material.side;
+  const hex=Number.parseInt(color.slice(1),16);
+  return [hex>>16,(hex>>8)&255,hex&255];
+}
 let scene=null, selPi=-1;
 function circlePts(c){ return arc(c.x,c.y,c.r,0,2*PI,18).slice(0,18); }
 function makeScene(parts){
@@ -910,7 +922,7 @@ function initGL(){
 }
 function glColors(){
   const m=MATS[view.mat], c=a=>new THREE.Color(a[0]/255,a[1]/255,a[2]/255);
-  GL.cap.color=c(m.face); GL.side.color=c(m.side);
+  GL.cap.color=c(m.face); GL.side.color=c(cutEdgeRGB(m));
   for(const k of ['cap','side']){ GL[k].transparent=m.a<1; GL[k].opacity=m.a; GL[k].depthWrite=m.a===1; GL[k].side=m.a<1?THREE.DoubleSide:THREE.FrontSide; GL[k].needsUpdate=true; }
   GL.line.color=new THREE.Color(view.mat==='black'?0xffffff:0x2a1c10); GL.line.opacity=view.mat==='black'?0.25:0.4;
 }
@@ -1038,7 +1050,9 @@ function renderGL(){
     if(ob.decal){ ob.decal.matrix.copy(M).multiply(Tm.makeTranslation(0,0,ob.dz)); }
     if(ob.hw){ ob.hw.matrix.copy(M); ob.hw.matrixWorldNeedsUpdate=true; }
     const sel=arranging?s.layoutBox===layoutBoxes[layoutSelection]:s.pi===selPi&&selPi>=0;
-    ob.mesh.material = sel ? [GL.hiCap,GL.hiSide] : (ob.s.look==='clear'?[GL.clearCap,GL.clearSide]:[GL.cap,GL.side]);
+    const clear=s.look==='clear';
+    const highlightEdge=!clear&&cutEdgeColors[view.mat]?GL.side:GL.hiSide;
+    ob.mesh.material = sel ? [GL.hiCap,highlightEdge] : (clear?[GL.clearCap,GL.clearSide]:[GL.cap,GL.side]);
   }
   if(!stereo){ GL.r.setScissorTest(false); GL.r.setViewport(0,0,w,h); GL.r.render(GL.sc,cam); }
   else {
@@ -1067,7 +1081,7 @@ function render(){
   const rot=(q)=>{ const x=q[0]-C[0], y=q[1]-C[1], z=q[2]-C[2]; const x1=x*cy-y*sy, y1=x*sy+y*cy; return [x1, y1*cp-z*sp, y1*sp+z*cp]; }; // [sx, depth, up]
   const rn=(N)=>{ const x1=N[0]*cy-N[1]*sy, y1=N[0]*sy+N[1]*cy; return [x1, y1*cp-N[2]*sp, y1*sp+N[2]*cp]; };
   const Ldir=[-0.45,-0.75,0.5]; const Ll=Math.hypot(...Ldir); const Ld=Ldir.map(v=>v/Ll);
-  const mat=MATS[view.mat];
+  const mat=MATS[view.mat], sidesRGB=cutEdgeRGB(mat);
   const shade=(base,N,amb)=>{ const r=rn(N); const lam=Math.max(0,-(r[0]*Ld[0]+r[1]*Ld[1]-r[2]*Ld[2])*-1); const d=Math.max(0, N[0]*-0.35+N[1]*-0.55+N[2]*0.76); const k=amb+(1-amb)*(0.35+0.65*d); return 'rgba('+Math.round(base[0]*k)+','+Math.round(base[1]*k)+','+Math.round(base[2]*k)+','+mat.a+')'; };
   const ease=x=>x<0?0:x>1?1:x*x*(3-2*x);
   const items=scene.solids.map(s=>{ const off=explodeOff(s,C,ex); let tf=q=>[q[0]+off[0],q[1]+off[1],q[2]+off[2]], tn=N=>N;
@@ -1088,7 +1102,7 @@ function render(){
     for(const sd of s.sides){ const N=tn(sd.N), r=rn(N); if(mat.a===1 && r[1]>=-1e-6) continue; const pts=sd.q.map(q=>P(q,tf)); fs.push({pts,d:(pts[0][2]+pts[1][2]+pts[2][2]+pts[3][2])/4,N}); }
     fs.sort((a,b)=>b.d-a.d);
     ctx.lineWidth=0.6; ctx.strokeStyle=edge;
-    for(const f of fs){ ctx.beginPath(); f.pts.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1])); ctx.closePath(); ctx.fillStyle=shade(mat.side,f.N,0.55); ctx.fill(); if(mat.a===1) ctx.stroke(); }
+    for(const f of fs){ ctx.beginPath(); f.pts.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1])); ctx.closePath(); ctx.fillStyle=shade(sidesRGB,f.N,0.55); ctx.fill(); if(mat.a===1) ctx.stroke(); }
     const sn=tn(s.n), rnN=rn(sn); const topVis=rnN[1]<0;
     const caps=mat.a<1?[[s.bot,mul(sn,-1)],[s.top,sn]]:[[topVis?s.top:s.bot, topVis?sn:mul(sn,-1)]];
     for(const [loops,N] of caps){ ctx.beginPath(); for(const L of loops){ L.forEach((q,i)=>{ const p=P(q,tf); i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]); }); ctx.closePath(); }
@@ -1267,7 +1281,43 @@ $('#stereoSel').addEventListener('change',e=>{ view.stereo=e.target.value; $('#s
 $('#stereoDepthIn').addEventListener('input',e=>{ view.stereoDeg=+e.target.value; render(); });
 $('#hwChk').addEventListener('change',e=>{ view.hw=e.target.checked; buildGL(); render(); });
 $('#spin').addEventListener('change',e=>{ view.spin=e.target.checked; });
-$('#matSel').addEventListener('change',e=>{ view.mat=e.target.value; render(); });
+function defaultCutEdgeHex(){
+  return '#'+MATS[view.mat].side.map(value=>value.toString(16).padStart(2,'0')).join('');
+}
+function syncCutEdgeControls(){
+  const custom=cutEdgeColors[view.mat], color=custom||defaultCutEdgeHex();
+  $$('[data-edge-controls]').forEach(el=>el.classList.toggle('hidden',!MATS[view.mat].wood));
+  $$('[data-edge-color]').forEach(input=>{ if(input.value!==color) input.value=color; });
+  $$('[data-edge-reset]').forEach(button=>{ button.disabled=!custom; });
+}
+function saveCutEdgeColors(){
+  if(window.BOX?.noSave) return;
+  try{ localStorage.setItem(EDGE_COLOR_KEY,JSON.stringify(cutEdgeColors)); }catch(e){}
+}
+function setCutEdgeColor(color){
+  if(color===defaultCutEdgeHex()) delete cutEdgeColors[view.mat];
+  else cutEdgeColors[view.mat]=color;
+  syncCutEdgeControls();
+  render();
+}
+function setPreviewMaterial(material){
+  view.mat=material;
+  $('#matSel').value=material;
+  syncCutEdgeControls();
+}
+$('#matSel').addEventListener('change',e=>{ setPreviewMaterial(e.target.value); render(); });
+$$('[data-edge-color]').forEach(input=>{
+  input.addEventListener('input',()=>setCutEdgeColor(input.value));
+  input.addEventListener('change',()=>{
+    if(input.value!==(cutEdgeColors[view.mat]||defaultCutEdgeHex())) setCutEdgeColor(input.value);
+    saveCutEdgeColors();
+  });
+});
+$$('[data-edge-reset]').forEach(button=>button.addEventListener('click',()=>{
+  setCutEdgeColor(defaultCutEdgeHex());
+  saveCutEdgeColors();
+}));
+syncCutEdgeControls();
 $('#resetView').addEventListener('click',()=>{ view.yaw=-0.6; view.pitch=0.5; view.zoom=1; render(); });
 $('#dlBtn').addEventListener('click',e=>{ e.stopPropagation(); $('#dlPop').classList.toggle('hidden'); });
 document.addEventListener('click',()=>$('#dlPop').classList.add('hidden'));
@@ -1321,7 +1371,7 @@ function renderLibrary(){
   $('#recSel').innerHTML='<option value="">'+(Object.keys(recs).length?'Choose a recipe…':'No saved recipes yet')+'</option>'+Object.keys(recs).sort().map(n=>'<option>'+esc(n)+'</option>').join('');
 }
 $('#matLib').addEventListener('change',e=>{ const mats=lsGet(MAT_KEY,MAT_SEED), m=mats[+e.target.value]; if(!m) return;
-  S.t=+m.t; S.kerf=+m.kerf; if(m.price!=null) S.sheetPrice=+m.price; S.matName=m.name; if(m.look&&MATS[m.look]){ view.mat=m.look; $('#matSel').value=m.look; } update(); toast('Using '+m.name); });
+  S.t=+m.t; S.kerf=+m.kerf; if(m.price!=null) S.sheetPrice=+m.price; S.matName=m.name; if(m.look&&MATS[m.look]) setPreviewMaterial(m.look); update(); toast('Using '+m.name); });
 $('#matSave').addEventListener('click',()=>{ const n=$('#matName').value.trim(); if(!n){ toast('Give the material a name first'); return; }
   const mats=lsGet(MAT_KEY,MAT_SEED).filter(m=>m.name!==n); mats.push({name:n,t:S.t,kerf:S.kerf,price:S.sheetPrice,look:view.mat}); if(lsSet(MAT_KEY,mats)){ S.matName=n; $('#matName').value=''; renderLibrary(); update(); toast('Saved material “'+n+'”'); } });
 $('#matDel').addEventListener('click',()=>{ const i=$('#matLib').value; if(i===''){ toast('Pick a material to delete'); return; } const mats=lsGet(MAT_KEY,MAT_SEED); const m=mats.splice(+i,1)[0]; if(lsSet(MAT_KEY,mats)){ if(m&&S.matName===m.name) S.matName=''; renderLibrary(); toast('Deleted '+(m?m.name:'material')); } });
