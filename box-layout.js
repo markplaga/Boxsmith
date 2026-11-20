@@ -368,13 +368,24 @@ function initBoxLayout(){
   });
   $('#layoutSave').addEventListener('click',()=>downloadBoxLayout());
   $('#layoutOpen').addEventListener('click',()=>$('#layoutFile').click());
-  $('#layoutClear').addEventListener('click',()=>{
-    if(!layoutBoxes.length||!confirm('Remove every box from the current layout?')) return;
+  // confirm() is blocked inside the sandboxed artifact frame, so confirm in the button itself.
+  let clearTimer=null;
+  const clearBtn=$('#layoutClear');
+  const disarmClear=()=>{ clearTimeout(clearTimer); clearBtn.dataset.armed=''; clearBtn.textContent='Clear all'; };
+  clearBtn.addEventListener('click',()=>{
+    if(!layoutBoxes.length) return;
+    if(clearBtn.dataset.armed!=='1'){
+      clearBtn.dataset.armed='1';
+      clearBtn.textContent='Click again to clear';
+      clearTimer=setTimeout(disarmClear,4000);
+      return;
+    }
+    disarmClear();
     layoutBoxes=[];
     rebuildBoxLayout();
+    saveBoxLayout();
     selectLayoutBox(-1);
     toast('Layout cleared');
-    saveBoxLayout();
   });
   $('#layoutUnits').addEventListener('change',e=>setMeasurementUnit(e.target.value));
   $('#layoutAdd').addEventListener('click',()=>addLayoutBox());
