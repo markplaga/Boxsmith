@@ -57,6 +57,9 @@ function transformLayoutBox(box){
   box.pose.setPosition(point.setFromMatrixPosition(box.pose).add(offset));
   box.bounds=bounds.translate(offset);
   box.partBounds=parts.map(pieces=>pieces.map(piece=>piece.translate(offset)));
+  // opening through a Frame (horizontal plates only), used for snapping boxes inside it
+  const open=parts.find(pieces=>pieces.hole&&pieces.hole.getSize(new THREE.Vector3()).z<0.01);
+  box.opening=open?open.hole.clone().translate(offset):null;
 }
 
 // A flat plate with a big opening (a Frame's top and bottom) is represented by
@@ -80,12 +83,14 @@ function ringPieces(part,solid,pose){
     if(a1-a0<=0.01||b1-b0<=0.01) return null;
     const p=part.clone(); p.min[A]=a0; p.max[A]=a1; p.min[B]=b0; p.max[B]=b1; return p;
   };
-  return [
+  const pieces=[
     mk(part.min[A],H.min[A],part.min[B],part.max[B]),
     mk(H.max[A],part.max[A],part.min[B],part.max[B]),
     mk(H.min[A],H.max[A],part.min[B],H.min[B]),
     mk(H.min[A],H.max[A],H.max[B],part.max[B])
   ].filter(Boolean);
+  pieces.hole=H;
+  return pieces;
 }
 
 // Pairs of visible boxes whose individual parts intersect. Parts are compared
@@ -108,10 +113,28 @@ function layoutOverlaps(){
   return pairs;
 }
 
+// Put a box in the opening of a Frame: centered, or pushed against one wall
+// (the wall's own thickness is allowed for), resting at the Frame's base.
+function snapInsideOpening(box,target,where,gap){
+  const O=target.opening;
+  if(!O){ toast('That box has no opening to snap into. Pick a Frame.'); return false; }
+  const wall=+target.settings.t||0, B=box.bounds, T=target.bounds;
+  const oc=O.getCenter(new THREE.Vector3()), bc=B.getCenter(new THREE.Vector3());
+  const d=[oc.x-bc.x,oc.y-bc.y,T.min.z-B.min.z];
+  if(where==='-x') d[0]=O.min.x+wall+gap-B.min.x;
+  if(where==='+x') d[0]=O.max.x-wall-gap-B.max.x;
+  if(where==='-y') d[1]=O.min.y+wall+gap-B.min.y;
+  if(where==='+y') d[1]=O.max.y-wall-gap-B.max.y;
+  for(let i=0;i<3;i++) box.position[i]=Math.round((box.position[i]+d[i])*1000)/1000;
+  moveLayoutBox();
+  return true;
+}
+
 // Move the selected box flush against a face of another box (world axes).
 function snapLayoutBox(targetIndex,side,gap){
   const box=layoutBoxes[layoutSelection], target=layoutBoxes[targetIndex];
   if(!box||!target||box===target) return false;
+  if(side.startsWith('in:')) return snapInsideOpening(box,target,side.slice(3),gap);
   const B=box.bounds, T=target.bounds, c=new THREE.Vector3();
   const bc=B.getCenter(new THREE.Vector3()), tc=T.getCenter(c);
   const d=[tc.x-bc.x,tc.y-bc.y,T.min.z-B.min.z];
