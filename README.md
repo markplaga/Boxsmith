@@ -13,7 +13,8 @@ Closed box · open tray · lift-off lid · split lid · sliding lid · hinged li
 - Multi-line text (raster fill, vector outline or cut-through) with alignment, converted to outlines
 - PNG / JPG / SVG artwork on any panel, cut-out patterns, corner accents, rounded or chamfered lid corners
 - 3D preview (three.js) with explode, “show it work” animations, screws and nuts, tap-to-select
-- Arrange intact box designs side by side, inside other boxes or in a Frame opening, with save and open for layout files
+- Paint finish: preview a watercolor wash or acrylic paint color on any box
+- Arrange intact box designs side by side, inside other boxes or in a Frame opening, with snap-to-face, drag to move, overlap warnings, and save and open for layout files
 - Sheet nesting with hole filling and grain lock, batch quantity, kit-mode hold tabs
 - SVG and DXF export (simple or LightBurn-ordered layers), printable assembly card
 - Cost estimate, saved materials and recipes (stored in the browser)
