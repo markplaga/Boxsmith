@@ -1,5 +1,7 @@
 # Boxsmith JavaScript API
 
+[Download the illustrated step-by-step guide (PDF)](docs/boxsmith-api-guide.pdf)
+
 Use `require('./boxsmith-api.js')` in Node.js, or use `window.Boxsmith` on the Boxsmith page. The API runs locally. The example below creates a file that opens in **Arrange boxes**.
 
 ## Create a Frame with three boxes inside it
