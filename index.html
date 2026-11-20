@@ -115,6 +115,10 @@ main{display:flex;flex-direction:column;min-width:0;min-height:0}
 .help li{margin:3px 0}
 @media (max-width:860px){ .help .toc ol{columns:1} .help td:first-child{white-space:normal} }
 body.max3d aside,body.max3d .topbar,body.max3d .statbar,body.max3d .warns{display:none!important}
+#previewExitMax{display:none;position:absolute;right:14px;top:14px;min-height:40px;z-index:6}
+body.max3d:not(.layout-view) #previewExitMax{display:block}
+body.max3d:not(.layout-view) #maxBtn{display:none}
+body.max3d:not(.layout-view) .dims{top:62px}
 body.max3d.layout-view main{border:0}
 body.max3d.layout-view .view > :not(canvas),body.max3d.layout-view #toast{display:none!important}
 body.max3d.layout-view #cv.layout-placing{cursor:grab}
@@ -392,6 +396,7 @@ body.max3d main{position:fixed!important;inset:0!important;height:100vh!importan
   </div>
   <div class="view">
     <canvas id="gl"></canvas><canvas id="cv"></canvas>
+    <button type="button" class="btn" id="previewExitMax">✕ Exit maximize</button>
     <div class="v3dctl" id="v3dctl">
       <label>Explode <input type="range" id="explode" min="0" max="100" value="0"></label>
       <button class="btn" id="playBtn" style="padding:3px 10px;font-size:12px">▶ Show it work</button>
@@ -405,7 +410,7 @@ body.max3d main{position:fixed!important;inset:0!important;height:100vh!importan
         <button type="button" class="btn" aria-label="Reset cut edge color" data-edge-reset>Reset</button>
       </div>
       <button class="btn" id="lampBtn" style="padding:3px 9px;font-size:12px" title="Put an LED inside and see the light and shadows it throws on the walls of a room">💡 Lamp</button>
-      <button class="btn" id="maxBtn" data-maximize-view style="padding:3px 9px;font-size:12px" title="Fill the window with the 3D view (Esc to exit)">⤢ Maximize</button>
+      <button class="btn" id="maxBtn" data-maximize-view style="padding:3px 9px;font-size:12px" title="Fill the window with the 3D view. Press Esc or double-click or double-tap the preview to exit.">⤢ Maximize</button>
       <button class="btn" id="resetView" style="padding:3px 9px;font-size:12px">Reset view</button>
     </div>
     <div class="v3dctl hidden" id="layoutCtl">
@@ -606,7 +611,7 @@ body.max3d main{position:fixed!important;inset:0!important;height:100vh!importan
 <li><b>💡 Lamp</b>: puts an LED in the middle of the box and closes it inside a room. Light streams through every cut-out, pattern and finger slot and throws shadows on the walls, so you can see how a lamp will look before you cut it. Only the box turns; the room stays still. Set the <b>Light</b> brightness and <b>Colour</b> (a picker plus presets), change the <b>Room size</b>, slide the walls with <b>X / Y / Z</b>, or press <b>Reset walls</b>. Clear and coloured acrylic let the light through. Press 💡 again to leave lamp mode.</li>
 <li><b>Rotate</b>: drag. <b>Zoom</b>: pinch or mouse wheel. <b>Reset</b>: double-tap, or <i>Reset view</i>.</li>
 <li><b>Explode</b> pulls the parts apart so you can see how they fit.</li>
-<li><b>⤢ Maximize</b> fills the whole window with the 3D view and hides everything else. Tap <i>Exit maximize</i> or press Esc to go back.</li>
+<li><b>⤢ Maximize</b> fills the whole window with the 3D view and hides everything else. Use the <b>Exit maximize</b> button at the upper right, press Esc, or double-click or double-tap the preview.</li>
 <li><b>▶ Show it work</b> loops the box's motion: lids slide, lift or swing, drawers pull out, the puzzle pin drops. Tap again to stop. Each style also plays once when you pick it.</li>
 <li><b>Screws</b> shows or hides the screw-joint hardware.</li>
 <li><b>Stereo</b>: the view menu shows two pictures side by side for 3D without glasses. <i>Cross-eyed</i>: cross your eyes until the two boxes merge into a third in the middle. <i>Parallel</i>: relax your eyes and look through the screen until they merge (works best with the pictures small). The <b>Depth</b> slider sets how strong the effect is. Tap-to-select is off in stereo.</li>

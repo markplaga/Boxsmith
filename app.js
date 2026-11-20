@@ -1130,7 +1130,7 @@ function render(){
   cv.addEventListener('pointerup',up); cv.addEventListener('pointercancel',up);
   cv.addEventListener('wheel',e=>{ e.preventDefault(); view.zoom=Math.max(0.3,Math.min(5,view.zoom*Math.exp(-e.deltaY*0.0015))); render(); },{passive:false});
   cv.addEventListener('dblclick',()=>{
-    if(maximizedLayout()){
+    if(maximizedView()){
       setMax(false);
       return;
     }
@@ -1251,7 +1251,7 @@ $('#toKerf').addEventListener('click',e=>{ e.preventDefault(); S.type='kerftest'
 $('#resetAll').addEventListener('click',e=>{ e.preventDefault(); S=Object.assign({},DEFAULTS); update(true); toast('Reset to defaults'); });
 let curView='3d';
 $('#tabs').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; const wasLayout=layingOut(); curView=b.dataset.v;
-  if(curView!=='3d'&&!layingOut()&&document.body.classList.contains('max3d')) setMax(false);
+  if(curView!=='3d'&&!layingOut()&&maximizedView()) setMax(false);
   $$('#tabs button').forEach(x=>x.classList.toggle('on',x===b));
   $('#sheets').classList.toggle('hidden',curView!=='sheets'); $('#guide').classList.toggle('hidden',curView!=='guide'); $('#help').classList.toggle('hidden',curView!=='help');
   $('#v3dctl').classList.toggle('hidden',curView!=='3d'); $('#dims').classList.toggle('hidden',curView!=='3d');
@@ -1294,19 +1294,24 @@ $('#playBtn').addEventListener('click',()=>{ if(view.play>0&&view.loop){ view.pl
       shut=$$('aside .sec.collapsed > h2').map(x=>x.dataset.name); try{ localStorage.setItem(KEY,JSON.stringify(shut)); }catch(err){} });
   });
 })();
+function maximizedView(){
+  return document.body.classList.contains('max3d');
+}
 function maximizedLayout(){
-  return layingOut()&&document.body.classList.contains('max3d');
+  return layingOut()&&maximizedView();
 }
 function setMax(on){
   document.body.classList.toggle('max3d',on);
   $$('[data-maximize-view]').forEach(button=>{ button.textContent=on?'✕ Exit maximize':'⤢ Maximize'; });
+  if(curView==='3d') $(on?'#previewExitMax':'#maxBtn').focus({preventScroll:true});
   if(!on&&layingOut()) $('#layoutCtl [data-maximize-view]').focus({preventScroll:true});
   requestAnimationFrame(render);
 }
 $$('[data-maximize-view]').forEach(button=>button.addEventListener('click',()=>{
-  setMax(!document.body.classList.contains('max3d'));
+  setMax(!maximizedView());
 }));
-addEventListener('keydown',e=>{ if(e.key==='Escape' && document.body.classList.contains('max3d')) setMax(false); });
+$('#previewExitMax').addEventListener('click',()=>setMax(false));
+addEventListener('keydown',e=>{ if(e.key==='Escape' && maximizedView()) setMax(false); });
 function syncStereoControls(){
   $$('[data-stereo-mode]').forEach(select=>{
     select.disabled=!GL;
@@ -1567,6 +1572,7 @@ window.update=update;
   const reveal=el=>{ el.classList.remove('faded'); clearTimeout(timers.get(el)); timers.set(el,setTimeout(()=>el.classList.add('faded'),10000)); };
   sels.forEach(s=>{ const el=$(s); if(!el) return; el.classList.add('ov');
     el.addEventListener('click',e=>{ if(el.classList.contains('faded')){ e.preventDefault(); e.stopPropagation(); reveal(el); } },true);
+    el.addEventListener('focusin',()=>reveal(el));
     ['pointerdown','input','change','wheel'].forEach(ev=>el.addEventListener(ev,()=>{ if(!el.classList.contains('faded')) reveal(el); },true));
     reveal(el); });
   // panels that appear because of another control (lamp panel, selection info) start fresh
