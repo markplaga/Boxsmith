@@ -36,7 +36,7 @@ Open `frame-and-boxes.json` with **Open layout** in Boxsmith. You can also open 
 | `boxes.defaults(type = 'closed')` | A settings object containing all parameter keys and their defaults. |
 | `boxes.create(type, parameters = {})` | A new settings object with your overrides. It rejects unknown types, unknown keys and values of the wrong type. |
 
-`W`, `D` and `H` are width, depth and height. Common parameters include `t` for material thickness, `fw` for finger width, `kerf`, and `dimMode` with values `'inside'` and `'outside'`. Style-specific examples include `frameW` for Frame ring width, `drawers` for drawer count, and `sides` for polygon sides. All dimensions are in millimeters. `unit` selects the display unit. For a decorated design, a Settings JSON file exported from Boxsmith shows the corresponding settings and nested artwork records.
+`W`, `D` and `H` are width, depth and height. Common parameters include `t` for material thickness, `fw` for finger width, `kerf`, and `dimMode` with values `'inside'` and `'outside'`. `paint` (`'none'`, `'watercolor'` or `'acrylic'`), `paintColor` (like `'#3a7bd5'`) and `paintStrength` (10–100, watercolor only) set the painted look shown in the preview. Style-specific examples include `frameW` for Frame ring width, `drawers` for drawer count, and `sides` for polygon sides. All dimensions are in millimeters. `unit` selects the display unit. For a decorated design, a Settings JSON file exported from Boxsmith shows the corresponding settings and nested artwork records.
 
 ## Build and save an assembly
 

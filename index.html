@@ -206,7 +206,7 @@ body.max3d #layoutCtl .lgrp[data-g="View"]{display:flex!important}
 .lamp-ctl .lrow{display:flex;align-items:center;gap:8px}.lamp-ctl .lrow>span:first-child{min-width:62px}
 .lamp-ctl small{font-size:10.5px;opacity:.7;min-width:86px}.lamp-ctl input[type=range]{width:120px}
 .lamp-ctl .lcol{width:28px;height:20px;padding:0;border:1px solid rgba(255,255,255,.3);border-radius:5px;background:none;cursor:pointer}
-.lamp-ctl .lsw{display:flex;gap:4px}.lamp-ctl .lc{width:16px;height:16px;border-radius:50%;border:1px solid rgba(0,0,0,.5);padding:0;cursor:pointer}
+.lamp-ctl .lsw,#paintSwatches{display:flex;gap:6px;flex-wrap:wrap}#paintSwatches .lc{width:22px;height:22px;border-radius:50%;border:1px solid rgba(0,0,0,.35);padding:0;cursor:pointer}.lamp-ctl .lsw{gap:4px}.lamp-ctl .lc{width:16px;height:16px;border-radius:50%;border:1px solid rgba(0,0,0,.5);padding:0;cursor:pointer}
 .lamp-ctl .linkbtn{align-self:flex-start;background:none;border:0;color:#f3b36a;cursor:pointer;font-size:11.5px;padding:2px 0;text-decoration:underline}
 .ov{transition:opacity .6s ease}
 .ov.faded{opacity:.01!important}
@@ -319,6 +319,16 @@ body.max3d #layoutCtl .lgrp[data-g="View"]{display:flex!important}
       <div class="f"><label>Step between slots</label><input type="number" data-k="kStep" step="0.01" data-len></div>
       <div class="f"><label>Finger width</label><input type="number" data-k="fw" data-len></div>
       <div class="f full hint">Cuts a comb with 7 slots compensated for kerf values around your current setting. Push a scrap of the same sheet into each slot: the snug one is your kerf. A matched finger-joint pair tests the real joint.</div>
+    </div>
+  </div>
+
+  <div class="sec" data-hide="kerftest">
+    <h2>Paint finish</h2>
+    <div class="f full"><label>Paint</label><select data-k="paint"><option value="none">None (bare wood)</option><option value="watercolor">Watercolor wash</option><option value="acrylic">Acrylic paint</option></select></div>
+    <div data-showk="paint">
+      <div class="f full"><label>Color</label><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="color" data-k="paintColor" class="cpick" aria-label="Paint color"><span class="lsw" id="paintSwatches"></span></div></div>
+      <div class="f full" id="paintStrengthWrap"><label>Wash strength: <b id="paintStrengthVal"></b></label><input type="range" data-k="paintStrength" min="10" max="100" step="5"></div>
+      <p class="hint" id="paintHint" style="margin:6px 0 0"></p>
     </div>
   </div>
 
@@ -601,6 +611,7 @@ body.max3d #layoutCtl .lgrp[data-g="View"]{display:flex!important}
 <li><b>Alignment</b>: Left, Center or Right. Lines line up against each other and the block stays centred on the panel.</li>
 <li><b>Text is…</b>: <i>Raster, filled engraving</i> (solid letters), <i>Vector, outline only</i> (a fast scored outline), or <i>Cut through</i>.</li>
 <li><b>Preview colors</b> (3D only): a <b>Fill color</b> and an optional <b>Outline color</b> for the text and its line work, so you can see the box as it'll look painted or inlaid. <i>Burn</i> resets the fill to the normal burnt look. In <i>Vector, outline</i> mode, <b>Show the letters filled in</b> previews a filled version. <b>Line thickness</b> sets how heavy the outlines are drawn (0 = automatic). None of these change the cut files.</li>
+<li><b>Paint finish</b> (its own section in the left panel): choose <i>Watercolor wash</i> or <i>Acrylic paint</i> and pick a color from the swatches or the color box. Watercolor is a thin transparent wash, so the wood tone and grain show through, and <i>Wash strength</i> controls how much pigment there is. Acrylic is opaque, with the faces in the exact color and the edges slightly darker. The finish shows in the 3D preview and in <b>Arrange boxes</b>, where each box keeps its own color, so you can set the paint before you add a box. It does not change the cut files. It is saved with the rest of your settings.</li>
 <li><b>Line work around the text</b>: rectangle, rounded rectangle, double rectangle, oval, notched label, Art Deco steps, scalloped edge, banner ribbon, brackets, or rules above and below. The <b>Space</b> slider sets the gap between the text and the frame, and <b>Line weight</b> its thickness. <b>How many times</b> repeats the frame (up to six, nested one inside the next), and <b>Space between the frames</b> sets the distance between the rings. <b>Fill between the frames</b> (3D only) gives each band between two rings its own color, or <i>None</i>. Frames follow the text mode (filled or outline). With cut-through text they're engraved, so the lid stays in one piece.</li>
 <li>Text is converted to outlines inside Boxsmith, so your laser software doesn't need the font and you don't need a “convert to path” step.</li>
 <li>For cut-through text use the <b>Stencil</b> font. Other fonts lose the middles of letters like O, A and B.</li>

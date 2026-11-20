@@ -922,6 +922,27 @@ function initGL(){
     GL={r,sc,cam,eyeCams,root,amb,dl,dl2,cap,side,line,steel:new THREE.MeshLambertMaterial({color:0xb7bcc2,emissive:0x1a1c1f}),nutMat:new THREE.MeshLambertMaterial({color:0x8c9299,emissive:0x111214}),clearCap:cl(0xc4e4ee,0.32),clearSide:cl(0x8fc3d2,0.6),hiCap,hiSide,objs:[]};
   }catch(e){ GL=null; }
 }
+// Painted look for the wood faces and cut edges, cached per paint recipe.
+const paintCache=new Map();
+function paintMaterials(S0){
+  const m=MATS[view.mat];
+  if(!S0||!S0.paint||S0.paint==='none'||!m.wood||!/^#[0-9a-f]{6}$/i.test(S0.paintColor||'')) return null;
+  const strength=Math.max(0.1,Math.min(1,(+S0.paintStrength||60)/100));
+  const key=[S0.paint,S0.paintColor,strength,view.mat,cutEdgeColors[view.mat]||''].join('|');
+  if(paintCache.has(key)) return paintCache.get(key);
+  const hex=Number.parseInt(S0.paintColor.slice(1),16), p=[hex>>16,(hex>>8)&255,hex&255];
+  const mix=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t), mul=(a,b)=>a.map((v,i)=>v*b[i]/255);
+  const edge=cutEdgeRGB(m);
+  let face,side;
+  if(S0.paint==='watercolor'){ // pigment tints the wood: half multiply (keeps the grain's depth), half straight color
+    const wash=base=>mix(mul(base,p),mix(base,p,0.7),0.5);
+    face=mix(m.face,wash(m.face),Math.min(1,strength*1.15)); side=mix(edge,wash(edge),strength*0.6); }
+  else { face=p; side=mul(p,[216,216,216]); }
+  const c=a=>new THREE.Color(Math.round(a[0])/255,Math.round(a[1])/255,Math.round(a[2])/255);
+  const mats={cap:new THREE.MeshLambertMaterial({color:c(face)}),side:new THREE.MeshLambertMaterial({color:c(side)})};
+  paintCache.set(key,mats);
+  return mats;
+}
 function glColors(){
   const m=MATS[view.mat], c=a=>new THREE.Color(a[0]/255,a[1]/255,a[2]/255);
   GL.cap.color=c(m.face); GL.side.color=c(cutEdgeRGB(m));
@@ -1054,7 +1075,8 @@ function renderGL(){
     const sel=arranging?s.layoutBox===layoutBoxes[layoutSelection]:s.pi===selPi&&selPi>=0;
     const clear=s.look==='clear';
     const highlightEdge=!clear&&cutEdgeColors[view.mat]?GL.side:GL.hiSide;
-    ob.mesh.material = sel ? [GL.hiCap,highlightEdge] : (clear?[GL.clearCap,GL.clearSide]:[GL.cap,GL.side]);
+    const paint=sel||clear||s.hw?null:paintMaterials(arranging?s.layoutBox.settings:S);
+    ob.mesh.material = sel ? [GL.hiCap,highlightEdge] : (clear?[GL.clearCap,GL.clearSide]:paint?[paint.cap,paint.side]:[GL.cap,GL.side]);
   }
   if(!stereo){ GL.r.setScissorTest(false); GL.r.setViewport(0,0,w,h); GL.r.render(GL.sc,cam); }
   else {
@@ -1202,6 +1224,7 @@ $('#frameSel').innerHTML='<option value="none">None</option>'+Object.entries(FRA
 $('#accentSel').innerHTML='<option value="none">None</option>'+Object.entries(ACCENTS).map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('');
 const isLen=k=>!!document.querySelector('[data-k="'+k+'"][data-len]');
 function fmt(mm,dec){ if(S.unit==='in'){ return (mm/25.4).toFixed(dec??3).replace(/\.?0+$/,'')+'″'; } return (Math.round(mm*10)/10).toString()+' mm'; }
+const PAINT_SWATCHES=[['#d94b3d','Red'],['#ee8a2f','Orange'],['#f2c53d','Yellow'],['#5aa469','Green'],['#3a7bd5','Blue'],['#2f4f9d','Indigo'],['#8a5bb5','Violet'],['#e58db0','Pink'],['#2a2a2e','Black'],['#f4efe6','White']];
 function syncInputs(){
   $$('[data-k]').forEach(el=>{ const k=el.dataset.k; let v=S[k];
     if(el.type==='checkbox') el.checked=!!v;
@@ -1219,6 +1242,10 @@ function syncInputs(){
   const ph=$('#pullHVal'); if(ph) ph.textContent=fmt(+S.pullH||0); const pw=$('#pullHWrap'); if(pw) pw.classList.toggle('hidden',S.pull!=='slot');
   const hh_=$('#handleHVal'); if(hh_) hh_.textContent=fmt(+S.handleH||0); const nh_=$('#notchHVal'); if(nh_) nh_.textContent=fmt(+S.notchH||0);
   { const isArt=String(S.deco).startsWith('art'); $$('.patOnly').forEach(e=>e.classList.toggle('hidden',isArt||S.deco==='none')); $$('.artOnly').forEach(e=>e.classList.toggle('hidden',!isArt||S.deco==='none')); const dv=$('#decoScaleVal'); if(dv) dv.textContent=Math.round(+S.decoScale||100)+'%'; }
+  { const ps=$('#paintStrengthWrap'); if(ps) ps.classList.toggle('hidden',S.paint!=='watercolor');
+    const pv=$('#paintStrengthVal'); if(pv) pv.textContent=Math.round(+S.paintStrength||0)+'%';
+    const ph2=$('#paintHint'); if(ph2) ph2.textContent=S.paint==='watercolor'?'A thin transparent wash: the wood grain and tone show through, and the cut edges soak up some color.':S.paint==='acrylic'?'Opaque coverage: the faces take the exact color and the edges are painted slightly darker.':'';
+    const sw=$('#paintSwatches'); if(sw&&!sw.children.length){ for(const c of PAINT_SWATCHES){ const b=document.createElement('button'); b.type='button'; b.className='lc'; b.style.background=c[0]; b.title=c[1]; b.dataset.c=c[0]; b.addEventListener('click',()=>{ S.paintColor=c[0]; update(); }); sw.appendChild(b); } } }
   const fg=$('#frameGapVal'); if(fg) fg.textContent=fmt(+S.frameGap||0);
   const fs=$('#frameSpVal'); if(fs) fs.textContent=fmt(+S.frameSpacing||0); const fsw=$('#frameSpWrap'); if(fsw) fsw.classList.toggle('hidden', S.frame==='none' || (+S.frameCount||1)<2);
   { const nb=S.frame==='none'?0:Math.max(0,Math.min(6,(+S.frameCount||1))-1), box=$('#bandRows'); if(box){ $('#bandWrap').classList.toggle('hidden',nb<1);

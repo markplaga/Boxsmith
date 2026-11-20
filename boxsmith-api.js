@@ -27,7 +27,7 @@
   const DEFAULTS = {
     type:'closed', corners:'classic', unit:'mm', dimMode:'outside', W:120, D:90, H:70, sides:6,
     t:3, kerf:0.15, fw:10, clr:0.3, lidH:22, overhang:0, ringW:6, pin:3, capLip:5,
-    polyTop:'lift', frameW:24, lip:4, strips:true, drawers:2, pull:'slot', pullH:14, handleH:22, notchH:14, decoScale:100, radius:22, hPitch:2, hBridge:4,
+    polyTop:'lift', frameW:24, paint:'none', paintColor:'#3a7bd5', paintStrength:60, lip:4, strips:true, drawers:2, pull:'slot', pullH:14, handleH:22, notchH:14, decoScale:100, radius:22, hPitch:2, hBridge:4,
     cols:1, rows:1, divPct:85, handles:false, notch:false, text:'', textSize:9, font:'Georgia, serif',
     kStep:0.03, sheetW:600, sheetH:400, gap:4, stroke:'0.1', labels:false,
     fit:'press', tslot:'off', screwLen:12, bit:0, rimW:9, frontPct:55, cardDivs:3, nestN:3, tAcr:3, baseM:10,
@@ -54,6 +54,9 @@
         typeof expected==='number'?Number.isFinite(value):typeof value===typeof expected;
       if(!valid) throw new TypeError('Invalid value for box parameter: '+key);
     }
+    if(parameters.paint!==undefined&&!['none','watercolor','acrylic'].includes(parameters.paint)) throw new RangeError('paint must be none, watercolor or acrylic');
+    if(parameters.paintColor!==undefined&&!/^#[0-9a-f]{6}$/i.test(parameters.paintColor)) throw new RangeError('paintColor must look like #rrggbb');
+    if(parameters.paintStrength!==undefined&&(parameters.paintStrength<10||parameters.paintStrength>100)) throw new RangeError('paintStrength must be between 10 and 100');
     if(parameters.unit!==undefined&&parameters.unit!=='mm'&&parameters.unit!=='in') throw new RangeError('unit must be mm or in');
     return clone({...DEFAULTS,...parameters,type});
   }
