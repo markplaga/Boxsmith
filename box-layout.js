@@ -227,6 +227,7 @@ function syncBoxLayout(){
     input.disabled=!box;
   });
   for(const id of ['layoutPlace','layoutDuplicate','layoutHide','layoutRemove']) $('#'+id).disabled=!box;
+  $$('[data-lay-turn]').forEach(b=>{ b.disabled=!box; });
   $('#layoutHide').textContent=box?.hidden?'Show box':'Hide box';
   $('#layoutTop').disabled=!layoutBoxes.length;
   $('#layoutFit').disabled=!layoutBoxes.length;
@@ -303,7 +304,8 @@ function layoutDragStart(e){
   const box=layoutBoxes[index];
   const point=rc.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0,0,1),-box.bounds.min.z),new THREE.Vector3());
   if(!point) return false;
-  layoutDrag={index,moved:false,dx:box.position[0]-point.x,dy:box.position[1]-point.y,start:box.position.slice()};
+  layoutDrag={index,moved:false,dx:box.position[0]-point.x,dy:box.position[1]-point.y,start:box.position.slice(),
+    rotate:e.shiftKey,x0:e.clientX,a0:box.rotation[2]};
   return true;
 }
 function layoutDragMove(e){
@@ -312,6 +314,15 @@ function layoutDragMove(e){
   const rc=rayFromEvent(e);
   const point=rc.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0,0,1),-box.bounds.min.z),new THREE.Vector3());
   if(!point) return true;
+  if(layoutDrag.rotate){
+    // Shift + drag: turn the box about its vertical axis (15° steps, Alt = free)
+    if(!layoutDrag.moved){ if(Math.abs(e.clientX-layoutDrag.x0)<4) return true; layoutDrag.moved=true; layoutSelection=layoutDrag.index; cv.style.cursor='ew-resize'; }
+    let a=layoutDrag.a0+(e.clientX-layoutDrag.x0)*0.6;
+    a=e.altKey?Math.round(a*10)/10:Math.round(a/15)*15;
+    box.rotation[2]=((a%360)+360)%360;
+    transformLayoutBox(box); syncBoxLayout(); render();
+    return true;
+  }
   let x=point.x+layoutDrag.dx, y=point.y+layoutDrag.dy;
   if(!layoutDrag.moved&&Math.hypot(x-layoutDrag.start[0],y-layoutDrag.start[1])<2) return true;
   if(!layoutDrag.moved){
@@ -362,6 +373,17 @@ function initBoxLayout(){
     const folded=ctl.classList.toggle('folded');
     $('#layoutFold').setAttribute('aria-expanded',String(!folded));
   });
+  $$('[data-lay-turn]').forEach(btn=>btn.addEventListener('click',()=>{
+    const box=layoutBoxes[layoutSelection];
+    if(!box) return;
+    if(btn.dataset.layTurn==='reset') box.rotation=[0,0,0];
+    else {
+      const [axis,deg]=btn.dataset.layTurn.split(':'), k={x:0,y:1,z:2}[axis];
+      box.rotation[k]=(((box.rotation[k]+ +deg)%360)+360)%360;
+    }
+    moveLayoutBox();
+    syncBoxLayout();
+  }));
   $('#layoutSnap').addEventListener('click',()=>{
     const gap=Math.max(0,+$('#layoutSnapGap').value||0)*layoutCoordinateScale();
     if(snapLayoutBox(+$('#layoutSnapTarget').value,$('#layoutSnapSide').value,gap)){ syncBoxLayout(); toast('Snapped'); }
