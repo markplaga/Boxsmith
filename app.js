@@ -1,34 +1,7 @@
 'use strict';
 /* ================= STATE ================= */
-const TYPES = [
-  {id:'closed', name:'Closed box', d:'All six sides', ic:'closed'},
-  {id:'open', name:'Open tray', d:'No top', ic:'open'},
-  {id:'liftoff', name:'Lift-off lid', d:'Lid + locator ring', ic:'liftoff'},
-  {id:'split', name:'Split lid', d:'Deep cap lid', ic:'split'},
-  {id:'sliding', name:'Sliding lid', d:'Lid slides in rails', ic:'sliding'},
-  {id:'hinged', name:'Hinged lid', d:'Pin hinge, opens back', ic:'hinged'},
-  {id:'drawer', name:'Drawer cabinet', d:'1–8 drawers + sleeve', ic:'drawer'},
-  {id:'polygon', name:'Polygon box', d:'Hex, octagon, any n', ic:'polygon'},
-  {id:'rounded', name:'Rounded box', d:'Living-hinge corners', ic:'rounded'},
-  {id:'pencil', name:'Pencil box', d:'Swivel lid on a pin', ic:'pencil'},
-  {id:'card', name:'Card file box', d:'Sloped sides + index cards', ic:'card'},
-  {id:'nested', name:'Nested set', d:'Boxes inside boxes', ic:'nested'},
-  {id:'puzzle', name:'Puzzle box', d:'Hidden gravity lock', ic:'puzzle'},
-  {id:'book', name:'Book box', d:'Living-hinge spine', ic:'book'},
-  {id:'display', name:'Display case', d:'Acrylic cover, wood base', ic:'display'},
-  {id:'frame', name:'Frame (torus)', d:'Ring box with a hole through it', ic:'frame'},
-  {id:'kerftest', name:'Kerf test', d:'Dial in your fit', ic:'kerftest'},
-];
-const DEFAULTS = {
-  type:'closed', corners:'classic', unit:'mm', dimMode:'outside', W:120, D:90, H:70, sides:6,
-  t:3, kerf:0.15, fw:10, clr:0.3, lidH:22, overhang:0, ringW:6, pin:3, capLip:5,
-  polyTop:'lift', frameW:24, lip:4, strips:true, drawers:2, pull:'slot', pullH:14, handleH:22, notchH:14, decoScale:100, radius:22, hPitch:2, hBridge:4,
-  cols:1, rows:1, divPct:85, handles:false, notch:false, text:'', textSize:9, font:'Georgia, serif',
-  kStep:0.03, sheetW:600, sheetH:400, gap:4, stroke:'0.1', labels:false,
-  fit:'press', tslot:'off', screwLen:12, bit:0, rimW:9, frontPct:55, cardDivs:3, nestN:3, tAcr:3, baseM:10,
-  textMode:'engrave', textAlign:'center', textColor:'#000000', textFill:false, textOutlineOn:false, textOutline:'#1b1b1b', textLine:0, frame:'none', frameGap:4, frameLine:1, frameCount:1, frameSpacing:3, frameBands:[], accent:'none', accentOn:'top', accentSize:14, accentLine:0.8, accentMode:'fill', deco:'none', decoOn:'walls', decoCell:16, decoWeb:3, decoSeed:7, cornerStyle:'square', cornerR:6, art:[],
-  qty:1, holdTabs:0, holdW:0.4, layerScheme:'simple', grain:false, sheetPrice:8, rate:30, speed:18, markup:150, matName:''
-};
+const TYPES=Boxsmith.boxes.list();
+const DEFAULTS=Boxsmith.boxes.defaults();
 let S = Object.assign({}, DEFAULTS);
 try{ const saved = JSON.parse(localStorage.getItem('boxsmith-v1')||'null'); if(saved) S = Object.assign({}, DEFAULTS, saved);}catch(e){}
 function save(){ if(window.BOX && window.BOX.noSave) return; try{ localStorage.setItem('boxsmith-v1', JSON.stringify(S)); }catch(e){} }
@@ -1313,9 +1286,9 @@ $$('.openSettings,#layoutFile').forEach(input=>input.addEventListener('change',a
   let openingLayout=input.id==='layoutFile';
   try{
     const data=JSON.parse(await file.text());
-    openingLayout=openingLayout||data?.format===BOX_LAYOUT_FORMAT;
+    openingLayout=openingLayout||data?.format===Boxsmith.assemblies.format;
     if(openingLayout){
-      if(data?.format!==BOX_LAYOUT_FORMAT) throw new Error('Unexpected file format');
+      if(data?.format!==Boxsmith.assemblies.format) throw new Error('Unexpected file format');
       openBoxLayout(data);
     } else {
       S=Object.assign({},DEFAULTS,data);
@@ -1506,6 +1479,18 @@ window.BOX={LAMP, get S(){ return S; }, set(o){ Object.assign(S,o); }, reset(){ 
   hwPoints(){ if(!GL) return []; const out=[]; for(const o of GL.objs){ if(!o.hw) continue; const kids=o.hw.children; for(let i=2;i<kids.length;i+=3){ const g=kids[i].geometry; g.computeBoundingSphere(); const c=g.boundingSphere.center.clone().applyMatrix4(o.base); const h=kids[i-1].geometry; h.computeBoundingSphere(); const hc=h.boundingSphere.center.clone().applyMatrix4(o.base); out.push({nut:[c.x,c.y,c.z],head:[hc.x,hc.y,hc.z],part:o.s.part.name}); } } return out; },
   ctr(){ return scene?scene.ctr.slice():[0,0,0]; },
   tab(v){ const b=document.querySelector('#tabs [data-v="'+v+'"]'); if(b) b.click(); }, noSave:false };
+Boxsmith.browser={
+  showBox(settings){
+    const design=Boxsmith.assemblies.place(settings).settings;
+    makeLayoutBox(design);
+    S=Object.assign({},DEFAULTS,design);
+    update(true);
+    $('#tabs [data-v="3d"]').click();
+  },
+  getAssembly:currentBoxLayout,
+  openAssembly:openBoxLayout,
+  saveAssembly:downloadBoxLayout
+};
 initGL();
 initBoxLayout();
 update(true);

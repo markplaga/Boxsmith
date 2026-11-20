@@ -19,9 +19,14 @@ Closed box · open tray · lift-off lid · split lid · sliding lid · hinged li
 - Cost estimate, saved materials and recipes (stored in the browser)
 - Built-in Help tab; standalone guide in `help.html`
 
+## JavaScript API
+
+Create box designs and whole-box assemblies from JavaScript in Node.js or the browser. [API reference and runnable example](API.md)
+
 ## Files
 - `index.html` — page and styles
 - `app.js` — box geometry, layout, export, UI
+- `boxsmith-api.js` — box catalog and portable assembly files
 - `box-layout.js` — placement and browser storage for whole boxes
 - `tools.js` — tracing, text outlines, artwork, dogbones, patterns, nesting, accents
 - `help.html` — standalone help guide

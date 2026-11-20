@@ -1,7 +1,6 @@
 'use strict';
 
 const BOX_LAYOUT_KEY='boxsmith-box-layout-v1';
-const BOX_LAYOUT_FORMAT='boxsmith-layout';
 let layoutBoxes=[], layoutSelection=-1, placingBox=false;
 let boxLayoutScene={solids:[],ctr:[0,0,0],R:100};
 const layingOut=()=>curView==='layout';
@@ -96,16 +95,17 @@ function saveBoxLayout(){
   if(!window.BOX?.noSave) lsSet(BOX_LAYOUT_KEY,boxLayoutRecords());
 }
 
-function downloadBoxLayout(){
-  const file={format:BOX_LAYOUT_FORMAT,version:1,unit:S.unit,boxes:boxLayoutRecords()};
-  saveFile('boxsmith-layout.json',JSON.stringify(file,null,2));
+function currentBoxLayout(){
+  return Boxsmith.assemblies.create({unit:S.unit,boxes:boxLayoutRecords()});
 }
 
-function openBoxLayout(file){
-  if(!GL){ toast('Opening a box layout requires WebGL'); return; }
-  if(file.version!==1){ toast('This layout file uses an unsupported version'); return; }
-  if(!Array.isArray(file.boxes) || (file.unit!=='mm'&&file.unit!=='in')) throw new Error('Invalid layout file');
+function downloadBoxLayout(assembly=currentBoxLayout(),filename='boxsmith-layout.json'){
+  return saveFile(filename,Boxsmith.assemblies.serialize(assembly));
+}
 
+function openBoxLayout(input){
+  if(!GL) throw new Error('Opening a box layout requires WebGL');
+  const file=Boxsmith.assemblies.parse(input);
   const boxes=file.boxes.map(restoreLayoutBox);
   layoutBoxes=boxes;
   layoutSelection=-1;
@@ -212,7 +212,7 @@ function pickLayoutBox(raycaster,hit){
 
 function initBoxLayout(){
   if(GL) loadBoxLayout();
-  $('#layoutSave').addEventListener('click',downloadBoxLayout);
+  $('#layoutSave').addEventListener('click',()=>downloadBoxLayout());
   $('#layoutOpen').addEventListener('click',()=>$('#layoutFile').click());
   $('#layoutClear').addEventListener('click',()=>{
     if(!layoutBoxes.length||!confirm('Remove every box from the current layout?')) return;
