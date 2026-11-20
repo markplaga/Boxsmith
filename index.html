@@ -391,8 +391,8 @@ body.max3d main{position:fixed!important;inset:0!important;height:100vh!importan
     <div class="v3dctl" id="v3dctl">
       <label>Explode <input type="range" id="explode" min="0" max="100" value="0"></label>
       <button class="btn" id="playBtn" style="padding:3px 10px;font-size:12px">▶ Show it work</button>
-      <select id="stereoSel" title="Stereoscopic 3D"><option value="off">Normal view</option><option value="cross">Stereo · cross-eyed</option><option value="parallel">Stereo · parallel</option></select>
-      <label id="stereoDepth" class="hidden">Depth <input type="range" id="stereoDepthIn" min="1" max="8" step="0.5" value="3.5"></label>
+      <select data-stereo-mode aria-label="Viewing mode" title="Stereoscopic 3D"><option value="off">Normal view</option><option value="cross">Stereo · cross-eyed</option><option value="parallel">Stereo · parallel</option></select>
+      <label class="hidden">Stereo depth <input type="range" data-stereo-depth min="1" max="8" step="0.5" value="3.5"></label>
       <label id="hwLbl"><input type="checkbox" id="hwChk" checked> Screws</label>
       <label><input type="checkbox" id="spin"> Spin</label>
       <select id="matSel"><option value="birch">Birch ply</option><option value="walnut">Walnut</option><option value="mdf">MDF</option><option value="clear">Clear acrylic</option><option value="black">Black acrylic</option><option value="pink">Pink acrylic</option><option value="card">Cardboard</option></select>
@@ -417,6 +417,8 @@ body.max3d main{position:fixed!important;inset:0!important;height:100vh!importan
       <button type="button" class="btn" id="layoutRemove">Remove</button>
       <button type="button" class="btn" id="layoutTop">Top view</button>
       <button type="button" class="btn" id="layoutFit">Fit layout</button>
+      <select data-stereo-mode aria-label="Viewing mode" title="Stereoscopic 3D"><option value="off">Normal view</option><option value="cross">Stereo · cross-eyed</option><option value="parallel">Stereo · parallel</option></select>
+      <label class="hidden">Stereo depth <input type="range" data-stereo-depth min="1" max="8" step="0.5" value="3.5"></label>
       <div class="edge-controls" data-edge-controls>
         <label>Cut edge color <input type="color" data-edge-color></label>
         <button type="button" class="btn" aria-label="Reset cut edge color" data-edge-reset>Reset</button>
@@ -617,6 +619,7 @@ body.max3d main{position:fixed!important;inset:0!important;height:100vh!importan
 <li>Use <b>Rotate X</b> or <b>Rotate Y</b> to tip the box and <b>Rotate Z</b> to turn it in plan view. Use <b>Hide box</b> to see inside an enclosing box. Select the hidden box from the list and click <b>Show box</b> to bring it back.</li>
 <li>Click <b>Save layout</b> to download a JSON copy. Use <b>Open layout</b> to make a saved file active. <b>Remove</b> deletes the selected box. <b>Clear layout</b> removes every box from the current layout after confirmation.</li>
 </ol>
+<p>Choose <b>Stereo · cross-eyed</b> or <b>Stereo · parallel</b> from the viewing menu to see two views of the whole arrangement side by side. Adjust <b>Stereo depth</b> to change the separation. You can select or place boxes in either view. Choose <b>Normal view</b> to return to a single image.</p>
 <p>Try a <b>240 × 180 × 50 mm Frame (torus)</b> with a <b>24 mm ring width</b>. Add three <b>55 × 45 × 30 mm Closed boxes</b>. Set their X coordinates to <b>−60</b>, <b>0</b>, and <b>60 mm</b>, with Y and Z at zero. Click <b>Top view</b> to inspect the fit, then drag to see the layout from the side.</p>
 
 <h2 id="h-sheets">12. Cut sheets and nesting</h2>

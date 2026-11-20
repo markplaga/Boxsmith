@@ -826,6 +826,7 @@ function cutEdgeRGB(material){
   const hex=Number.parseInt(color.slice(1),16);
   return [hex>>16,(hex>>8)&255,hex&255];
 }
+const stereoActive=()=>view.stereo==='cross'||view.stereo==='parallel';
 let scene=null, selPi=-1;
 function circlePts(c){ return arc(c.x,c.y,c.r,0,2*PI,18).slice(0,18); }
 function makeScene(parts){
@@ -917,7 +918,8 @@ function initGL(){
     const cap=new THREE.MeshLambertMaterial(), side=new THREE.MeshLambertMaterial(), line=new THREE.LineBasicMaterial({transparent:true});
     const cl=(c,o)=>new THREE.MeshLambertMaterial({color:c,transparent:true,opacity:o,depthWrite:false,side:THREE.DoubleSide});
     const hiCap=new THREE.MeshLambertMaterial({color:0xf08a63,emissive:0x5a1a05}), hiSide=new THREE.MeshLambertMaterial({color:0xd0562c,emissive:0x3a1003});
-    GL={r,sc,cam,root,amb,dl,dl2,cap,side,line,steel:new THREE.MeshLambertMaterial({color:0xb7bcc2,emissive:0x1a1c1f}),nutMat:new THREE.MeshLambertMaterial({color:0x8c9299,emissive:0x111214}),clearCap:cl(0xc4e4ee,0.32),clearSide:cl(0x8fc3d2,0.6),hiCap,hiSide,objs:[]};
+    const eyeCams=[new THREE.OrthographicCamera(),new THREE.OrthographicCamera()];
+    GL={r,sc,cam,eyeCams,root,amb,dl,dl2,cap,side,line,steel:new THREE.MeshLambertMaterial({color:0xb7bcc2,emissive:0x1a1c1f}),nutMat:new THREE.MeshLambertMaterial({color:0x8c9299,emissive:0x111214}),clearCap:cl(0xc4e4ee,0.32),clearSide:cl(0x8fc3d2,0.6),hiCap,hiSide,objs:[]};
   }catch(e){ GL=null; }
 }
 function glColors(){
@@ -1014,7 +1016,7 @@ function renderGL(){
   const explode=arranging?0:view.explode;
   const up0=!arranging&&scene.divLift? (scene.divLift*1.15*1.25+0.6)*scene.R*view.explode : 0;
   const C=[center[0]+view.pan[0],center[1]+view.pan[1],center[2]+up0*0.45+view.pan[2]], cy=Math.cos(view.yaw), sy=Math.sin(view.yaw), cp=Math.cos(view.pitch), sp=Math.sin(view.pitch), cp0=Math.cos(LAMP.pitch), sp0=Math.sin(LAMP.pitch); let cp_=0;
-  const stereo=!arranging&&(view.stereo==='cross'||view.stereo==='parallel'), vw=stereo?w/2:w;
+  const stereo=stereoActive(), vw=stereo?w/2:w;
   const scale=Math.min(vw,h)*(stereo?0.42:0.40)/(radius*(1+explode*0.9)+up0*0.45)*view.zoom;
   const away=[cp*sy,cp*cy,-sp], up=[sp*sy,sp*cy,cp], dist=radius*20, right=[cy,-sy,0];
   let Rl=null; if(lamp){ // the room stays put; the model turns inside it
@@ -1059,7 +1061,13 @@ function renderGL(){
     // cross-eyed: the left picture is what the RIGHT eye sees; parallel: left picture = left eye
     const eyes = view.stereo==='cross' ? [1,-1] : [-1,1];
     GL.r.setScissorTest(true); GL.r.setClearColor(0x000000,0); GL.r.clear();
-    eyes.forEach((eye,i)=>{ setCam(eye); GL.r.setViewport(i*vw,0,vw,h); GL.r.setScissor(i*vw,0,vw,h); GL.r.render(GL.sc,cam); });
+    eyes.forEach((eye,i)=>{
+      setCam(eye);
+      GL.r.setViewport(i*vw,0,vw,h);
+      GL.r.setScissor(i*vw,0,vw,h);
+      GL.r.render(GL.sc,cam);
+      GL.eyeCams[i].copy(cam,false);
+    });
     GL.r.setScissorTest(false); GL.r.setViewport(0,0,w,h); setCam(0);
   }
   // soft ground shadow on the overlay canvas
@@ -1134,8 +1142,11 @@ function render(){
 
 function pick3D(e){
   if(!GL||!scene||(!layingOut()&&(curView!=='3d'||view.stereo!=='off'))) return; const r=cv.getBoundingClientRect();
-  const ndc=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1);
-  const rc=new THREE.Raycaster(); rc.setFromCamera(ndc,GL.cam);
+  const x=(e.clientX-r.left)/r.width, y=(e.clientY-r.top)/r.height;
+  const stereo=stereoActive(), pane=x<0.5?0:1;
+  const ndc=new THREE.Vector2((stereo?x*2-pane:x)*2-1,1-y*2);
+  const rc=new THREE.Raycaster();
+  rc.setFromCamera(ndc,stereo?GL.eyeCams[pane]:GL.cam);
   GL.root.updateMatrixWorld(true);
   const hits=rc.intersectObjects(GL.objs.filter(o=>o.mesh.visible).map(o=>o.mesh),false);
   if(layingOut()){ pickLayoutBox(rc,hits[0]); return; }
@@ -1240,6 +1251,7 @@ $('#tabs').addEventListener('click',e=>{ const b=e.target.closest('button'); if(
   $('#layoutCtl').classList.toggle('hidden',!layingOut());
   if(wasLayout!==layingOut()){
     switchBoxLayoutCamera();
+    syncStereoControls();
     buildGL();
   }
   placingBox=false;
@@ -1277,8 +1289,27 @@ function setMax(on){ document.body.classList.toggle('max3d',on); $('#maxBtn').te
   if(on && curView!=='3d') $('#tabs [data-v="3d"]').click(); requestAnimationFrame(()=>render()); }
 $('#maxBtn').addEventListener('click',()=>setMax(!document.body.classList.contains('max3d')));
 addEventListener('keydown',e=>{ if(e.key==='Escape' && document.body.classList.contains('max3d')) setMax(false); });
-$('#stereoSel').addEventListener('change',e=>{ view.stereo=e.target.value; $('#stereoDepth').classList.toggle('hidden',view.stereo==='off'); if(view.stereo!=='off') toast(view.stereo==='cross'?'Cross your eyes until the two boxes merge into a third in the middle':'Look through the screen until the two boxes merge'); render(); });
-$('#stereoDepthIn').addEventListener('input',e=>{ view.stereoDeg=+e.target.value; render(); });
+function syncStereoControls(){
+  $$('[data-stereo-mode]').forEach(select=>{
+    select.disabled=!GL;
+    select.value=view.stereo;
+  });
+  $$('[data-stereo-depth]').forEach(input=>{
+    input.value=view.stereoDeg;
+    input.parentElement.classList.toggle('hidden',!stereoActive());
+  });
+}
+$$('[data-stereo-mode]').forEach(select=>select.addEventListener('change',()=>{
+  view.stereo=select.value;
+  syncStereoControls();
+  if(stereoActive()) toast(view.stereo==='cross'?'Cross your eyes until the side-by-side views merge':'Look through the screen until the side-by-side views merge');
+  render();
+}));
+$$('[data-stereo-depth]').forEach(input=>input.addEventListener('input',()=>{
+  view.stereoDeg=+input.value;
+  syncStereoControls();
+  render();
+}));
 $('#hwChk').addEventListener('change',e=>{ view.hw=e.target.checked; buildGL(); render(); });
 $('#spin').addEventListener('change',e=>{ view.spin=e.target.checked; });
 function defaultCutEdgeHex(){
@@ -1542,6 +1573,7 @@ Boxsmith.browser={
   saveAssembly:downloadBoxLayout
 };
 initGL();
+syncStereoControls();
 initBoxLayout();
 update(true);
 if(document.fonts && document.fonts.ready){ const fams=['Bebas Neue','Caveat','Pacifico','Playfair Display','Rye','Stardos Stencil']; Promise.all(fams.map(f=>document.fonts.load('40px "'+f+'"').catch(()=>{}))).then(()=>{ _textCache.clear(); update(); }); }

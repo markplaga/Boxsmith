@@ -4,10 +4,11 @@ const BOX_LAYOUT_KEY='boxsmith-box-layout-v1';
 let layoutBoxes=[], layoutSelection=-1, placingBox=false;
 let boxLayoutScene={solids:[],ctr:[0,0,0],R:100};
 const layingOut=()=>curView==='layout';
-let layoutCamera={yaw:-0.6,pitch:0.6,zoom:1}, boxPreviewCamera;
+let layoutCamera={yaw:-0.6,pitch:0.6,zoom:1,stereo:'off',stereoDeg:3.5}, boxPreviewCamera;
 
 function switchBoxLayoutCamera(){
-  const camera={yaw:view.yaw,pitch:view.pitch,zoom:view.zoom};
+  const {yaw,pitch,zoom,stereo,stereoDeg}=view;
+  const camera={yaw,pitch,zoom,stereo,stereoDeg};
   if(layingOut()){
     boxPreviewCamera=camera;
     Object.assign(view,layoutCamera);
