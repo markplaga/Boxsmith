@@ -400,6 +400,7 @@ body.max3d main{position:fixed!important;inset:0!important;height:100vh!importan
       <span id="layoutStatus" class="layout-status" role="status"></span>
       <button type="button" class="btn" id="layoutSave">Save layout</button>
       <button type="button" class="btn" id="layoutOpen">Open layout</button>
+      <button type="button" class="btn" id="layoutClear">Clear layout</button>
       <input type="file" id="layoutFile" class="hidden" accept=".json,application/json">
       <button type="button" class="btn primary" id="layoutAdd">Add current box</button>
       <select id="layoutObjects" aria-label="Box to arrange"></select>
@@ -471,7 +472,7 @@ body.max3d main{position:fixed!important;inset:0!important;height:100vh!importan
 <ul>
 <li><b>Left panel:</b> every setting, grouped into sections. On a phone it sits below the preview, so scroll down.</li>
 <li><b>Tabs:</b> <i>3D preview</i>, <i>Cut sheets</i>, <i>Arrange boxes</i>, <i>Assembly guide</i> and <i>Help</i>.</li>
-<li><b>Arrange boxes:</b> Set up a box in the sidebar, then add it from this tab. Change the sidebar to create another design and add it to the same layout. Select a box to set its X and Y center, and Z base height, or use <i>Place in top view</i>. Use <i>Rotate X</i> or <i>Rotate Y</i> to tip a box and <i>Rotate Z</i> to turn it in the layout. The lowest point stays at the set base height. The unit selector here and the unit buttons in the Size section both set inches or millimeters for X, Y and Z. Use <i>Duplicate</i> to add another copy, and <i>Hide box</i> to see items inside it. The layout is saved in this browser. Use <i>Save layout</i> to download a copy and <i>Open layout</i> to reopen it.</li>
+<li><b>Arrange boxes:</b> Set up a box in the sidebar, then add it from this tab. Change the sidebar to create another design and add it to the same layout. Select a box to set its X and Y center, and Z base height, or use <i>Place in top view</i>. Use <i>Rotate X</i> or <i>Rotate Y</i> to tip a box and <i>Rotate Z</i> to turn it in the layout. The lowest point stays at the set base height. The unit selector here and the unit buttons in the Size section both set inches or millimeters for X, Y and Z. Use <i>Duplicate</i> to add another copy, and <i>Hide box</i> to see items inside it. The layout is saved in this browser. Use <i>Save layout</i> to download a copy and <i>Open layout</i> to reopen it. <i>Clear layout</i> removes every box from the current layout after confirmation.</li>
 <li><b>Top-right buttons:</b> <i>Open…</i> loads a saved settings or layout file, <i>Copy SVG</i> copies the cut file to the clipboard, and <i>Download</i> saves SVG, DXF or settings files.</li>
 <li><b>Dimension card</b> (top right of the 3D view): outside and inside measurements of the finished box.</li>
 <li><b>Warnings</b> (yellow bars at the bottom): things that won't cut or assemble well, with a suggested fix.</li>

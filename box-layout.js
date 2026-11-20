@@ -132,7 +132,7 @@ function syncBoxLayout(){
   const type=TYPES.find(type=>type.id===S.type);
   $('#layoutAdd').textContent='Add '+(type?.name||'current box');
   $('#layoutAdd').disabled=!GL;
-  $('#layoutSave').disabled=!layoutBoxes.length;
+  $('#layoutSave').disabled=$('#layoutClear').disabled=!layoutBoxes.length;
   $('#layoutOpen').disabled=!GL;
   $('#layoutObjects').innerHTML='<option value="">Select a box</option>'+layoutBoxes
     .map((item,index)=>'<option value="'+index+'">'+esc(layoutBoxLabel(item,index))+'</option>').join('');
@@ -214,6 +214,14 @@ function initBoxLayout(){
   if(GL) loadBoxLayout();
   $('#layoutSave').addEventListener('click',downloadBoxLayout);
   $('#layoutOpen').addEventListener('click',()=>$('#layoutFile').click());
+  $('#layoutClear').addEventListener('click',()=>{
+    if(!layoutBoxes.length||!confirm('Remove every box from the current layout?')) return;
+    layoutBoxes=[];
+    rebuildBoxLayout();
+    selectLayoutBox(-1);
+    toast('Layout cleared');
+    saveBoxLayout();
+  });
   $('#layoutUnits').addEventListener('change',e=>setMeasurementUnit(e.target.value));
   $('#layoutAdd').addEventListener('click',()=>addLayoutBox());
   $('#layoutDuplicate').addEventListener('click',()=>addLayoutBox(layoutBoxes[layoutSelection]));
