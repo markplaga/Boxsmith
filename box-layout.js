@@ -290,6 +290,63 @@ function pickLayoutBox(raycaster,hit){
   }
 }
 
+// Drag a box across the floor plane (its base height) with the mouse or a
+// finger. Edges snap to neighbouring boxes when they come within a few mm.
+let layoutDrag=null;
+function layoutDragStart(e){
+  if(!layingOut()||!GL||maximizedLayout()||stereoActive()||placingBox) return false;
+  const rc=rayFromEvent(e);
+  const hit=rc.intersectObjects(GL.objs.filter(o=>o.mesh.visible).map(o=>o.mesh),false)[0];
+  const index=hit?layoutBoxes.indexOf(hit.object.userData.layoutBox):-1;
+  if(index<0) return false;
+  if(e.pointerType==='touch'&&index!==layoutSelection) return false; // tap selects first
+  const box=layoutBoxes[index];
+  const point=rc.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0,0,1),-box.bounds.min.z),new THREE.Vector3());
+  if(!point) return false;
+  layoutDrag={index,moved:false,dx:box.position[0]-point.x,dy:box.position[1]-point.y,start:box.position.slice()};
+  return true;
+}
+function layoutDragMove(e){
+  if(!layoutDrag) return false;
+  const box=layoutBoxes[layoutDrag.index];
+  const rc=rayFromEvent(e);
+  const point=rc.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0,0,1),-box.bounds.min.z),new THREE.Vector3());
+  if(!point) return true;
+  let x=point.x+layoutDrag.dx, y=point.y+layoutDrag.dy;
+  if(!layoutDrag.moved&&Math.hypot(x-layoutDrag.start[0],y-layoutDrag.start[1])<2) return true;
+  if(!layoutDrag.moved){
+    layoutDrag.moved=true;
+    if(layoutSelection!==layoutDrag.index){ layoutSelection=layoutDrag.index; }
+    cv.style.cursor='grabbing';
+  }
+  // snap edges to other boxes (alt held = free move)
+  if(!e.altKey){
+    const half=box.bounds.getSize(new THREE.Vector3()).multiplyScalar(0.5), off=box.bounds.getCenter(new THREE.Vector3());
+    const cx=off.x-box.position[0], cy=off.y-box.position[1], THR=4;
+    const near=(own,edges)=>{ let best=null; for(const t of edges){ const d=t-own; if(Math.abs(d)<THR&&(best===null||Math.abs(d)<Math.abs(best))) best=d; } return best; };
+    const xs=[],ys=[];
+    layoutBoxes.forEach((o,i)=>{ if(i===layoutDrag.index||o.hidden) return; xs.push(o.bounds.min.x,o.bounds.max.x); ys.push(o.bounds.min.y,o.bounds.max.y); });
+    const bx=x+cx, by=y+cy;
+    const dxs=[near(bx-half.x,xs),near(bx+half.x,xs)].filter(v=>v!==null).sort((p,q)=>Math.abs(p)-Math.abs(q))[0];
+    const dys=[near(by-half.y,ys),near(by+half.y,ys)].filter(v=>v!==null).sort((p,q)=>Math.abs(p)-Math.abs(q))[0];
+    if(dxs!==undefined) x+=dxs;
+    if(dys!==undefined) y+=dys;
+  }
+  box.position[0]=Math.round(x*100)/100;
+  box.position[1]=Math.round(y*100)/100;
+  transformLayoutBox(box);
+  syncBoxLayout();
+  render();
+  return true;
+}
+function layoutDragEnd(){
+  if(!layoutDrag) return;
+  const moved=layoutDrag.moved;
+  layoutDrag=null;
+  cv.style.cursor='';
+  if(moved){ saveBoxLayout(); syncBoxLayout(); }
+}
+
 function initBoxLayout(){
   if(GL) loadBoxLayout();
   const ctl=$('#layoutCtl');

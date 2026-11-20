@@ -1121,13 +1121,14 @@ function render(){
 (function(){
   const ptrs=new Map(); let last=null, pinch0=null, zoom0=1;
   let down=null;
-  cv.addEventListener('pointerdown',e=>{ down=[e.clientX,e.clientY]; cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId,[e.clientX,e.clientY]); last=[e.clientX,e.clientY]; if(ptrs.size===2){ down=null; const [a,b]=[...ptrs.values()]; pinch0=Math.hypot(a[0]-b[0],a[1]-b[1]); zoom0=view.zoom; } });
+  cv.addEventListener('pointerdown',e=>{ down=[e.clientX,e.clientY]; cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId,[e.clientX,e.clientY]); last=[e.clientX,e.clientY]; if(ptrs.size===1&&e.button===0&&layoutDragStart(e)) last=null; if(ptrs.size===2){ layoutDragEnd(); down=null; const [a,b]=[...ptrs.values()]; pinch0=Math.hypot(a[0]-b[0],a[1]-b[1]); zoom0=view.zoom; } });
   cv.addEventListener('pointermove',e=>{ if(!ptrs.has(e.pointerId)) return; ptrs.set(e.pointerId,[e.clientX,e.clientY]);
     if(ptrs.size===2&&pinch0){ const [a,b]=[...ptrs.values()]; view.zoom=Math.max(0.3,Math.min(5,zoom0*Math.hypot(a[0]-b[0],a[1]-b[1])/pinch0)); render(); return; }
     if(down && Math.hypot(e.clientX-down[0],e.clientY-down[1])>=6) down=null;
+    if(layoutDragMove(e)) return;
     if(last){ view.yaw-=(e.clientX-last[0])*0.01; view.pitch=Math.max(-1.45,Math.min(1.45,view.pitch+(e.clientY-last[1])*0.01)); last=[e.clientX,e.clientY]; render(); } });
   let tap0=null;
-  const up=e=>{ if(e.type==='pointerup' && e.pointerType==='touch' && down && ptrs.size===1 && Math.hypot(e.clientX-down[0],e.clientY-down[1])<8){ const now=performance.now(); if(tap0 && now-tap0.t<350 && Math.hypot(e.clientX-tap0.x,e.clientY-tap0.y)<30 && maximizedView()){ tap0=null; setMax(false); down=null; ptrs.delete(e.pointerId); if(ptrs.size<2) pinch0=null; last=null; return; } tap0={t:now,x:e.clientX,y:e.clientY}; }
+  const up=e=>{ layoutDragEnd(); if(e.type==='pointerup' && e.pointerType==='touch' && down && ptrs.size===1 && Math.hypot(e.clientX-down[0],e.clientY-down[1])<8){ const now=performance.now(); if(tap0 && now-tap0.t<350 && Math.hypot(e.clientX-tap0.x,e.clientY-tap0.y)<30 && maximizedView()){ tap0=null; setMax(false); down=null; ptrs.delete(e.pointerId); if(ptrs.size<2) pinch0=null; last=null; return; } tap0={t:now,x:e.clientX,y:e.clientY}; }
     if(e.type==='pointerup' && down && Math.hypot(e.clientX-down[0],e.clientY-down[1])<6 && ptrs.size===1) pick3D(e); down=null; ptrs.delete(e.pointerId); if(ptrs.size<2) pinch0=null; last=ptrs.size?[...ptrs.values()][0]:null; };
   cv.addEventListener('pointerup',up); cv.addEventListener('pointercancel',up);
   cv.addEventListener('wheel',e=>{ e.preventDefault(); view.zoom=Math.max(0.3,Math.min(5,view.zoom*Math.exp(-e.deltaY*0.0015))); render(); },{passive:false});
@@ -1148,16 +1149,21 @@ function render(){
   new ResizeObserver(()=>render()).observe(cv);
 })();
 
-function pick3D(e){
-  if(maximizedView() && window.revealOverlays) window.revealOverlays();
-  if(maximizedLayout()) return;
-  if(!GL||!scene||(!layingOut()&&(curView!=='3d'||view.stereo!=='off'))) return; const r=cv.getBoundingClientRect();
+function rayFromEvent(e){
+  const r=cv.getBoundingClientRect();
   const x=(e.clientX-r.left)/r.width, y=(e.clientY-r.top)/r.height;
   const stereo=stereoActive(), pane=x<0.5?0:1;
   const ndc=new THREE.Vector2((stereo?x*2-pane:x)*2-1,1-y*2);
   const rc=new THREE.Raycaster();
   rc.setFromCamera(ndc,stereo?GL.eyeCams[pane]:GL.cam);
   GL.root.updateMatrixWorld(true);
+  return rc;
+}
+function pick3D(e){
+  if(maximizedView() && window.revealOverlays) window.revealOverlays();
+  if(maximizedLayout()) return;
+  if(!GL||!scene||(!layingOut()&&(curView!=='3d'||view.stereo!=='off'))) return;
+  const rc=rayFromEvent(e);
   const hits=rc.intersectObjects(GL.objs.filter(o=>o.mesh.visible).map(o=>o.mesh),false);
   if(layingOut()){ pickLayoutBox(rc,hits[0]); return; }
   selectPart(hits.length?hits[0].object.userData.pi:-1);
