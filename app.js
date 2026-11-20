@@ -1307,7 +1307,27 @@ $('#dlPop').addEventListener('click',async e=>{ const b=e.target.closest('button
   if(k==='dxf'){ await saveFile(nm+'-dxf.zip', makeZip(sh.map((s,i)=>({name:nm+'-sheet'+(i+1)+'.dxf',data:sheetDXF(s)})))); }
   if(k==='json'){ await saveFile(nm+'.json', JSON.stringify(S,null,2)); }
 });
-$$('.openSettings').forEach(inp=>inp.addEventListener('change',async e=>{ const f=e.target.files[0]; if(!f) return; try{ const j=JSON.parse(await f.text()); S=Object.assign({},DEFAULTS,j); update(true); toast('Settings loaded'); }catch(err){ toast('That file is not a Boxsmith settings file'); } e.target.value=''; }));
+$$('.openSettings,#layoutFile').forEach(input=>input.addEventListener('change',async()=>{
+  const file=input.files[0];
+  if(!file) return;
+  let openingLayout=input.id==='layoutFile';
+  try{
+    const data=JSON.parse(await file.text());
+    openingLayout=openingLayout||data?.format===BOX_LAYOUT_FORMAT;
+    if(openingLayout){
+      if(data?.format!==BOX_LAYOUT_FORMAT) throw new Error('Unexpected file format');
+      openBoxLayout(data);
+    } else {
+      S=Object.assign({},DEFAULTS,data);
+      update(true);
+      toast('Settings loaded');
+    }
+  }catch(error){
+    toast(openingLayout?'That file is not a valid Boxsmith layout':'That file is not a Boxsmith settings file');
+  } finally {
+    input.value='';
+  }
+}));
 $('#copySvg').addEventListener('click',async()=>{ if(!LAST) return; const txt=LAST.sheets.length===1?sheetSVG(LAST.sheets[0]):LAST.sheets.map(sheetSVG).join('\n\n');
   try{ await navigator.clipboard.writeText(txt); toast(LAST.sheets.length>1?'Copied '+LAST.sheets.length+' sheets of SVG':'SVG copied — paste into LightBurn, Inkscape or a .svg file'); }catch(err){ toast('Clipboard blocked by the browser'); } });
 

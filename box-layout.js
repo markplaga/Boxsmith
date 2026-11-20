@@ -1,6 +1,7 @@
 'use strict';
 
 const BOX_LAYOUT_KEY='boxsmith-box-layout-v1';
+const BOX_LAYOUT_FORMAT='boxsmith-layout';
 let layoutBoxes=[], layoutSelection=-1, placingBox=false;
 let boxLayoutScene={solids:[],ctr:[0,0,0],R:100};
 const layingOut=()=>curView==='layout';
@@ -69,22 +70,53 @@ function rebuildBoxLayout(){
   if(layingOut()) buildGL(boxLayoutScene);
 }
 
+function restoreLayoutBox(entry){
+  const rotation=entry?.rotation??[0,0,entry?.angle];
+  const vector=value=>Array.isArray(value)&&value.length===3&&value.every(Number.isFinite);
+  if(!entry?.settings || !TYPES.some(type=>type.id===entry.settings.type)
+    || !vector(entry.position) || !vector(rotation)) throw new Error('Invalid box in layout');
+  return makeLayoutBox(entry.settings,entry.position,rotation,entry.hidden===true);
+}
+
 function loadBoxLayout(){
   const stored=lsGet(BOX_LAYOUT_KEY,[]);
   if(!Array.isArray(stored)) return;
   for(const entry of stored){
-    const rotation=entry?.rotation??[0,0,entry?.angle];
-    if(!entry?.settings || !TYPES.some(type=>type.id===entry.settings.type)
-      || !Array.isArray(entry.position) || entry.position.length!==3 || !entry.position.every(Number.isFinite)
-      || !Array.isArray(rotation) || rotation.length!==3 || !rotation.every(Number.isFinite)) continue;
-    try{ layoutBoxes.push(makeLayoutBox(entry.settings,entry.position,rotation,entry.hidden===true)); }
+    try{ layoutBoxes.push(restoreLayoutBox(entry)); }
     catch(error){ console.warn('Could not load a box in the layout',error); }
   }
   rebuildBoxLayout();
 }
 
+function boxLayoutRecords(){
+  return layoutBoxes.map(({settings,position,rotation,hidden})=>({settings,position,rotation,hidden}));
+}
+
 function saveBoxLayout(){
-  if(!window.BOX?.noSave) lsSet(BOX_LAYOUT_KEY,layoutBoxes.map(({settings,position,rotation,hidden})=>({settings,position,rotation,hidden})));
+  if(!window.BOX?.noSave) lsSet(BOX_LAYOUT_KEY,boxLayoutRecords());
+}
+
+function downloadBoxLayout(){
+  const file={format:BOX_LAYOUT_FORMAT,version:1,unit:S.unit,boxes:boxLayoutRecords()};
+  saveFile('boxsmith-layout.json',JSON.stringify(file,null,2));
+}
+
+function openBoxLayout(file){
+  if(!GL){ toast('Opening a box layout requires WebGL'); return; }
+  if(file.version!==1){ toast('This layout file uses an unsupported version'); return; }
+  if(!Array.isArray(file.boxes) || (file.unit!=='mm'&&file.unit!=='in')) throw new Error('Invalid layout file');
+
+  const boxes=file.boxes.map(restoreLayoutBox);
+  layoutBoxes=boxes;
+  layoutSelection=-1;
+  placingBox=false;
+  rebuildBoxLayout();
+  setMeasurementUnit(file.unit);
+  if(!layingOut()) $('#tabs [data-v="layout"]').click();
+  view.zoom=1;
+  selectLayoutBox(-1);
+  toast('Layout opened');
+  saveBoxLayout();
 }
 
 function layoutBoxLabel(box,index){
@@ -100,6 +132,8 @@ function syncBoxLayout(){
   const type=TYPES.find(type=>type.id===S.type);
   $('#layoutAdd').textContent='Add '+(type?.name||'current box');
   $('#layoutAdd').disabled=!GL;
+  $('#layoutSave').disabled=!layoutBoxes.length;
+  $('#layoutOpen').disabled=!GL;
   $('#layoutObjects').innerHTML='<option value="">Select a box</option>'+layoutBoxes
     .map((item,index)=>'<option value="'+index+'">'+esc(layoutBoxLabel(item,index))+'</option>').join('');
   $('#layoutObjects').value=box?String(layoutSelection):'';
@@ -178,6 +212,8 @@ function pickLayoutBox(raycaster,hit){
 
 function initBoxLayout(){
   if(GL) loadBoxLayout();
+  $('#layoutSave').addEventListener('click',downloadBoxLayout);
+  $('#layoutOpen').addEventListener('click',()=>$('#layoutFile').click());
   $('#layoutUnits').addEventListener('change',e=>setMeasurementUnit(e.target.value));
   $('#layoutAdd').addEventListener('click',()=>addLayoutBox());
   $('#layoutDuplicate').addEventListener('click',()=>addLayoutBox(layoutBoxes[layoutSelection]));
