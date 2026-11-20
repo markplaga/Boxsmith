@@ -42,15 +42,85 @@ function transformLayoutBox(box){
 
   // Use the lowest point of the rotated geometry as the base height.
   const bounds=new THREE.Box3(), point=new THREE.Vector3();
-  for(const solid of solids){
-    for(const loop of [solid.bot[0],solid.top[0]]){
-      for(const vertex of loop) bounds.expandByPoint(point.fromArray(vertex).applyMatrix4(box.pose));
-    }
-  }
+  const loopBox=loop=>{
+    const part=new THREE.Box3();
+    for(const vertex of loop) part.expandByPoint(point.fromArray(vertex).applyMatrix4(box.pose));
+    return part;
+  };
+  const parts=solids.map(solid=>{
+    const part=loopBox(solid.bot[0]).union(loopBox(solid.top[0]));
+    bounds.union(part);
+    return ringPieces(part,solid,box.pose);
+  });
   const [x,y,z]=box.position;
   const offset=new THREE.Vector3(x,y,z-bounds.min.z);
   box.pose.setPosition(point.setFromMatrixPosition(box.pose).add(offset));
   box.bounds=bounds.translate(offset);
+  box.partBounds=parts.map(pieces=>pieces.map(piece=>piece.translate(offset)));
+}
+
+// A flat plate with a big opening (a Frame's top and bottom) is represented by
+// the four strips around the opening, so things sitting in the opening are not
+// reported as overlapping it. Other parts stay a single bounding box.
+function ringPieces(part,solid,pose){
+  if(!solid.bot||solid.bot.length<2) return [part];
+  const point=new THREE.Vector3(), size=part.getSize(new THREE.Vector3()).toArray();
+  const flat=size.indexOf(Math.min(...size)), [a,b]=[0,1,2].filter(k=>k!==flat);
+  const ks=['x','y','z'];
+  let hole=null;
+  for(const loop of solid.bot.slice(1)){
+    const h=new THREE.Box3();
+    for(const v of loop) h.expandByPoint(point.fromArray(v).applyMatrix4(pose));
+    const area=(h.max[ks[a]]-h.min[ks[a]])*(h.max[ks[b]]-h.min[ks[b]]);
+    if(!hole||area>hole.area) hole={box:h,area};
+  }
+  if(!hole||hole.area<0.3*size[a]*size[b]) return [part];
+  const H=hole.box, A=ks[a], B=ks[b];
+  const mk=(a0,a1,b0,b1)=>{
+    if(a1-a0<=0.01||b1-b0<=0.01) return null;
+    const p=part.clone(); p.min[A]=a0; p.max[A]=a1; p.min[B]=b0; p.max[B]=b1; return p;
+  };
+  return [
+    mk(part.min[A],H.min[A],part.min[B],part.max[B]),
+    mk(H.max[A],part.max[A],part.min[B],part.max[B]),
+    mk(H.min[A],H.max[A],part.min[B],H.min[B]),
+    mk(H.min[A],H.max[A],H.max[B],part.max[B])
+  ].filter(Boolean);
+}
+
+// Pairs of visible boxes whose individual parts intersect. Parts are compared
+// one by one, so a box sitting inside a Frame's opening is not a false alarm.
+function layoutOverlaps(){
+  const EPS=0.05, pairs=[];
+  for(let i=0;i<layoutBoxes.length;i++){
+    for(let j=i+1;j<layoutBoxes.length;j++){
+      const a=layoutBoxes[i], b=layoutBoxes[j];
+      if(a.hidden||b.hidden||!a.bounds||!b.bounds) continue;
+      const near=a.bounds.clone().expandByScalar(-EPS);
+      if(!near.intersectsBox(b.bounds)) continue;
+      const hit=a.partBounds.some(pa=>pa.some(x=>{
+        const p=x.clone().expandByScalar(-EPS);
+        return b.partBounds.some(pb=>pb.some(y=>p.intersectsBox(y)));
+      }));
+      if(hit) pairs.push([i,j]);
+    }
+  }
+  return pairs;
+}
+
+// Move the selected box flush against a face of another box (world axes).
+function snapLayoutBox(targetIndex,side,gap){
+  const box=layoutBoxes[layoutSelection], target=layoutBoxes[targetIndex];
+  if(!box||!target||box===target) return false;
+  const B=box.bounds, T=target.bounds, c=new THREE.Vector3();
+  const bc=B.getCenter(new THREE.Vector3()), tc=T.getCenter(c);
+  const d=[tc.x-bc.x,tc.y-bc.y,T.min.z-B.min.z];
+  const axis={x:0,y:1,z:2}[side[1]], sign=side[0]==='+'?1:-1;
+  const k=['x','y','z'][axis];
+  d[axis]=sign>0?T.max[k]+gap-B.min[k]:T.min[k]-gap-B.max[k];
+  for(let i=0;i<3;i++) box.position[i]=Math.round((box.position[i]+d[i])*1000)/1000;
+  moveLayoutBox();
+  return true;
 }
 
 function fitBoxLayout(){
@@ -135,8 +205,14 @@ function syncBoxLayout(){
   $('#layoutAdd').disabled=!GL;
   $('#layoutSave').disabled=$('#layoutClear').disabled=!layoutBoxes.length;
   $('#layoutOpen').disabled=!GL;
+  const overlaps=layoutOverlaps(), clash=new Set(overlaps.flat());
   $('#layoutObjects').innerHTML='<option value="">Select a box</option>'+layoutBoxes
-    .map((item,index)=>'<option value="'+index+'">'+esc(layoutBoxLabel(item,index))+'</option>').join('');
+    .map((item,index)=>'<option value="'+index+'">'+(clash.has(index)?'⚠ ':'')+esc(layoutBoxLabel(item,index))+'</option>').join('');
+  const snapSel=$('#layoutSnapTarget'), keep=snapSel.value;
+  snapSel.innerHTML=layoutBoxes.map((item,index)=>index===layoutSelection?'':'<option value="'+index+'">'+esc(layoutBoxLabel(item,index))+'</option>').join('');
+  if([...snapSel.options].some(o=>o.value===keep)) snapSel.value=keep;
+  $('#layoutSnap').disabled=!box||snapSel.options.length===0;
+  snapSel.disabled=$('#layoutSnapSide').disabled=$('#layoutSnapGap').disabled=$('#layoutSnap').disabled;
   $('#layoutObjects').value=box?String(layoutSelection):'';
   $('#layoutObjects').disabled=!layoutBoxes.length;
   const unit=S.unit, scale=layoutCoordinateScale();
@@ -156,7 +232,10 @@ function syncBoxLayout(){
   $('#layoutFit').disabled=!layoutBoxes.length;
   $('#layoutPlace').setAttribute('aria-pressed',String(placingBox));
   cv.classList.toggle('layout-placing',layingOut()&&placingBox);
-  $('#layoutStatus').textContent=!GL?'Arranging boxes requires WebGL.':placingBox?'Click where the center of the selected box should go.':
+  const warn=overlaps.length?'⚠ Possible overlap: '+overlaps.map(([i,j])=>'box '+(i+1)+' and box '+(j+1)).join(', ')+'. Move them apart or use Snap.':'';
+  const status=$('#layoutStatus');
+  status.classList.toggle('warn',!!warn&&!placingBox);
+  status.textContent=warn&&!placingBox?warn:!GL?'Arranging boxes requires WebGL.':placingBox?'Click where the center of the selected box should go.':
     layoutBoxes.length?'Select a box to move it. X and Y locate its center. Z sets the height of its base.':
     'Choose a box style and size in the sidebar, then add a copy to this layout.';
 }
@@ -213,6 +292,23 @@ function pickLayoutBox(raycaster,hit){
 
 function initBoxLayout(){
   if(GL) loadBoxLayout();
+  const ctl=$('#layoutCtl');
+  const showTab=name=>{
+    ctl.dataset.tab=name; ctl.classList.remove('folded'); $('#layoutFold').setAttribute('aria-expanded','true');
+    $$('[data-lay-tab]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.layTab===name)));
+  };
+  $$('[data-lay-tab]').forEach(b=>b.addEventListener('click',()=>{
+    if(b.dataset.layTab===ctl.dataset.tab&&!ctl.classList.contains('folded')) return;
+    showTab(b.dataset.layTab);
+  }));
+  $('#layoutFold').addEventListener('click',()=>{
+    const folded=ctl.classList.toggle('folded');
+    $('#layoutFold').setAttribute('aria-expanded',String(!folded));
+  });
+  $('#layoutSnap').addEventListener('click',()=>{
+    const gap=Math.max(0,+$('#layoutSnapGap').value||0)*layoutCoordinateScale();
+    if(snapLayoutBox(+$('#layoutSnapTarget').value,$('#layoutSnapSide').value,gap)){ syncBoxLayout(); toast('Snapped'); }
+  });
   $('#layoutSave').addEventListener('click',()=>downloadBoxLayout());
   $('#layoutOpen').addEventListener('click',()=>$('#layoutFile').click());
   $('#layoutClear').addEventListener('click',()=>{
