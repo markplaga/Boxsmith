@@ -1244,6 +1244,7 @@ $('#toKerf').addEventListener('click',e=>{ e.preventDefault(); S.type='kerftest'
 $('#resetAll').addEventListener('click',e=>{ e.preventDefault(); S=Object.assign({},DEFAULTS); update(true); toast('Reset to defaults'); });
 let curView='3d';
 $('#tabs').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; const wasLayout=layingOut(); curView=b.dataset.v;
+  if(curView!=='3d'&&!layingOut()&&document.body.classList.contains('max3d')) setMax(false);
   $$('#tabs button').forEach(x=>x.classList.toggle('on',x===b));
   $('#sheets').classList.toggle('hidden',curView!=='sheets'); $('#guide').classList.toggle('hidden',curView!=='guide'); $('#help').classList.toggle('hidden',curView!=='help');
   $('#v3dctl').classList.toggle('hidden',curView!=='3d'); $('#dims').classList.toggle('hidden',curView!=='3d');
@@ -1285,9 +1286,14 @@ $('#playBtn').addEventListener('click',()=>{ if(view.play>0&&view.loop){ view.pl
       shut=$$('aside .sec.collapsed > h2').map(x=>x.dataset.name); try{ localStorage.setItem(KEY,JSON.stringify(shut)); }catch(err){} });
   });
 })();
-function setMax(on){ document.body.classList.toggle('max3d',on); $('#maxBtn').textContent=on?'✕ Exit maximize':'⤢ Maximize';
-  if(on && curView!=='3d') $('#tabs [data-v="3d"]').click(); requestAnimationFrame(()=>render()); }
-$('#maxBtn').addEventListener('click',()=>setMax(!document.body.classList.contains('max3d')));
+function setMax(on){
+  document.body.classList.toggle('max3d',on);
+  $$('[data-maximize-view]').forEach(button=>{ button.textContent=on?'✕ Exit maximize':'⤢ Maximize'; });
+  requestAnimationFrame(render);
+}
+$$('[data-maximize-view]').forEach(button=>button.addEventListener('click',()=>{
+  setMax(!document.body.classList.contains('max3d'));
+}));
 addEventListener('keydown',e=>{ if(e.key==='Escape' && document.body.classList.contains('max3d')) setMax(false); });
 function syncStereoControls(){
   $$('[data-stereo-mode]').forEach(select=>{
