@@ -1230,7 +1230,7 @@ function syncInputs(){
     if(el.type==='checkbox') el.checked=!!v;
     else if(el.hasAttribute('data-len')){ const inch=S.unit==='in'; el.step = inch ? (['kerf','kStep','t','clr','pin','hPitch','hBridge'].includes(k)?'0.001':'0.0625') : (['kerf','kStep'].includes(k)?'0.01':el.getAttribute('step')||'1'); if(document.activeElement!==el) el.value= inch? +(v/25.4).toFixed(4) : +(+v).toFixed(3); }
     else if(document.activeElement!==el) el.value=v; });
-  $$('#types .type').forEach(b=>b.classList.toggle('on',b.dataset.type===S.type));
+  $$('#types .type').forEach(b=>{ const on=b.dataset.type===S.type; b.classList.toggle('on',on); b.setAttribute('aria-pressed',String(on)); });
   $$('#unitSeg button').forEach(b=>b.classList.toggle('on',b.dataset.u===S.unit));
   $$('#dimSeg button').forEach(b=>b.classList.toggle('on',b.dataset.m===S.dimMode));
   $$('#alignSeg button').forEach(b=>b.classList.toggle('on',b.dataset.al===(S.textAlign||'center')));
@@ -1284,11 +1284,11 @@ $('#dimSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); i
 $('#tPreset').addEventListener('change',e=>{ if(e.target.value){ S.t=+e.target.value; update(); } });
 $('#bedPreset').addEventListener('change',e=>{ if(e.target.value){ const [a,b]=e.target.value.split('x'); S.sheetW=+a; S.sheetH=+b; update(); } });
 $('#toKerf').addEventListener('click',e=>{ e.preventDefault(); S.type='kerftest'; update(true); });
-$('#resetAll').addEventListener('click',e=>{ e.preventDefault(); S=Object.assign({},DEFAULTS); update(true); toast('Reset to defaults'); });
+$('#resetAll').addEventListener('click',e=>{ e.preventDefault(); if(!confirm('Reset all settings to the defaults? Saved materials and recipes are kept.')) return; S=Object.assign({},DEFAULTS); update(true); toast('Reset to defaults'); });
 let curView='3d';
 $('#tabs').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; const wasLayout=layingOut(); curView=b.dataset.v;
   if(curView!=='3d'&&!layingOut()&&maximizedView()) setMax(false);
-  $$('#tabs button').forEach(x=>x.classList.toggle('on',x===b));
+  $$('#tabs button').forEach(x=>{ x.classList.toggle('on',x===b); x.setAttribute('aria-selected',String(x===b)); });
   $('#sheets').classList.toggle('hidden',curView!=='sheets'); $('#guide').classList.toggle('hidden',curView!=='guide'); $('#help').classList.toggle('hidden',curView!=='help');
   $('#v3dctl').classList.toggle('hidden',curView!=='3d'); $('#dims').classList.toggle('hidden',curView!=='3d');
   $('#lampCtl').classList.toggle('hidden',curView!=='3d'||!LAMP.on);
@@ -1323,7 +1323,7 @@ $('#playBtn').addEventListener('click',()=>{ if(view.play>0&&view.loop){ view.pl
     const first=h.firstChild, name=(first&&first.nodeType===3?first.textContent:h.textContent).trim();
     const lab=document.createElement('span'); lab.className='hl'; lab.innerHTML='<span class="chev">▼</span>';
     lab.appendChild(document.createTextNode(name)); if(first&&first.nodeType===3) first.remove(); else h.textContent='';
-    h.insertBefore(lab,h.firstChild); h.setAttribute('role','button'); h.setAttribute('aria-expanded','true'); h.dataset.name=name;
+    h.insertBefore(lab,h.firstChild); h.setAttribute('role','button'); h.tabIndex=0; h.addEventListener('keydown',e=>{ if((e.key==='Enter'||e.key===' ')&&e.target===h){ e.preventDefault(); h.click(); } }); h.setAttribute('aria-expanded','true'); h.dataset.name=name;
     if(shut.includes(name)){ sec.classList.add('collapsed'); h.setAttribute('aria-expanded','false'); }
     h.addEventListener('click',e=>{ if(e.target.closest('button,select,input,a')) return;
       const c=sec.classList.toggle('collapsed'); h.setAttribute('aria-expanded',String(!c));
@@ -1348,6 +1348,12 @@ $$('[data-maximize-view]').forEach(button=>button.addEventListener('click',()=>{
   setMax(!maximizedView());
 }));
 $('#previewExitMax').addEventListener('click',()=>setMax(false));
+(function(){ const KEY='boxsmith-ui';
+  const apply=m=>{ document.body.classList.toggle('simple-ui',m==='simple'); $$('#uiModeSeg button').forEach(b=>{ const on=b.dataset.ui===m; b.classList.toggle('on',on); b.setAttribute('aria-pressed',String(on)); }); try{ localStorage.setItem(KEY,m); }catch(e){} };
+  let m='all'; try{ m=localStorage.getItem(KEY)||'all'; }catch(e){}
+  apply(m==='simple'?'simple':'all');
+  $('#uiModeSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(b) apply(b.dataset.ui); });
+})();
 addEventListener('keydown',e=>{ if(e.key==='Escape' && maximizedView()){ e.preventDefault(); setMax(false); } });
 addEventListener('orientationchange',()=>setTimeout(render,200));
 function syncStereoControls(){
@@ -1467,10 +1473,10 @@ $('#matLib').addEventListener('change',e=>{ const mats=lsGet(MAT_KEY,MAT_SEED), 
   S.t=+m.t; S.kerf=+m.kerf; if(m.price!=null) S.sheetPrice=+m.price; S.matName=m.name; if(m.look&&MATS[m.look]) setPreviewMaterial(m.look); update(); toast('Using '+m.name); });
 $('#matSave').addEventListener('click',()=>{ const n=$('#matName').value.trim(); if(!n){ toast('Give the material a name first'); return; }
   const mats=lsGet(MAT_KEY,MAT_SEED).filter(m=>m.name!==n); mats.push({name:n,t:S.t,kerf:S.kerf,price:S.sheetPrice,look:view.mat}); if(lsSet(MAT_KEY,mats)){ S.matName=n; $('#matName').value=''; renderLibrary(); update(); toast('Saved material “'+n+'”'); } });
-$('#matDel').addEventListener('click',()=>{ const i=$('#matLib').value; if(i===''){ toast('Pick a material to delete'); return; } const mats=lsGet(MAT_KEY,MAT_SEED); const m=mats.splice(+i,1)[0]; if(lsSet(MAT_KEY,mats)){ if(m&&S.matName===m.name) S.matName=''; renderLibrary(); toast('Deleted '+(m?m.name:'material')); } });
+$('#matDel').addEventListener('click',()=>{ const i=$('#matLib').value; if(i===''){ toast('Pick a material to delete'); return; } const mats=lsGet(MAT_KEY,MAT_SEED); if(!mats[+i]) return; if(!confirm('Delete the saved material "'+mats[+i].name+'"?')) return; const m=mats.splice(+i,1)[0]; if(lsSet(MAT_KEY,mats)){ if(m&&S.matName===m.name) S.matName=''; renderLibrary(); toast('Deleted '+(m?m.name:'material')); } });
 $('#recSave').addEventListener('click',()=>{ const n=$('#recName').value.trim(); if(!n){ toast('Name the recipe first'); return; } const recs=lsGet(REC_KEY,{}); recs[n]=JSON.parse(JSON.stringify(S)); if(lsSet(REC_KEY,recs)){ $('#recName').value=''; renderLibrary(); $('#recSel').value=n; toast('Saved recipe “'+n+'”'); } });
 $('#recLoad').addEventListener('click',()=>{ const n=$('#recSel').value, recs=lsGet(REC_KEY,{}); if(!recs[n]){ toast('Pick a recipe to load'); return; } S=Object.assign({},DEFAULTS,recs[n]); update(true); toast('Loaded “'+n+'”'); });
-$('#recDel').addEventListener('click',()=>{ const n=$('#recSel').value, recs=lsGet(REC_KEY,{}); if(!recs[n]){ toast('Pick a recipe to delete'); return; } delete recs[n]; if(lsSet(REC_KEY,recs)){ renderLibrary(); toast('Deleted “'+n+'”'); } });
+$('#recDel').addEventListener('click',()=>{ const n=$('#recSel').value, recs=lsGet(REC_KEY,{}); if(!recs[n]){ toast('Pick a recipe to delete'); return; } if(!confirm('Delete the saved recipe "'+n+'"?')) return; delete recs[n]; if(lsSet(REC_KEY,recs)){ renderLibrary(); toast('Deleted “'+n+'”'); } });
 
 /* ================= ARTWORK LIST ================= */
 $('#artFile').addEventListener('change',async e=>{ const f=e.target.files[0]; e.target.value=''; if(!f) return;
@@ -1587,7 +1593,7 @@ window.update=update;
   let saved=null;
   const sync=()=>{ btn.classList.toggle('on',LAMP.on); ctl.classList.toggle('hidden',!LAMP.on); $('#lampPct').textContent=Math.round(LAMP.gain*100)+'%'; $('#lampColor').value=LAMP.color; };
   btn.addEventListener('click',()=>{
-    if(!GL){ alert('Lamp mode needs WebGL, which is not available here.'); return; }
+    if(!GL){ toast('Lamp mode needs WebGL, which is not available here.'); return; }
     LAMP.on=!LAMP.on;
     if(LAMP.on){ saved={yaw:view.yaw,pitch:view.pitch,animT:view.animT,play:view.play}; view.yaw=LAMP.yaw; view.pitch=LAMP.pitch; view.zoom=Math.min(view.zoom,1); if(view.stereo!=='off'){ /* stereo still works */ } }
     else if(saved){ view.yaw=saved.yaw; view.pitch=saved.pitch; }

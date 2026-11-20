@@ -212,6 +212,17 @@ body.max3d #layoutCtl .lgrp[data-g="View"]{display:flex!important}
 .ov.faded{opacity:.01!important}
 .ov.faded>*{pointer-events:none}
 .ov.faded::after{content:'';position:absolute;inset:-6px;cursor:pointer;pointer-events:auto}
+.uimode{padding:10px 20px 0}
+.uimode .seg{width:100%}
+body.simple-ui [data-adv]{display:none!important}
+.sec h2:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.v3d-more summary{cursor:pointer;list-style:none;display:inline-flex;align-items:center;border:1px solid var(--line2);background:#fff;border-radius:7px;padding:3px 9px;font-size:12px;font-weight:500;user-select:none}
+.v3d-more summary::-webkit-details-marker{display:none}
+.v3d-more summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.v3d-more[open] summary{border-color:var(--accent);color:var(--accent)}
+.v3d-more-body{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:8px;width:100%}
+.lamp-ctl{left:auto;right:12px;top:150px}
+body.max3d .lamp-ctl{top:190px}
 </style>
 </head>
 <body>
@@ -221,6 +232,8 @@ body.max3d #layoutCtl .lgrp[data-g="View"]{display:flex!important}
     <svg class="logo" viewBox="0 0 32 32"><rect x="3" y="9" width="20" height="20" fill="#e2461b"/><path d="M3 9l6-6h20l-6 6z" fill="#f08a63"/><path d="M23 9l6-6v20l-6 6z" fill="#b3330f"/><path d="M3 13h3v4H3zm0 8h3v4H3zm17-12h3v4h-3z" fill="#fffdf9" opacity=".9"/></svg>
     <div><h1>Boxsmith</h1><p>Laser-cut box generator · 17 box styles</p></div>
   </div>
+
+  <div class="uimode"><div class="seg" id="uiModeSeg" role="group" aria-label="Controls shown"><button data-ui="simple">Simple</button><button data-ui="all">All options</button></div></div>
 
   <div class="sec">
     <h2>Box style</h2>
@@ -232,33 +245,33 @@ body.max3d #layoutCtl .lgrp[data-g="View"]{display:flex!important}
     <div class="seg" id="dimSeg" style="margin-bottom:10px"><button data-m="outside">Outside dims</button><button data-m="inside">Inside dims</button></div>
     <div class="grid3">
       <div class="f"><label id="lblW">Width</label><input type="number" data-k="W" data-len></div>
-      <div class="f" data-hide="polygon"><label>Depth</label><input type="number" data-k="D" data-len></div>
+      <div class="f" data-hide="polygon"><label for="lbl-1">Depth</label><input id="lbl-1" type="number" data-k="D" data-len></div>
       <div class="f" data-show="polygon"><label>Sides</label><input type="number" data-k="sides" min="3" max="16" step="1"></div>
-      <div class="f"><label>Height</label><input type="number" data-k="H" data-len></div>
+      <div class="f"><label for="lbl-2">Height</label><input id="lbl-2" type="number" data-k="H" data-len></div>
     </div>
   </div>
 
   <div class="sec">
     <h2>Material &amp; laser</h2>
     <div class="grid2">
-      <div class="f full"><label>My materials</label><div style="display:flex;gap:6px"><select id="matLib" style="flex:1"></select><button class="btn sm" id="matDel" title="Delete this material">✕</button></div></div>
-      <div class="f"><label>Thickness</label><input type="number" data-k="t" data-len step="0.01"></div>
+      <div class="f full"><label for="matLib">My materials</label><div style="display:flex;gap:6px"><select id="matLib" style="flex:1"></select><button class="btn sm" id="matDel" title="Delete this material">✕</button></div></div>
+      <div class="f"><label for="lbl-3">Thickness</label><input id="lbl-3" type="number" data-k="t" data-len step="0.01"></div>
       <div class="f"><label>Preset</label><select id="tPreset">
         <option value="">Measured…</option><option value="3">3 mm</option><option value="3.175">1/8" (3.18)</option><option value="4">4 mm</option><option value="5.2">5.2 mm (lauan)</option><option value="6">6 mm</option><option value="6.35">1/4" (6.35)</option><option value="1.5">1.5 mm card</option></select></div>
-      <div class="f"><label>Kerf (beam width)</label><input type="number" data-k="kerf" step="0.01" data-len></div>
+      <div class="f"><label for="lbl-4">Kerf (beam width)</label><input id="lbl-4" type="number" data-k="kerf" step="0.01" data-len></div>
       <div class="f" data-hide="kerftest"><label>Finger width</label><input type="number" data-k="fw" data-len></div>
-      <div class="f full"><label>Save these settings as a material</label><div style="display:flex;gap:6px"><input type="text" id="matName" placeholder="e.g. 3 mm birch, Richmond batch" style="flex:1"><button class="btn sm" id="matSave">Save</button></div></div>
+      <div class="f full"><label for="matName">Save these settings as a material</label><div style="display:flex;gap:6px"><input type="text" id="matName" placeholder="e.g. 3 mm birch, Richmond batch" style="flex:1"><button class="btn sm" id="matSave">Save</button></div></div>
       <div class="f full" data-hide="kerftest polygon rounded book card"><label>Corner construction</label><div class="seg" id="cornerSeg"><button data-c="classic">Front &amp; back</button><button data-c="edge">Pinwheel</button><button data-c="pinwheel">Diagonal pinwheel</button></div><span class="hint" id="cornerHint"></span></div>
       <div class="f full hint" style="color:var(--muted);font-size:11.5px">Measure thickness with calipers. Kerf: cut a 20 mm square, measure it, kerf = 20 − measured. Not sure? Run the <a href="#" id="toKerf">Kerf test</a> first.</div>
     </div>
   </div>
 
-  <div class="sec" data-hide="kerftest">
+  <div class="sec" data-hide="kerftest" data-adv>
     <h2>Joints &amp; fit</h2>
     <div class="grid2">
-      <div class="f"><label>Fit</label><select data-k="fit"><option value="press">Press-fit (no glue)</option><option value="snug">Extra snug</option><option value="glue">Glue gap (looser)</option></select></div>
+      <div class="f"><label for="lbl-5">Fit</label><select id="lbl-5" data-k="fit"><option value="press">Press-fit (no glue)</option><option value="snug">Extra snug</option><option value="glue">Glue gap (looser)</option></select></div>
       <div class="f"><label>Screw joints</label><select data-k="tslot"><option value="off">Off</option><option value="M2.5">M2.5 T-slots</option><option value="M3">M3 T-slots</option><option value="M4">M4 T-slots</option></select></div>
-      <div class="f" data-showk="tslot"><label>Screw length</label><input type="number" data-k="screwLen" data-len></div>
+      <div class="f" data-showk="tslot"><label for="lbl-6">Screw length</label><input id="lbl-6" type="number" data-k="screwLen" data-len></div>
       <div class="f"><label>CNC bit ⌀ (dogbones)</label><input type="number" data-k="bit" data-len step="0.1"><span class="hint">0 = laser. Set a bit size to add dogbone corners for the router.</span></div>
     </div>
   </div>
@@ -266,50 +279,50 @@ body.max3d #layoutCtl .lgrp[data-g="View"]{display:flex!important}
   <div class="sec" data-show="liftoff split sliding hinged drawer polygon rounded open pencil card nested puzzle display frame">
     <h2>Fit &amp; lid</h2>
     <div class="grid2">
-      <div class="f"><label>Clearance</label><input type="number" data-k="clr" step="0.05" data-len><span class="hint">Gap for sliding / lift-off fits</span></div>
+      <div class="f"><label for="lbl-7">Clearance</label><input id="lbl-7" type="number" data-k="clr" step="0.05" data-len><span class="hint">Gap for sliding / lift-off fits</span></div>
       <div class="f" data-show="split hinged"><label>Lid height</label><input type="number" data-k="lidH" data-len></div>
-      <div class="f" data-show="liftoff"><label>Lid overhang</label><input type="number" data-k="overhang" data-len></div>
+      <div class="f" data-show="liftoff"><label for="lbl-8">Lid overhang</label><input id="lbl-8" type="number" data-k="overhang" data-len></div>
       <div class="f" data-show="liftoff polygon rounded display"><label>Locator ring width</label><input type="number" data-k="ringW" data-len></div>
-      <div class="f" data-show="hinged pencil puzzle"><label>Pin ⌀</label><input type="number" data-k="pin" data-len step="0.1"><span class="hint">Dowel, nail or filament</span></div>
+      <div class="f" data-show="hinged pencil puzzle"><label for="lbl-9">Pin ⌀</label><input id="lbl-9" type="number" data-k="pin" data-len step="0.1"><span class="hint">Dowel, nail or filament</span></div>
       <div class="f" data-show="sliding puzzle"><label>Lid capture lip</label><input type="number" data-k="capLip" data-len></div>
-      <div class="f" data-show="pencil"><label>Rim width</label><input type="number" data-k="rimW" data-len></div>
+      <div class="f" data-show="pencil"><label for="lbl-10">Rim width</label><input id="lbl-10" type="number" data-k="rimW" data-len></div>
       <div class="f" data-show="card"><label>Front height %</label><input type="number" data-k="frontPct" min="20" max="95" step="5"></div>
-      <div class="f" data-show="card"><label>Index cards</label><input type="number" data-k="cardDivs" min="0" max="12" step="1"></div>
+      <div class="f" data-show="card"><label for="lbl-11">Index cards</label><input id="lbl-11" type="number" data-k="cardDivs" min="0" max="12" step="1"></div>
       <div class="f" data-show="nested"><label>Boxes in the set</label><input type="number" data-k="nestN" min="2" max="6" step="1"></div>
-      <div class="f" data-show="display"><label>Acrylic thickness</label><input type="number" data-k="tAcr" data-len step="0.01"></div>
+      <div class="f" data-show="display"><label for="lbl-12">Acrylic thickness</label><input id="lbl-12" type="number" data-k="tAcr" data-len step="0.01"></div>
       <div class="f" data-show="display"><label>Base margin</label><input type="number" data-k="baseM" data-len></div>
-      <div class="f" data-show="frame"><label>Ring width</label><input type="number" data-k="frameW" data-len><span class="hint">Width of the hollow ring, outer wall to centre hole</span></div>
+      <div class="f" data-show="frame"><label for="lbl-13">Ring width</label><input id="lbl-13" type="number" data-k="frameW" data-len><span class="hint">Width of the hollow ring, outer wall to centre hole</span></div>
       <div class="f" data-show="polygon rounded"><label>Top</label><select data-k="polyTop"><option value="lift">Lift-off lid</option><option value="glued">Fixed top (closed)</option><option value="none">Open</option></select></div>
-      <div class="f" data-show="polygon rounded"><label>Plate lip</label><input type="number" data-k="lip" data-len><span class="hint">Plate edge past the walls</span></div>
-      <label class="chk full" data-show="split"><input type="checkbox" data-k="strips"> Add locator strips (lid self-aligns)</label>
+      <div class="f" data-show="polygon rounded"><label for="lbl-14">Plate lip</label><input type="number" data-k="lip" data-len><span class="hint">Plate edge past the walls</span></div>
+      <label class="chk full" data-show="split"><input id="lbl-14" type="checkbox" data-k="strips"> Add locator strips (lid self-aligns)</label>
     </div>
   </div>
 
   <div class="sec" data-show="drawer">
     <h2>Drawers</h2>
     <div class="grid2">
-      <div class="f"><label>Number of drawers</label><input type="number" data-k="drawers" min="1" max="8" step="1"></div>
+      <div class="f"><label for="lbl-15">Number of drawers</label><input id="lbl-15" type="number" data-k="drawers" min="1" max="8" step="1"></div>
       <div class="f"><label>Pull</label><select data-k="pull"><option value="slot">Finger slot</option><option value="knob">Knob screw hole</option><option value="none">None</option></select></div>
-      <div class="f full" id="pullHWrap"><label>Finger slot height: <b id="pullHVal"></b></label><input type="range" data-k="pullH" min="4" max="24" step="0.5" style="width:100%;accent-color:var(--accent)"></div>
+      <div class="f full" id="pullHWrap"><label for="lbl-16">Finger slot height: <b id="pullHVal"></b></label><input id="lbl-16" type="range" data-k="pullH" min="4" max="24" step="0.5" style="width:100%;accent-color:var(--accent)"></div>
     </div>
   </div>
 
-  <div class="sec" data-show="rounded book">
+  <div class="sec" data-show="rounded book" data-adv>
     <h2>Living hinge</h2>
     <div class="grid3">
       <div class="f" data-show="rounded"><label>Corner radius</label><input type="number" data-k="radius" data-len></div>
-      <div class="f"><label>Cut pitch</label><input type="number" data-k="hPitch" data-len step="0.1"></div>
+      <div class="f"><label for="lbl-17">Cut pitch</label><input id="lbl-17" type="number" data-k="hPitch" data-len step="0.1"></div>
       <div class="f"><label>Bridge</label><input type="number" data-k="hBridge" data-len step="0.1"></div>
       <div class="f full hint">Pitch 1.5–2.5 mm and 3–5 mm bridges suit 3 mm plywood. Test-flex a strip first.</div>
     </div>
   </div>
 
-  <div class="sec" data-show="open liftoff split sliding hinged drawer pencil">
+  <div class="sec" data-show="open liftoff split sliding hinged drawer pencil" data-adv>
     <h2>Dividers</h2>
     <div class="grid3">
-      <div class="f"><label>Columns</label><input type="number" data-k="cols" min="1" max="12" step="1"></div>
+      <div class="f"><label for="lbl-18">Columns</label><input id="lbl-18" type="number" data-k="cols" min="1" max="12" step="1"></div>
       <div class="f"><label>Rows</label><input type="number" data-k="rows" min="1" max="12" step="1"></div>
-      <div class="f"><label>Height %</label><input type="number" data-k="divPct" min="20" max="100" step="5"></div>
+      <div class="f"><label for="lbl-19">Height %</label><input id="lbl-19" type="number" data-k="divPct" min="20" max="100" step="5"></div>
     </div>
   </div>
 
@@ -317,61 +330,61 @@ body.max3d #layoutCtl .lgrp[data-g="View"]{display:flex!important}
     <h2>Kerf test</h2>
     <div class="grid2">
       <div class="f"><label>Step between slots</label><input type="number" data-k="kStep" step="0.01" data-len></div>
-      <div class="f"><label>Finger width</label><input type="number" data-k="fw" data-len></div>
+      <div class="f"><label for="lbl-20">Finger width</label><input id="lbl-20" type="number" data-k="fw" data-len></div>
       <div class="f full hint">Cuts a comb with 7 slots compensated for kerf values around your current setting. Push a scrap of the same sheet into each slot: the snug one is your kerf. A matched finger-joint pair tests the real joint.</div>
     </div>
   </div>
 
-  <div class="sec" data-hide="kerftest">
+  <div class="sec" data-hide="kerftest" data-adv>
     <h2>Paint finish</h2>
     <div class="f full"><label>Paint</label><select data-k="paint"><option value="none">None (bare wood)</option><option value="watercolor">Watercolor wash</option><option value="acrylic">Acrylic paint</option></select></div>
     <div data-showk="paint">
       <div class="f full"><label>Color</label><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="color" data-k="paintColor" class="cpick" aria-label="Paint color"><span class="lsw" id="paintSwatches"></span></div></div>
-      <div class="f full" id="paintStrengthWrap"><label>Wash strength: <b id="paintStrengthVal"></b></label><input type="range" data-k="paintStrength" min="10" max="100" step="5"></div>
+      <div class="f full" id="paintStrengthWrap"><label for="lbl-21">Wash strength: <b id="paintStrengthVal"></b></label><input type="range" data-k="paintStrength" min="10" max="100" step="5"></div>
       <p class="hint" id="paintHint" style="margin:6px 0 0"></p>
     </div>
   </div>
 
-  <div class="sec" data-hide="kerftest">
+  <div class="sec" data-hide="kerftest" data-adv>
     <h2>Decorate</h2>
-    <label class="chk" data-show="open liftoff split"><input type="checkbox" data-k="handles"> Hand-hold cutouts on the ends</label>
-    <div data-show="open liftoff split"><div class="f full" data-showk="handles"><label>Hand-hold height: <b id="handleHVal"></b></label><input type="range" data-k="handleH" min="8" max="40" step="0.5" style="width:100%;accent-color:var(--accent)"></div></div>
+    <label class="chk" data-show="open liftoff split"><input id="lbl-21" type="checkbox" data-k="handles"> Hand-hold cutouts on the ends</label>
+    <div data-show="open liftoff split"><div class="f full" data-showk="handles"><label for="lbl-22">Hand-hold height: <b id="handleHVal"></b></label><input type="range" data-k="handleH" min="8" max="40" step="0.5" style="width:100%;accent-color:var(--accent)"></div></div>
 
-    <label class="chk" data-show="open liftoff"><input type="checkbox" data-k="notch"> Finger notch on the front wall</label>
-    <div data-show="open liftoff"><div class="f full" data-showk="notch"><label>Finger notch depth: <b id="notchHVal"></b></label><input type="range" data-k="notchH" min="4" max="30" step="0.5" style="width:100%;accent-color:var(--accent)"></div></div>
+    <label class="chk" data-show="open liftoff"><input id="lbl-22" type="checkbox" data-k="notch"> Finger notch on the front wall</label>
+    <div data-show="open liftoff"><div class="f full" data-showk="notch"><label for="lbl-23">Finger notch depth: <b id="notchHVal"></b></label><input id="lbl-23" type="range" data-k="notchH" min="4" max="30" step="0.5" style="width:100%;accent-color:var(--accent)"></div></div>
     <div class="grid2" style="margin-top:8px">
       <div class="f full"><label>Text on the lid / top</label><textarea data-k="text" rows="3" placeholder="e.g. Ashlen's Treasures&#10;Est. 2026 — press Return for a new line"></textarea></div>
       <div class="f full"><label>Alignment</label><div class="seg" id="alignSeg"><button data-al="left">Left</button><button data-al="center">Center</button><button data-al="right">Right</button></div></div>
-      <div class="f"><label>Text size</label><input type="number" data-k="textSize" data-len></div>
+      <div class="f"><label for="lbl-24">Text size</label><input id="lbl-24" type="number" data-k="textSize" data-len></div>
       <div class="f"><label>Font</label><select data-k="font">
-        <option value="Georgia, serif">Serif</option><option value="'Playfair Display', serif">Elegant serif</option><option value="Helvetica, Arial, sans-serif">Sans</option><option value="'Bebas Neue', sans-serif">Tall caps</option><option value="'Pacifico', cursive">Script</option><option value="'Caveat', cursive">Handwritten</option><option value="'Rye', serif">Western</option><option value="'Stardos Stencil', sans-serif">Stencil (for cut-through)</option><option value="'Courier New', monospace">Typewriter</option></select></div>
+        <option value="Georgia, serif">Serif</option><option value="'Playfair Display', serif">Elegant serif</option><option value="Helvetica, Arial, sans-serif">Sans</option><option value="'Bebas Neue', sans-serif">Tall caps</option><option value="'Pacifico', cursive">Script</option><option value="'Caveat', cursive">Handwritten</option><option value="'Rye', serif">Western</option><option value="'Stardos Stencil', sans-serif">Stencil (for cut-through)</option><option value="'Courier New', monospace">Typewriter</option></select><span class="hint">Decorative fonts load from Google Fonts. Offline, a system font is used instead.</span></div>
       <div class="subsec full" data-name="Line work around the text"><div class="subhd"><span class="chev">▼</span>Line work around the text</div><div class="subbody grid2">
-      <div class="f full"><label>Style</label><select data-k="frame" id="frameSel"><option value="none">None</option></select></div>
+      <div class="f full"><label for="frameSel">Style</label><select data-k="frame" id="frameSel"><option value="none">None</option></select></div>
       <div class="f full" data-showk="frame"><label>Space between text and line work: <b id="frameGapVal"></b></label><input type="range" data-k="frameGap" min="0" max="25" step="0.5" style="width:100%;accent-color:var(--accent)"></div>
-      <div class="f" data-showk="frame"><label>How many times</label><select data-k="frameCount"><option value="1">Once</option><option value="2">Twice</option><option value="3">3 times</option><option value="4">4 times</option><option value="5">5 times</option><option value="6">6 times</option></select></div>
+      <div class="f" data-showk="frame"><label for="lbl-25">How many times</label><select id="lbl-25" data-k="frameCount"><option value="1">Once</option><option value="2">Twice</option><option value="3">3 times</option><option value="4">4 times</option><option value="5">5 times</option><option value="6">6 times</option></select></div>
       <div class="f" data-showk="frame"><label>Line weight</label><input type="number" data-k="frameLine" data-len step="0.1"></div>
-      <div class="f full" id="frameSpWrap"><label>Space between the frames: <b id="frameSpVal"></b></label><input type="range" data-k="frameSpacing" min="0.5" max="15" step="0.5" style="width:100%;accent-color:var(--accent)"></div>
+      <div class="f full" id="frameSpWrap"><label for="lbl-26">Space between the frames: <b id="frameSpVal"></b></label><input id="lbl-26" type="range" data-k="frameSpacing" min="0.5" max="15" step="0.5" style="width:100%;accent-color:var(--accent)"></div>
       <div class="f full hidden" id="bandWrap"><label>Fill between the frames <span style="font-weight:400;color:var(--muted);font-size:12px">(3D only)</span></label><div id="bandRows"></div></div>
       </div></div>
       <div class="subsec full" data-name="Preview colors"><div class="subhd"><span class="chev">▼</span>Preview colors <span style="font-weight:400;color:var(--muted);font-size:12px">(3D only, never changes the cut)</span></div><div class="subbody grid2">
         <div class="f"><label>Fill color</label><div style="display:flex;gap:8px;align-items:center"><input type="color" data-k="textColor" class="cpick"><button class="btn sm" id="tcReset" type="button">Burn</button></div></div>
         <div class="f"><label>Outline color</label><div style="display:flex;gap:8px;align-items:center"><input type="color" data-k="textOutline" class="cpick"><label class="chk" style="padding:0"><input type="checkbox" data-k="textOutlineOn"> Show</label></div></div>
-        <div class="f"><label>Line thickness (mm)</label><input type="number" data-k="textLine" data-len step="0.1" min="0" placeholder="auto"><span class="hint">0 = automatic</span></div>
-        <label class="chk full" data-show-mode="score"><input type="checkbox" data-k="textFill"> Show the letters filled in</label>
+        <div class="f"><label for="lbl-27">Line thickness (mm)</label><input type="number" data-k="textLine" data-len step="0.1" min="0" placeholder="auto"><span class="hint">0 = automatic</span></div>
+        <label class="chk full" data-show-mode="score"><input id="lbl-27" type="checkbox" data-k="textFill"> Show the letters filled in</label>
       </div></div>
-      <div class="f full"><label>Text is…</label><select data-k="textMode"><option value="engrave">Raster — filled engraving</option><option value="score">Vector — outline only</option><option value="cut">Cut through</option></select><span class="hint">Text is converted to outlines, so it cuts exactly as you see it.</span></div>
+      <div class="f full"><label for="lbl-28">Text is…</label><select id="lbl-28" data-k="textMode"><option value="engrave">Raster — filled engraving</option><option value="score">Vector — outline only</option><option value="cut">Cut through</option></select><span class="hint">Text is converted to outlines, so it cuts exactly as you see it.</span></div>
       <div class="f"><label>Corner accents</label><select data-k="accent" id="accentSel"><option value="none">None</option></select></div>
-      <div class="f" data-showk="accent"><label>Accent on</label><select data-k="accentOn"><option value="top">Top only</option><option value="all">Top + four sides</option></select></div>
+      <div class="f" data-showk="accent"><label for="lbl-29">Accent on</label><select id="lbl-29" data-k="accentOn"><option value="top">Top only</option><option value="all">Top + four sides</option></select></div>
       <div class="f" data-showk="accent"><label>Accent size</label><input type="number" data-k="accentSize" data-len></div>
-      <div class="f" data-showk="accent"><label>Line weight</label><input type="number" data-k="accentLine" data-len step="0.1"></div>
+      <div class="f" data-showk="accent"><label for="lbl-30">Line weight</label><input id="lbl-30" type="number" data-k="accentLine" data-len step="0.1"></div>
       <div class="f full" data-showk="accent"><label>Etch as</label><select data-k="accentMode"><option value="fill">Raster — filled engraving</option><option value="score">Vector — single lines</option></select></div>
-      <div class="f"><label>Cut-out pattern</label><select data-k="deco"><option value="none">None</option><option value="hex">Honeycomb</option><option value="lattice">Diamond lattice</option><option value="voronoi">Voronoi</option><option value="circles">Dots</option><option value="stars">Stars</option><option value="leaves">Leaves</option><option value="slots">Slots</option><option value="quatrefoil">Moroccan quatrefoil</option><option value="hearts">Hearts</option><option value="triangles">Triangles</option><option value="crosses">Crosses</option><option value="waves">Waves</option><option value="brick">Brick slots</option><option value="scales">Fish scales</option><option value="snowflakes">Snowflakes</option><optgroup label="Face designs (one per panel)"><option value="art01">Tree of life</option><option value="art02">Mountain landscape</option><option value="art03">Ocean waves</option><option value="art04">Compass rose</option><option value="art05">Mandala flower</option><option value="art06">Butterfly</option><option value="art07">Crescent moon &amp; stars</option><option value="art08">Koi fish</option><option value="art09">Sunflower</option><option value="art10">Deer in the forest</option><option value="art11">Tropical leaves</option><option value="art12">Celtic knot</option><option value="art13">Queen bee</option><option value="art14">Gears</option><option value="art15">Mushrooms</option><option value="art16">Snowflake</option></optgroup></select></div>
+      <div class="f"><label for="lbl-31">Cut-out pattern</label><select id="lbl-31" data-k="deco"><option value="none">None</option><option value="hex">Honeycomb</option><option value="lattice">Diamond lattice</option><option value="voronoi">Voronoi</option><option value="circles">Dots</option><option value="stars">Stars</option><option value="leaves">Leaves</option><option value="slots">Slots</option><option value="quatrefoil">Moroccan quatrefoil</option><option value="hearts">Hearts</option><option value="triangles">Triangles</option><option value="crosses">Crosses</option><option value="waves">Waves</option><option value="brick">Brick slots</option><option value="scales">Fish scales</option><option value="snowflakes">Snowflakes</option><optgroup label="Face designs (one per panel)"><option value="art01">Tree of life</option><option value="art02">Mountain landscape</option><option value="art03">Ocean waves</option><option value="art04">Compass rose</option><option value="art05">Mandala flower</option><option value="art06">Butterfly</option><option value="art07">Crescent moon &amp; stars</option><option value="art08">Koi fish</option><option value="art09">Sunflower</option><option value="art10">Deer in the forest</option><option value="art11">Tropical leaves</option><option value="art12">Celtic knot</option><option value="art13">Queen bee</option><option value="art14">Gears</option><option value="art15">Mushrooms</option><option value="art16">Snowflake</option></optgroup></select></div>
       <div class="f" data-showk="deco"><label>On</label><select data-k="decoOn"><option value="walls">Walls</option><option value="lid">Lid / top</option><option value="all">Everything</option></select></div>
-      <div class="f artOnly hidden"><label>Design size: <b id="decoScaleVal"></b></label><input type="range" data-k="decoScale" min="30" max="100" step="1" style="width:100%;accent-color:var(--accent)"></div>
+      <div class="f artOnly hidden"><label for="lbl-32">Design size: <b id="decoScaleVal"></b></label><input id="lbl-32" type="range" data-k="decoScale" min="30" max="100" step="1" style="width:100%;accent-color:var(--accent)"></div>
       <div class="f patOnly"><label>Pattern size</label><input type="number" data-k="decoCell" data-len></div>
-      <div class="f patOnly"><label>Web (wood between)</label><input type="number" data-k="decoWeb" data-len step="0.5"></div>
+      <div class="f patOnly"><label for="lbl-33">Web (wood between)</label><input id="lbl-33" type="number" data-k="decoWeb" data-len step="0.5"></div>
       <div class="f patOnly"><label>Shuffle</label><input type="number" data-k="decoSeed" step="1"></div>
-      <div class="f"><label>Lid corners</label><select data-k="cornerStyle"><option value="square">Square</option><option value="round">Rounded</option><option value="chamfer">Chamfered</option></select></div>
+      <div class="f"><label for="lbl-34">Lid corners</label><select id="lbl-34" data-k="cornerStyle"><option value="square">Square</option><option value="round">Rounded</option><option value="chamfer">Chamfered</option></select></div>
       <div class="f" data-showk="cornerStyle"><label>Corner size</label><input type="number" data-k="cornerR" data-len></div>
     </div>
     <div style="margin-top:12px">
@@ -383,34 +396,34 @@ body.max3d #layoutCtl .lgrp[data-g="View"]{display:flex!important}
   <div class="sec">
     <h2>Laser bed &amp; file</h2>
     <div class="grid2">
-      <div class="f full"><label>Bed / sheet preset</label><select id="bedPreset">
+      <div class="f full"><label for="bedPreset">Bed / sheet preset</label><select id="bedPreset">
         <option value="">Custom…</option><option value="600x400">600 × 400 mm</option><option value="700x500">700 × 500 mm</option><option value="900x600">900 × 600 mm</option><option value="1000x700">1000 × 700 mm</option><option value="1300x900">1300 × 900 mm</option><option value="495x279">Glowforge 495 × 279</option><option value="609.6x304.8">24 × 12 in sheet</option><option value="457.2x304.8">18 × 12 in sheet</option><option value="304.8x304.8">12 × 12 in sheet</option></select></div>
       <div class="f"><label>Sheet width</label><input type="number" data-k="sheetW" data-len></div>
-      <div class="f"><label>Sheet height</label><input type="number" data-k="sheetH" data-len></div>
+      <div class="f"><label for="lbl-35">Sheet height</label><input id="lbl-35" type="number" data-k="sheetH" data-len></div>
       <div class="f"><label>Part spacing</label><input type="number" data-k="gap" data-len step="0.5"></div>
-      <div class="f"><label>Stroke</label><select data-k="stroke"><option value="0.1">0.1 mm</option><option value="0.01">Hairline 0.01 mm</option><option value="0.001">0.001 mm (Epilog)</option></select></div>
+      <div class="f"><label for="lbl-36">Stroke</label><select id="lbl-36" data-k="stroke"><option value="0.1">0.1 mm</option><option value="0.01">Hairline 0.01 mm</option><option value="0.001">0.001 mm (Epilog)</option></select></div>
       <div class="f full"><label>Layers</label><select data-k="layerScheme"><option value="simple">Simple — red cut, blue score, black engrave</option><option value="lightburn">LightBurn ordered — 00 engrave · 01 score · 02 inner cuts · 03 outer cuts</option></select></div>
       <label class="chk full"><input type="checkbox" data-k="grain"> Grain lock — never rotate parts on the sheet</label>
       <label class="chk full"><input type="checkbox" data-k="labels"> Engrave part names</label>
     </div>
   </div>
 
-  <div class="sec">
+  <div class="sec" data-adv>
     <h2>Production</h2>
     <div class="grid2">
-      <div class="f"><label>Boxes to cut</label><input type="number" data-k="qty" min="1" max="50" step="1"></div>
+      <div class="f"><label for="lbl-37">Boxes to cut</label><input id="lbl-37" type="number" data-k="qty" min="1" max="50" step="1"></div>
       <div class="f"><label>Hold tabs per part</label><input type="number" data-k="holdTabs" min="0" max="8" step="1"><span class="hint">Kit mode: parts stay in the sheet</span></div>
-      <div class="f" data-showk="holdTabs"><label>Tab width</label><input type="number" data-k="holdW" data-len step="0.05"></div>
+      <div class="f" data-showk="holdTabs"><label for="lbl-38">Tab width</label><input id="lbl-38" type="number" data-k="holdW" data-len step="0.05"></div>
       <div class="f full" style="margin-top:4px"><label style="font-weight:600;color:var(--ink)">Cost estimate</label></div>
-      <div class="f"><label>Sheet price ($)</label><input type="number" data-k="sheetPrice" step="0.5"></div>
+      <div class="f"><label for="lbl-39">Sheet price ($)</label><input id="lbl-39" type="number" data-k="sheetPrice" step="0.5"></div>
       <div class="f"><label>Machine rate ($/hr)</label><input type="number" data-k="rate" step="1"></div>
-      <div class="f"><label>Cut speed (mm/s)</label><input type="number" data-k="speed" step="1"></div>
+      <div class="f"><label for="lbl-40">Cut speed (mm/s)</label><input id="lbl-40" type="number" data-k="speed" step="1"></div>
       <div class="f"><label>Markup %</label><input type="number" data-k="markup" step="5"></div>
       <div class="f full" id="costBox"></div>
     </div>
   </div>
 
-  <div class="sec">
+  <div class="sec" data-adv>
     <h2>Saved recipes</h2>
     <div class="grid2">
       <div class="f full"><div style="display:flex;gap:6px"><select id="recSel" style="flex:1"></select><button class="btn sm" id="recLoad">Load</button><button class="btn sm" id="recDel" title="Delete recipe">✕</button></div></div>
@@ -424,7 +437,7 @@ body.max3d #layoutCtl .lgrp[data-g="View"]{display:flex!important}
 
 <main>
   <div class="topbar">
-    <div class="tabs" id="tabs"><button data-v="3d" class="on">3D preview</button><button data-v="sheets">Cut sheets</button><button data-v="layout">Arrange boxes</button><button data-v="guide">Assembly guide</button><button data-v="help">Help</button></div>
+    <div class="tabs" id="tabs" role="tablist" aria-label="Main views"><button role="tab" aria-selected="true" class="on" data-v="3d">3D preview</button><button role="tab" aria-selected="false" data-v="sheets">Cut sheets</button><button role="tab" aria-selected="false" data-v="layout">Arrange boxes</button><button role="tab" aria-selected="false" data-v="guide">Assembly guide</button><button role="tab" aria-selected="false" data-v="help">Help</button></div>
     <div class="spacer"></div>
     <label class="btn" style="cursor:pointer">Open…<input type="file" class="hidden openSettings" accept=".json,application/json"></label>
     <button class="btn" id="copySvg">Copy SVG</button>
@@ -433,10 +446,10 @@ body.max3d #layoutCtl .lgrp[data-g="View"]{display:flex!important}
         <button data-dl="svg">SVG cut file<small>All sheets — one file each (zipped if more than one)</small></button>
         <button data-dl="dxf">DXF cut file (zip)<small>For CAD / CNC software, mm units</small></button>
         <button data-dl="json">Settings file (.json)<small>Re-open this exact box later with Open…</small></button>
-        
+
       </div>
     </div>
-    
+
   </div>
   <div class="view">
     <canvas id="gl"></canvas><canvas id="cv"></canvas>
@@ -444,19 +457,22 @@ body.max3d #layoutCtl .lgrp[data-g="View"]{display:flex!important}
     <div class="v3dctl" id="v3dctl">
       <label>Explode <input type="range" id="explode" min="0" max="100" value="0"></label>
       <button class="btn" id="playBtn" style="padding:3px 10px;font-size:12px">▶ Show it work</button>
-      <select data-stereo-mode aria-label="Viewing mode" title="Stereoscopic 3D"><option value="off">Normal view</option><option value="cross">Stereo · cross-eyed</option><option value="parallel">Stereo · parallel</option></select>
-      <label class="hidden">Stereo depth <input type="range" data-stereo-depth min="1" max="8" step="0.5" value="3.5"></label>
       <label id="hwLbl"><input type="checkbox" id="hwChk" checked> Screws</label>
-      <label><input type="checkbox" id="spin"> Spin</label>
       <select id="matSel"><option value="birch">Birch ply</option><option value="walnut">Walnut</option><option value="mdf">MDF</option><option value="clear">Clear acrylic</option><option value="black">Black acrylic</option><option value="pink">Pink acrylic</option><option value="card">Cardboard</option></select>
-      <div class="edge-controls" data-edge-controls>
-        <label>Cut edge color <input type="color" data-edge-color></label>
-        <button type="button" class="btn" aria-label="Reset cut edge color" data-edge-reset>Reset</button>
-      </div>
-      <button class="btn" id="lampBtn" style="padding:3px 9px;font-size:12px" title="Put an LED inside and see the light and shadows it throws on the walls of a room">💡 Lamp</button>
       <button class="btn" id="maxBtn" data-maximize-view style="padding:3px 9px;font-size:12px" title="Fill the window with the 3D view. Press Esc or double-click or double-tap the preview to exit.">⤢ Maximize</button>
-      <button class="btn" id="resetView" style="padding:3px 9px;font-size:12px">Reset view</button>
-    </div>
+      <details class="v3d-more"><summary>View options ▾</summary>
+        <div class="v3d-more-body">
+          <select data-stereo-mode aria-label="Viewing mode" title="Stereoscopic 3D"><option value="off">Normal view</option><option value="cross">Stereo · cross-eyed</option><option value="parallel">Stereo · parallel</option></select>
+          <label class="hidden">Stereo depth <input type="range" data-stereo-depth min="1" max="8" step="0.5" value="3.5"></label>
+          <label><input type="checkbox" id="spin"> Spin</label>
+          <button class="btn" id="lampBtn" style="padding:3px 9px;font-size:12px" title="Put an LED inside and see the light and shadows it throws on the walls of a room">💡 Lamp</button>
+          <button class="btn" id="resetView" style="padding:3px 9px;font-size:12px">Reset view</button>
+          <div class="edge-controls" data-edge-controls>
+          <label>Cut edge color <input type="color" data-edge-color></label>
+          <button type="button" class="btn" aria-label="Reset cut edge color" data-edge-reset>Reset</button>
+          </div>
+        </div>
+      </details>
     <div class="v3dctl hidden" id="layoutCtl" data-tab="Boxes">
       <div class="lay-head"><div class="lay-tabs" role="tablist" aria-label="Arrange sections"><button type="button" role="tab" data-lay-tab="Boxes" aria-selected="true">Boxes</button><button type="button" role="tab" data-lay-tab="Place" aria-selected="false">Place</button><button type="button" role="tab" data-lay-tab="View" aria-selected="false">View</button></div><span class="lay-file"><button type="button" class="btn" id="layoutSave" title="Download this layout as a .json file">Save layout</button><button type="button" class="btn" id="layoutOpen" title="Open a saved layout file">Open layout</button><input type="file" id="layoutFile" class="hidden" accept=".json,application/json"></span><button type="button" class="btn lay-fold" id="layoutFold" aria-expanded="true" aria-label="Collapse arrange controls" title="Collapse / expand">▾</button></div>
       <span id="layoutStatus" class="layout-status" role="status"></span>
@@ -471,7 +487,7 @@ body.max3d #layoutCtl .lgrp[data-g="View"]{display:flex!important}
         <label>Cut edge color <input type="color" data-edge-color></label>
         <button type="button" class="btn" aria-label="Reset cut edge color" data-edge-reset>Reset</button>
       </div>
-      
+
     </div>
     <div class="lamp-ctl hidden" id="lampCtl">
       <div class="lrow"><span>💡 Light</span><input type="range" id="lampGain" min="0" max="300" step="5" value="100"><b id="lampPct">100%</b></div>
@@ -756,7 +772,7 @@ Boxsmith.browser.showBox(tray);</code></pre>
   <div class="statbar" id="stats"></div>
 </main>
 </div>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="three.min.js"></script>
 <script src="designs.js"></script>
