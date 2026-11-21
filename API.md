@@ -1,6 +1,6 @@
 # Boxsmith JavaScript API
 
-[Download the illustrated step-by-step guide (PDF)](docs/boxsmith-api-guide.pdf) (covers placing boxes and saving layouts; the sections below also cover everything added since.)
+[Download the illustrated step-by-step guide (PDF)](docs/boxsmith-api-guide.pdf) (10 pages: the browser console, cut files and costs, arranging and snapping boxes, Node scripts including the full headless API, mosaics, library and page control, tests and troubleshooting)
 
 The API does everything the Boxsmith page does: it builds cut sheets, SVG, DXF, parts lists, costs and assembly cards, arranges and snaps whole boxes, keeps saved materials and recipes, turns pictures into mosaics, and drives the 3D preview. It runs locally.
 
