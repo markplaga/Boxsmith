@@ -1,6 +1,6 @@
 # Boxsmith JavaScript API
 
-[Download the illustrated step-by-step guide (PDF)](docs/boxsmith-api-guide.pdf) (10 pages: the browser console, cut files and costs, arranging and snapping boxes, Node scripts including the full headless API, mosaics, library and page control, tests and troubleshooting)
+[Download the illustrated step-by-step guide (PDF)](docs/boxsmith-api-guide.pdf) (11 pages: the browser console, cut files and costs, arranging and snapping boxes, Node scripts including the full headless API, mosaics, library and page control, rendering pictures, tests and troubleshooting)
 
 The API does everything the Boxsmith page does: it builds cut sheets, SVG, DXF, parts lists, costs and assembly cards, arranges and snaps whole boxes, keeps saved materials and recipes, turns pictures into mosaics, and drives the 3D preview. It runs locally.
 
@@ -8,7 +8,7 @@ There are three ways to use it:
 
 | Where | How | What you get |
 | --- | --- | --- |
-| Node.js, everything | `npm install jsdom @napi-rs/canvas`, then `const { load } = require('./boxsmith-node.js'); const Boxsmith = await load();` | The whole API below, including cut sheets and layout measuring. Call `Boxsmith.close()` when done. |
+| Node.js, everything | `npm install jsdom @napi-rs/canvas`, then `const { load } = require('./boxsmith-node.js'); const Boxsmith = await load();` | The whole API below, including cut sheets and layout measuring. Call `await Boxsmith.close()` when done. For pictures (`render`) also `npm install playwright-core` and have Chrome, Chromium or Edge installed. |
 | Node.js, light | `require('./boxsmith-api.js')` | Settings, layouts and layout files only (`boxes`, `assemblies.place/create/parse/serialize/add/remove/duplicate/update`). No geometry, so no cut sheets or snapping. |
 | The Boxsmith page | `window.Boxsmith` in the browser console | The whole API, plus `Boxsmith.browser`, which drives the page itself. |
 
@@ -60,7 +60,7 @@ Open `frame-and-boxes.json` with **Open layout** in Boxsmith. You can also read 
 | `boxes.defaults(type = 'closed')` | A settings object containing all parameter keys and their defaults. |
 | `boxes.create(type, parameters = {})` | A new settings object with your overrides. It rejects unknown types, unknown keys and values of the wrong type. |
 
-Every control on the page is a settings key (a test checks this). `W`, `D` and `H` are width, depth and height. Common keys are `t` for material thickness, `fw` for finger width, `kerf`, and `dimMode` with `'inside'` or `'outside'`. `paint` (`'none'`, `'watercolor'` or `'acrylic'`), `paintColor` (like `'#3a7bd5'`) and `paintStrength` (10 to 100, watercolor only) set the painted look in the preview. Style keys include `frameW` for a Frame's ring width, `drawers` for drawer count and `sides` for polygon sides. `unit` selects the display unit. For a decorated design, a Settings JSON file exported from Boxsmith shows the matching keys and nested artwork records.
+Every control on the page is a settings key (a test checks this). `W`, `D` and `H` are width, depth and height. Common keys are `t` for material thickness, `fw` for finger width, `kerf`, and `dimMode` with `'inside'` or `'outside'`. `paint` (`'none'`, `'watercolor'` or `'acrylic'`), `paintColor` (like `'#3a7bd5'`) and `paintStrength` (10 to 100, watercolor only) set the painted look in the preview. Style keys include `frameW` for a Frame's ring width, `drawers` for drawer count and `sides` for polygon sides. `unit` selects the display unit. `qty` is the number of boxes to cut (1 to 500); `design.compute` nests every copy across as many sheets as needed, and `stats.parts` counts them all. For a decorated design, a Settings JSON file exported from Boxsmith shows the matching keys and nested artwork records.
 
 ## Cut sheets, files, costs: `design`
 
@@ -121,6 +121,59 @@ console.log(assemblies.overlaps(layout));                                       
 
 `mosaic.build({ rgba, width, height }, options)` turns a picture into a layout of painted boxes, like the Picture mosaic panel. `rgba` is RGBA bytes (a canvas `ImageData.data`, or a decoded PNG). Options: `cols` (boxes across, 24), `colors` (6), `faces` (`'sides'`, `'side'` or `'top'`), `paint` (`'watercolor'` or `'acrylic'`), `strength`, `dither`, `relief` (`'none'` or a stepped relief) with `steps`, `frame` (add a Frame, `false`), `ring` (the Frame's ring width in mm), and `settings` (the tile box, defaults to a closed box). It returns `{ assembly, columns, rows, boxes, palette }`.
 
+## Pictures: `assemblies.render` and `design.render`
+
+Draw a layout, or one box, to a PNG from code. The picture uses the same scene and paint code as Arrange boxes, so acrylic and watercolor paint, rotations, heights and hardware match the app. It is drawn on its own offscreen canvas and camera, so the page's view, tab and layout are not touched. Both calls return a promise.
+
+| Method | Result |
+| --- | --- |
+| `assemblies.render(layout, options)` | `{ png, width, height }` for a layout object or its JSON text (anything `assemblies.parse` accepts). |
+| `design.render(settings, options)` | The same, for one box design. |
+
+`png` is a data URL in the browser and a `Buffer` in Node. All options are optional; angles are in degrees.
+
+| Option | Meaning |
+| --- | --- |
+| `pitch` | Degrees down from horizontal, `-90` to `90`. Default `35`. `90` looks straight down. |
+| `yaw` | Degrees around the vertical axis. Default `30`. |
+| `width`, `height` | Pixels, whole numbers from 1 to 8192. Default `1600` by `1200`. |
+| `fit` | `true` (default) frames every visible box with a small margin. `false` uses `zoom` instead. |
+| `zoom` | Used only when `fit` is `false`. Default `1`. |
+| `material`, `edgeColor`, `lamp` | As in `browser.view`: `material` (default `'birch'`), `edgeColor` (`'#rrggbb'`), `lamp` (`{ on, gain, color }`). A render never uses the page's current preview settings, so the same call always gives the same picture. |
+| `background` | `'#rrggbb'` or `'transparent'`. Default white. |
+| `showHidden` | `true` also draws boxes marked `hidden`. Default `false`. |
+
+Bad values throw a `TypeError` or `RangeError` that says which option was wrong, and a layout with no visible boxes throws an `Error`.
+
+```js
+// render.cjs  (npm install jsdom @napi-rs/canvas playwright-core)
+const fs = require('node:fs');
+const { load } = require('./boxsmith-node.js');
+
+(async () => {
+  const Boxsmith = await load();
+  const { boxes, assemblies } = Boxsmith;
+
+  const frame = boxes.create('frame', { W: 240, D: 180, H: 50, frameW: 24 });
+  const tile = boxes.create('closed', { W: 55, D: 45, H: 30, paint: 'acrylic', paintColor: '#3a7bd5' });
+  const layout = assemblies.create({
+    boxes: [assemblies.place(frame), ...[-60, 0, 60].map(x => assemblies.place(tile, { position: [x, 0, 0] }))]
+  });
+
+  const picture = await assemblies.render(layout, { pitch: 50, yaw: 30, width: 1200, height: 800 });
+  fs.writeFileSync('render.png', picture.png);          // a Buffer in Node
+
+  const top = await Boxsmith.design.render({ type: 'open', W: 140, D: 90, H: 42 }, { pitch: 90, background: 'transparent' });
+  fs.writeFileSync('tray-top.png', top.png);
+
+  await Boxsmith.close();                                // also closes the browser used for drawing
+})();
+```
+
+In the browser: `const { png } = await Boxsmith.assemblies.render(layout, { pitch: 90 });` and use `png` as an image `src`.
+
+**In Node** the picture is drawn by the real page in headless Chromium, because jsdom has no WebGL. `boxsmith-node.js` starts it the first time you render, uses software GL (no graphics card needed), and keeps it for later renders until `close()`. It needs the `playwright-core` package and Chrome, Chromium or Edge on the computer. It looks for an installed Chrome or Edge; set `BOXSMITH_CHROME=/path/to/chrome` or `load({ chrome: '/path/to/chrome' })` to choose one. A layout of 101 boxes renders in about a second on a typical computer, plus a second or so the first time to start the browser.
+
 ## Saved materials and recipes: `library`
 
 | Method | Result |
@@ -143,7 +196,7 @@ Browser (or the Node page) only.
 | `browser.getSettings()` / `setSettings(settings)` / `updateSettings(changes)` | Read the editor's settings, replace them, or change a few. |
 | `browser.current()` | The same result as `design.compute`, for the editor's box. |
 | `browser.showTab(name)` | `'preview'`, `'sheets'`, `'arrange'`, `'guide'` or `'help'`. |
-| `browser.view(changes)` | Reads and changes the preview: `material` (`birch`, `walnut`, `mdf`, `clear`, `black`, `pink`, `card`), `explode`, `spin`, `yaw`, `pitch`, `zoom`, `hardware`, `stereo` (`'off'`, `'cross'`, `'parallel'`), `stereoDepth`, `edgeColor` (`'#rrggbb'` or `null`), `lamp` (`{ on, gain, color }`), `maximize`. Returns the current view. |
+| `browser.view(changes)` | Reads and changes the preview: `material` (`birch`, `walnut`, `mdf`, `clear`, `black`, `pink`, `card`), `explode`, `spin`, `yaw` and `pitch` in degrees (pitch is down from horizontal, so `90` is straight down, the Top view), `zoom`, `hardware`, `stereo` (`'off'`, `'cross'`, `'parallel'`), `stereoDepth`, `edgeColor` (`'#rrggbb'` or `null`), `lamp` (`{ on, gain, color }`), `maximize`. Returns the current view. |
 | `browser.play(loop)` | Plays the "show it work" animation. |
 | `browser.snapshot()` | The preview as a PNG data URL. |
 | `browser.topView()` | Turns on the Arrange boxes top view. |
@@ -154,4 +207,4 @@ For example, `Boxsmith.browser.showBox(Boxsmith.boxes.create('open', { W: 100 })
 
 ## Tests
 
-`npm install` then `npm test` runs `test/api.test.js` against the real page. It checks that every control on the page is an API setting, every box type builds, and the layout, mosaic, library and preview calls work.
+`npm install` then `npm test` runs `test/api.test.js` against the real page. It checks that every control on the page is an API setting, every box type builds, 100 boxes nest across sheets, and the layout, mosaic, library, preview and render calls work. The render tests need Chrome and skip themselves if it is missing.

@@ -18,14 +18,21 @@ function switchBoxLayoutCamera(){
   }
 }
 
-function makeLayoutBox(settings, position=[0,0,0], rotation=[0,0,0], hidden=false){
+// `cache` (a Map) lets many boxes with the same settings share one generated set of parts.
+function makeLayoutBox(settings, position=[0,0,0], rotation=[0,0,0], hidden=false, cache=null){
   const previousSettings=S, previousGeometry=G;
   try{
     S=Object.assign({},DEFAULTS,settings);
     G=geometryContext();
-    const result=generate();
-    decorate(result.parts,result.warns);
-    const model=makeScene(result.parts);
+    const key=cache?JSON.stringify(settings):'';
+    let parts=cache&&cache.get(key);
+    if(!parts){
+      const result=generate();
+      decorate(result.parts,result.warns);
+      parts=result.parts;
+      if(cache) cache.set(key,parts);
+    }
+    const model=makeScene(parts);
     if(!model.solids.length) throw new Error('No box geometry');
     return {settings,position,rotation,hidden,model};
   } finally {
@@ -170,12 +177,12 @@ function rebuildBoxLayout(){
   if(layingOut()) buildGL(boxLayoutScene);
 }
 
-function restoreLayoutBox(entry){
+function restoreLayoutBox(entry,cache){
   const rotation=entry?.rotation??[0,0,entry?.angle];
   const vector=value=>Array.isArray(value)&&value.length===3&&value.every(Number.isFinite);
   if(!entry?.settings || !TYPES.some(type=>type.id===entry.settings.type)
     || !vector(entry.position) || !vector(rotation)) throw new Error('Invalid box in layout');
-  return makeLayoutBox(entry.settings,entry.position,rotation,entry.hidden===true);
+  return makeLayoutBox(entry.settings,entry.position,rotation,entry.hidden===true,cache);
 }
 
 function loadBoxLayout(){
@@ -207,7 +214,7 @@ function downloadBoxLayout(assembly=currentBoxLayout(),filename='boxsmith-layout
 function openBoxLayout(input){
   if(!GL) throw new Error('Opening a box layout requires WebGL');
   const file=Boxsmith.assemblies.parse(input);
-  const boxes=file.boxes.map(restoreLayoutBox);
+  const boxes=file.boxes.map(entry=>restoreLayoutBox(entry));
   layoutBoxes=boxes;
   layoutSelection=-1;
   placingBox=false;

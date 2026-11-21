@@ -3,7 +3,13 @@
   "version": "1.0.0",
   "description": "Laser-cut box generator: web app and JavaScript API",
   "main": "boxsmith-node.js",
-  "scripts": { "test": "node --test test/" },
-  "devDependencies": { "jsdom": "^31.0.1", "@napi-rs/canvas": "^1.2.0" },
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "jsdom": "^31.0.1",
+    "@napi-rs/canvas": "^1.2.0",
+    "playwright-core": "^1.50.0"
+  },
   "license": "MIT"
 }

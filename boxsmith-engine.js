@@ -275,7 +275,7 @@
       if(!id) throw new RangeError("tab must be one of: "+Object.keys(TABS).join(', '));
       document.querySelector('#tabs [data-v="'+id+'"]').click();
     },
-    /** Read or change the 3D preview. Pass any of: material, explode (0-1), spin, yaw, pitch, zoom, hardware, stereo ('off'|'cross'|'parallel'), stereoDepth, edgeColor, lamp ({on,gain,color}), maximize. */
+    /** Read or change the 3D preview. Pass any of: material, explode (0-1), spin, yaw and pitch (degrees; pitch 90 is straight down), zoom, hardware, stereo ('off'|'cross'|'parallel'), stereoDepth, edgeColor, lamp ({on,gain,color}), maximize. */
     view(changes){
       requirePage();
       if(changes){
@@ -286,7 +286,8 @@
         }
         for(const key of ['explode','yaw','pitch','zoom']) if(changes[key]!==undefined){
           if(!Number.isFinite(changes[key])) throw new TypeError(key+' must be a number');
-          view[key]=changes[key];
+          if(key==='pitch'&&Math.abs(changes[key])>90) throw new RangeError('pitch must be between -90 and 90 degrees');
+          view[key]=(key==='yaw'||key==='pitch')?changes[key]*Math.PI/180:changes[key];   // the page works in radians; the API in degrees
         }
         if(changes.spin!==undefined) view.spin=!!changes.spin;
         if(changes.hardware!==undefined) view.hw=!!changes.hardware;
@@ -304,7 +305,7 @@
         if(changes.maximize!==undefined&&typeof setMax==='function') setMax(!!changes.maximize);
         render();
       }
-      return {material:view.mat,explode:view.explode,spin:view.spin,yaw:view.yaw,pitch:view.pitch,zoom:view.zoom,hardware:view.hw,stereo:view.stereo,stereoDepth:view.stereoDeg,
+      return {material:view.mat,explode:view.explode,spin:view.spin,yaw:round(view.yaw*180/Math.PI,2),pitch:round(view.pitch*180/Math.PI,2),zoom:view.zoom,hardware:view.hw,stereo:view.stereo,stereoDepth:view.stereoDeg,
         edgeColor:cutEdgeColors[view.mat]||null,lamp:{on:LAMP.on,gain:LAMP.gain,color:LAMP.color}};
     },
     /** Play the "show it work" animation. */
@@ -328,4 +329,163 @@
     /** What the page is showing now: cut sheets, parts, costs and warnings for the editor's box. */
     current:()=>computeDesign(S,{card:false})
   });
+
+  /* ---------- render a layout (or one box) to a PNG, offscreen ---------- */
+  const RENDER_KEYS=['pitch','yaw','width','height','fit','zoom','material','edgeColor','lamp','background','showHidden'];
+  const HEX=/^#[0-9a-f]{6}$/i;
+  function renderOptions(options){
+    if(options===undefined||options===null) options={};
+    if(!isRecord(options)) throw new TypeError('render options must be an object');
+    for(const key of Object.keys(options)) if(!RENDER_KEYS.includes(key)) throw new RangeError('Unknown render option: '+key);
+    const o={pitch:35,yaw:30,width:1600,height:1200,fit:true,zoom:1,material:'birch',edgeColor:null,lamp:{on:false,gain:1,color:'#ffd6a0'},background:'#ffffff',showHidden:false};
+    const num=(key,min,max)=>{
+      const v=options[key]; if(v===undefined) return;
+      if(typeof v!=='number'||!Number.isFinite(v)) throw new TypeError(key+' must be a number');
+      if(v<min||v>max) throw new RangeError(key+' must be between '+min+' and '+max);
+      o[key]=v;
+    };
+    num('pitch',-90,90); num('yaw',-3600,3600); num('zoom',0.01,100);
+    for(const key of ['width','height']) if(options[key]!==undefined){
+      const v=options[key];
+      if(!Number.isInteger(v)) throw new TypeError(key+' must be a whole number of pixels');
+      if(v<1||v>8192) throw new RangeError(key+' must be between 1 and 8192 pixels');
+      o[key]=v;
+    }
+    for(const key of ['fit','showHidden']) if(options[key]!==undefined){
+      if(typeof options[key]!=='boolean') throw new TypeError(key+' must be true or false');
+      o[key]=options[key];
+    }
+    if(options.material!==undefined){
+      if(!MATS[options.material]) throw new RangeError('material must be one of: '+Object.keys(MATS).join(', '));
+      o.material=options.material;
+    }
+    if(options.edgeColor!==undefined&&options.edgeColor!==null){
+      if(typeof options.edgeColor!=='string'||!HEX.test(options.edgeColor)) throw new RangeError('edgeColor must look like #rrggbb');
+      o.edgeColor=options.edgeColor.toLowerCase();
+    }
+    if(options.background!==undefined){
+      if(options.background!=='transparent'&&!(typeof options.background==='string'&&HEX.test(options.background))) throw new RangeError("background must be '#rrggbb' or 'transparent'");
+      o.background=options.background.toLowerCase();
+    }
+    if(options.lamp!==undefined){
+      const lamp=options.lamp;
+      if(!isRecord(lamp)) throw new TypeError('lamp must be an object like { on: true }');
+      for(const key of Object.keys(lamp)) if(!['on','gain','color'].includes(key)) throw new RangeError('Unknown lamp option: '+key);
+      if(lamp.on!==undefined){ if(typeof lamp.on!=='boolean') throw new TypeError('lamp.on must be true or false'); o.lamp.on=lamp.on; }
+      if(lamp.gain!==undefined){ if(typeof lamp.gain!=='number'||!Number.isFinite(lamp.gain)) throw new TypeError('lamp.gain must be a number'); if(lamp.gain<0||lamp.gain>10) throw new RangeError('lamp.gain must be between 0 and 10'); o.lamp.gain=lamp.gain; }
+      if(lamp.color!==undefined){ if(typeof lamp.color!=='string'||!HEX.test(lamp.color)) throw new RangeError('lamp.color must look like #rrggbb'); o.lamp.color=lamp.color.toLowerCase(); }
+    }
+    return o;
+  }
+
+  // Pictures placed on boxes must be decoded before the geometry is built.
+  async function loadArtImages(file){
+    const sources=new Set();
+    for(const box of file.boxes) for(const art of (box.settings.art||[])) if(art&&art.type==='png'&&typeof art.data==='string') sources.add(art.data);
+    await Promise.all([...sources].map(src=>new Promise(resolve=>{
+      const image=getImg(src);
+      if(image.complete) return resolve();
+      image.addEventListener('load',resolve); image.addEventListener('error',resolve);
+    })));
+  }
+
+  function visibleBoxes(file,o){
+    const entries=file.boxes.filter(entry=>o.showHidden||!entry.hidden);
+    if(!entries.length) throw new Error('Nothing to render: the layout has no visible boxes (use showHidden: true to draw hidden ones)');
+    return entries;
+  }
+  async function renderFile(file,o){
+    if(typeof THREE==='undefined'||typeof document==='undefined') throw new Error('Rendering needs the Boxsmith page (use boxsmith-node.js from Node)');
+    const entries=visibleBoxes(file,o);
+    await loadArtImages({boxes:entries});
+    const cache=new Map(), boxes=entries.map(entry=>{
+      const box=restoreLayoutBox(entry,cache);
+      box.hidden=false;
+      transformLayoutBox(box);
+      for(const solid of box.model.solids) solid.layoutBox=box;
+      return box;
+    });
+    const solids=boxes.flatMap(box=>box.model.solids);
+    const bounds=new THREE.Box3(); for(const box of boxes) bounds.union(box.bounds);
+    const model={solids,ctr:bounds.getCenter(new THREE.Vector3()).toArray(),R:Math.max(10,bounds.getSize(new THREE.Vector3()).length()/2||100)};
+
+    const canvas=document.createElement('canvas'); canvas.width=o.width; canvas.height=o.height;
+    let off;
+    try{ off=makeGLContext(canvas,{preserveDrawingBuffer:true}); }
+    catch(error){ throw new Error('WebGL is not available here, so the layout cannot be rendered ('+error.message+')'); }
+
+    // Borrow the page's globals for the length of the render, then put every one back.
+    const saved={GL,mat:view.mat,hw:view.hw,edge:cutEdgeColors[o.material],lamp:{...LAMP,off:[...LAMP.off]}};
+    try{
+      GL=off; view.mat=o.material; view.hw=true;
+      if(o.edgeColor) cutEdgeColors[o.material]=o.edgeColor; else delete cutEdgeColors[o.material];
+      Object.assign(LAMP,{on:o.lamp.on,gain:o.lamp.gain,color:o.lamp.color,size:1,off:[0,0,0],yaw:-0.32,pitch:0.16});
+      glColors(); buildGL(model);
+      const lamp=o.lamp.on;
+      lampFrame(model,lamp);
+
+      // camera: the page's own conventions (yaw, pitch in radians; pitch down from horizontal)
+      const yaw=o.yaw*Math.PI/180, pitch=o.pitch*Math.PI/180;
+      const cy=Math.cos(yaw), sy=Math.sin(yaw), cp=Math.cos(pitch), sp=Math.sin(pitch);
+      const away=[cp*sy,cp*cy,-sp], up=[sp*sy,sp*cy,cp], right=[cy,-sy,0], dist=model.R*20;
+      const {Rl,CAMV}=lampBasis(lamp,right,up,away,model.ctr);
+      const w=o.width, h=o.height, dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+      let C=model.ctr.slice(), scale=Math.min(w,h)*0.40/model.R*o.zoom;
+      if(o.fit){
+        // frame every drawn corner with a small margin
+        const point=new THREE.Vector3(); let x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity;
+        for(const box of boxes) for(const solid of box.model.solids) for(const loop of [solid.bot[0],solid.top[0]]) for(const vertex of loop){
+          point.fromArray(vertex).applyMatrix4(box.pose); if(Rl) point.applyMatrix4(Rl);
+          const x=dot(point.toArray(),CAMV.right), y=dot(point.toArray(),CAMV.up);
+          if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y;
+        }
+        const margin=0.04, ex=Math.max(x1-x0,1e-3), ey=Math.max(y1-y0,1e-3);
+        scale=Math.min(w/(ex*(1+2*margin)),h/(ey*(1+2*margin)));
+        const dx=(x0+x1)/2-dot(model.ctr,CAMV.right), dy=(y0+y1)/2-dot(model.ctr,CAMV.up);
+        C=model.ctr.map((v,i)=>v+CAMV.right[i]*dx+CAMV.up[i]*dy);
+      }
+      const cam=off.cam;
+      cam.position.set(C[0]-CAMV.away[0]*dist,C[1]-CAMV.away[1]*dist,C[2]-CAMV.away[2]*dist); cam.up.set(...CAMV.up); cam.lookAt(C[0],C[1],C[2]);
+      cam.left=-w/2/scale; cam.right=w/2/scale; cam.top=h/2/scale; cam.bottom=-h/2/scale; cam.near=0.1; cam.far=dist*4; cam.updateProjectionMatrix();
+
+      // place and paint every box exactly as Arrange boxes does
+      const M=new THREE.Matrix4(), Tm=new THREE.Matrix4();
+      for(const ob of off.objs){
+        const box=ob.s.layoutBox;
+        M.copy(box.pose).multiply(ob.base); if(Rl) M.premultiply(Rl);
+        ob.mesh.matrix.copy(M); ob.edges.matrix.copy(M); ob.edges.visible=!lamp;
+        if(ob.decal){ ob.decal.matrix.copy(M).multiply(Tm.makeTranslation(0,0,ob.dz)); ob.decal.visible=!lamp; }
+        if(ob.hw){ ob.hw.matrix.copy(M); ob.hw.matrixWorldNeedsUpdate=true; }
+        const clear=ob.s.look==='clear', paint=clear?null:paintMaterials(box.settings);
+        ob.mesh.material=clear?[off.clearCap,off.clearSide]:paint?[paint.cap,paint.side]:[off.cap,off.side];
+      }
+      off.r.setPixelRatio(1); off.r.setSize(w,h,false); off.r.setViewport(0,0,w,h);
+      if(o.background==='transparent') off.r.setClearColor(0x000000,0); else off.r.setClearColor(parseInt(o.background.slice(1),16),1);
+      off.r.render(off.sc,cam);
+      return {png:canvas.toDataURL('image/png'),width:w,height:h};
+    } finally {
+      for(const ob of off.objs){
+        ob.mesh.geometry.dispose(); ob.edges.geometry.dispose();
+        if(ob.decal){ ob.decal.geometry.dispose(); ob.decal.material.map.dispose(); ob.decal.material.dispose(); }
+        if(ob.hw) ob.hw.children.forEach(m=>m.geometry.dispose());
+      }
+      for(const key of ['cap','side','line','steel','nutMat','clearCap','clearSide','hiCap','hiSide']) off[key].dispose();
+      off.r.dispose(); try{ off.r.forceContextLoss(); }catch(e){}
+      GL=saved.GL; view.mat=saved.mat; view.hw=saved.hw;
+      if(saved.edge===undefined) delete cutEdgeColors[o.material]; else cutEdgeColors[o.material]=saved.edge;
+      Object.assign(LAMP,saved.lamp);
+    }
+  }
+
+  /** Render a layout (object or JSON text) to a PNG without touching the page. Resolves { png, width, height }. */
+  API.assemblies.render=async function(layout,options){
+    const o=renderOptions(options), file=API.assemblies.parse(layout);
+    return renderFile(file,o);
+  };
+  /** Render one box design to a PNG, with the same options. */
+  API.design.render=async function(settings,options){
+    const o=renderOptions(options), design=API.boxes.create(...(()=>{ const {type='closed',...rest}=isRecord(settings)?settings:{}; return [type,rest]; })());
+    return renderFile(API.assemblies.create({boxes:[API.assemblies.place(design)]}),o);
+  };
+  API._checkRender=(layout,options)=>{ const o=renderOptions(options), file=API.assemblies.parse(layout); visibleBoxes(file,o); return {options:o,layout:file}; };
 })();

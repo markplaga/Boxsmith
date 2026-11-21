@@ -88,3 +88,120 @@ test('the preview can be driven', () => {
   B.browser.setSettings({ type: 'open', W: 100, D: 60, H: 40 });
   assert.equal(B.browser.current().outside.W, 100);
 });
+
+test('view() takes and returns degrees', () => {
+  assert.deepEqual([B.browser.view({ pitch: 0, yaw: 45 }).pitch, B.browser.view().yaw], [0, 45]);
+  assert.equal(B.browser.view({ pitch: 90, yaw: 0 }).pitch, 90);
+  assert.equal(B.browser.view({ pitch: 35 }).pitch, 35);
+  assert.equal(B.browser.view({ yaw: -90 }).yaw, -90);
+  assert.throws(() => B.browser.view({ pitch: 120 }), RangeError);
+  assert.throws(() => B.browser.view({ yaw: 'left' }), TypeError);
+});
+
+test('Boxes to cut goes past 50: 100 boxes nest across as many sheets as needed', () => {
+  const one = B.design.compute({ type: 'closed', W: 60, D: 40, H: 30 }, { svg: false, dxf: false, card: false });
+  const many = B.design.compute({ type: 'closed', W: 60, D: 40, H: 30, qty: 100 }, { svg: false, dxf: false, card: false });
+  const nested = many.sheets.reduce((sum, sheet) => sum + sheet.parts.length, 0);
+  assert.equal(nested, 100 * one.parts.length);
+  assert.equal(many.stats.parts, nested);                // stats and the nest agree
+  assert.equal(many.cost.quantity, 100);
+  assert.ok(many.sheets.length > one.sheets.length);
+  const capped = B.design.compute({ type: 'closed', W: 60, D: 40, H: 30, qty: 5000 }, { svg: false, dxf: false, card: false });
+  assert.equal(capped.cost.quantity, 500);
+  assert.equal(capped.stats.parts, capped.sheets.reduce((sum, sheet) => sum + sheet.parts.length, 0));
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  assert.match(html, /data-k="qty" min="1" max="500"/);
+});
+
+test('render options are checked', async () => {
+  const layout = B.assemblies.create({ boxes: [B.assemblies.place(B.boxes.create('closed'))] });
+  const bad = [[{ pitch: 120 }, RangeError], [{ width: 0 }, RangeError], [{ height: 99999 }, RangeError], [{ width: 1.5 }, TypeError],
+    [{ fit: 'yes' }, TypeError], [{ background: 'red' }, RangeError], [{ material: 'gold' }, RangeError], [{ edgeColor: 'blue' }, RangeError],
+    [{ lamp: true }, TypeError], [{ zoom: 0 }, RangeError], [{ roll: 3 }, RangeError]];
+  for (const [options, type] of bad) await assert.rejects(() => B.assemblies.render(layout, options), type, JSON.stringify(options));
+  await assert.rejects(() => B.assemblies.render({ nope: 1 }, {}), TypeError);
+  const hidden = B.assemblies.create({ boxes: [B.assemblies.place(B.boxes.create('closed'), { hidden: true })] });
+  await assert.rejects(() => B.assemblies.render(hidden, {}), /no visible boxes/);
+});
+
+// Pictures need a browser (see boxsmith-node.js). These tests skip themselves where there is none.
+const pngSize = png => ({ width: png.readUInt32BE(16), height: png.readUInt32BE(20) });
+async function alphaBounds(png) {
+  const { loadImage, createCanvas } = require('@napi-rs/canvas');
+  const image = await loadImage(png), canvas = createCanvas(image.width, image.height), context = canvas.getContext('2d');
+  context.drawImage(image, 0, 0);
+  const { data, width, height } = context.getImageData(0, 0, image.width, image.height);
+  let x0 = width, x1 = -1, y0 = height, y1 = -1;
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) if (data[(y * width + x) * 4 + 3] > 8) {
+    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+  }
+  return { x0, x1, y0, y1, width, height };
+}
+async function canRender(t) {
+  try { await B.design.render({ type: 'closed' }, { width: 64, height: 48 }); return true; }
+  catch (error) { if (/playwright-core|Could not start Chrome|WebGL/.test(error.message)) { t.skip(error.message); return false; } throw error; }
+}
+
+test('a single box renders to a PNG of the right size', async t => {
+  if (!await canRender(t)) return;
+  const picture = await B.design.render({ type: 'closed', W: 100, D: 70, H: 40, paint: 'acrylic', paintColor: '#3a7bd5' }, { width: 640, height: 480 });
+  assert.ok(Buffer.isBuffer(picture.png));
+  assert.deepEqual(pngSize(picture.png), { width: 640, height: 480 });
+  assert.deepEqual([picture.width, picture.height], [640, 480]);
+  assert.ok(picture.png.length > 2000);
+  const defaults = await B.design.render({ type: 'open' });
+  assert.deepEqual(pngSize(defaults.png), { width: 1600, height: 1200 });
+});
+
+test('a layout of 101 boxes renders in a few seconds, and fit frames every box', async t => {
+  if (!await canRender(t)) return;
+  const { boxes, assemblies } = B, frame = boxes.create('frame', { W: 640, D: 640, H: 40, frameW: 20 });
+  const list = [assemblies.place(frame)];
+  for (let i = 0; i < 100; i++) {
+    const tile = boxes.create('closed', { W: 50, D: 50, H: 30, paint: i % 2 ? 'acrylic' : 'watercolor', paintColor: ['#3a7bd5', '#d5483a', '#3ab05a', '#e0b030'][i % 4] });
+    list.push(assemblies.place(tile, { position: [(i % 10) * 60 - 270, Math.floor(i / 10) * 60 - 270, 0], rotation: [0, 0, (i % 7) * 9] }));
+  }
+  const layout = assemblies.create({ boxes: list });
+  assert.equal(layout.boxes.length, 101);
+  const started = Date.now();
+  const picture = await assemblies.render(layout, { pitch: 90, yaw: 0, width: 800, height: 600, background: 'transparent' });
+  assert.ok(Date.now() - started < 15000, 'took ' + (Date.now() - started) + ' ms');
+  assert.deepEqual(pngSize(picture.png), { width: 800, height: 600 });
+  const b = await alphaBounds(picture.png);
+  assert.ok(b.x0 > 0 && b.y0 > 0 && b.x1 < b.width - 1 && b.y1 < b.height - 1, 'every box is inside the picture, with a margin');
+  assert.ok(b.y1 - b.y0 > b.height * 0.85 || b.x1 - b.x0 > b.width * 0.85, 'and it fills the picture');
+
+  // fit leaves out hidden boxes: a far-away hidden box does not shrink the framing...
+  const far = assemblies.add(layout, assemblies.place(boxes.create('closed'), { position: [5000, 5000, 0], hidden: true }));
+  const same = await alphaBounds((await assemblies.render(far, { pitch: 90, yaw: 0, width: 800, height: 600, background: 'transparent' })).png);
+  assert.deepEqual(same, b);
+  // ...unless showHidden asks for it, and then the layout shrinks to make room.
+  const withFar = await alphaBounds((await assemblies.render(far, { pitch: 90, yaw: 0, width: 800, height: 600, background: 'transparent', showHidden: true })).png);
+  assert.ok(withFar.x1 - withFar.x0 < b.x1 - b.x0 + 1 || withFar.y1 - withFar.y0 < b.y1 - b.y0 + 1);
+  assert.ok(withFar.x1 < withFar.width && withFar.y1 < withFar.height);
+});
+
+test('rendering leaves the page, its tab and its layout alone', async t => {
+  if (!await canRender(t)) return;
+  const before = JSON.stringify([B.browser.getSettings(), B.browser.getAssembly(), B.browser.view()]);
+  const layout = B.assemblies.create({ boxes: [B.assemblies.place(B.boxes.create('open'))] });
+  await B.assemblies.render(layout, { material: 'walnut', pitch: 10, lamp: { on: true } });
+  assert.equal(JSON.stringify([B.browser.getSettings(), B.browser.getAssembly(), B.browser.view()]), before);
+});
+
+test('view({ pitch: 90 }) is the Top view of Arrange boxes', async t => {
+  if (!await canRender(t)) return;                      // needs the real page with WebGL
+  const result = await (await B.page()).evaluate(() => {
+    const layout = Boxsmith.assemblies.create({ boxes: [Boxsmith.assemblies.place(Boxsmith.boxes.create('closed'))] });
+    Boxsmith.browser.openAssembly(layout);
+    Boxsmith.browser.view({ pitch: 20, yaw: 40 });
+    Boxsmith.browser.topView();                          // the Top view button: π/2 radians internally
+    const button = Boxsmith.browser.view();
+    Boxsmith.browser.view({ pitch: 20, yaw: 40 });
+    const api = Boxsmith.browser.view({ pitch: 90, yaw: 0 });
+    return { button, api };
+  });
+  assert.equal(result.button.pitch, 90);
+  assert.equal(result.api.pitch, result.button.pitch);
+  assert.equal(result.api.yaw, result.button.yaw);
+});

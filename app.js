@@ -714,8 +714,10 @@ function finalize(p){
   const circles=p.circles.map(c=>({x:c.x,y:c.y,r:Math.max(0.2,c.r-k)}));
   return {name:p.name, idx:p.idx, mat:p.mat||'main', th:p.th, outline:out, holes, circles, slits:p.slits, marks:p.marks||[], bb:bbox(out)};
 }
+const QTY_MAX=500;                                    // most boxes one cut run can hold
+const qtyOf=()=>Math.max(1,Math.min(QTY_MAX,Math.floor(+S.qty)||1));
 function layout(fparts){
-  const SW=S.sheetW, SH=S.sheetH, g=S.gap, warns=[], q=Math.max(1,Math.min(50,S.qty|0)), groups=new Map();
+  const SW=S.sheetW, SH=S.sheetH, g=S.gap, warns=[], q=qtyOf(), groups=new Map();
   for(const f of fparts) for(let k=0;k<q;k++){
     const ff=q>1?Object.assign({},f,{name:f.name+' #'+(k+1)}):f, key=f.mat+'|'+f.th;
     if(!groups.has(key)) groups.set(key,[]); groups.get(key).push({f:ff,w:f.bb.w,h:f.bb.h});
@@ -866,7 +868,7 @@ function buildScene(parts){
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 /* ---- WebGL renderer (three.js) with true depth; 2D painter is the fallback ---- */
 let GL=null;
-const LAMP={on:false,gain:1,color:'#ffd6a0',size:1,off:[0,0,0],yaw:-0.32,pitch:0.16,_was:false};
+const LAMP={on:false,gain:1,color:'#ffd6a0',size:1,off:[0,0,0],yaw:-0.32,pitch:0.16};
 try{ const c=localStorage.getItem('boxsmith-lampcolor'); if(c) LAMP.color=c; }catch(e){}
 function lampBuild(){
   if(GL.lamp) return;
@@ -879,11 +881,13 @@ function lampBuild(){
   GL.lamp={light,room,walls};
 }
 // called every frame: switches the whole scene between normal lighting and lamp mode
-function lampFrame(){
-  if(!GL||!scene) return;
-  const on=LAMP.on&&!layingOut(); const viewEl=document.querySelector('.view'); if(viewEl) viewEl.classList.toggle('lamp',on);
+// Offscreen renders pass their own model and on/off, and leave the page's .view alone.
+function lampFrame(model=scene,forceOn){
+  if(!GL||!model) return;
+  const on=forceOn===undefined?LAMP.on&&!layingOut():forceOn;
+  if(forceOn===undefined){ const viewEl=document.querySelector('.view'); if(viewEl) viewEl.classList.toggle('lamp',on); }
   if(on){
-    lampBuild(); const L=GL.lamp, R=scene.R, C=scene.ctr;
+    lampBuild(); const L=GL.lamp, R=model.R, C=model.ctr;
     if(!L.light.parent){ GL.sc.add(L.light); GL.sc.add(L.room); }
     L.light.color.set(LAMP.color); L.light.intensity=0.95*LAMP.gain; L.light.distance=R*9; L.light.decay=1.6; L.light.position.set(C[0],C[1],C[2]);
     L.light.shadow.camera.near=Math.max(0.2,R*0.02); L.light.shadow.camera.far=R*16;
@@ -899,18 +903,17 @@ function lampFrame(){
     GL.amb.intensity=0.11; GL.dl.intensity=0; GL.dl2.intensity=0;
     const trans=MATS[view.mat].a<1;
     for(const ob of GL.objs){ ob.mesh.castShadow=!(trans||ob.s.look==='clear'); ob.edges.visible=false; if(ob.decal) ob.decal.visible=false; }
-    LAMP._was=true;
-  } else if(LAMP._was){
+    GL._lampOn=true;
+  } else if(GL._lampOn){
     if(GL.lamp&&GL.lamp.light.parent){ GL.sc.remove(GL.lamp.light); GL.sc.remove(GL.lamp.room); }
     GL.amb.intensity=0.62; GL.dl.intensity=0.55; GL.dl2.intensity=0.12;
     for(const ob of GL.objs){ ob.mesh.castShadow=false; ob.edges.visible=true; if(ob.decal) ob.decal.visible=true; }
-    LAMP._was=false;
+    GL._lampOn=false;
   }
 }
-function initGL(){
-  if(!window.THREE) return;
-  try{
-    const r=new THREE.WebGLRenderer({canvas:document.getElementById('gl'),antialias:true,alpha:true});
+// One renderer with its own scene, camera, lights and materials. The page uses one on its canvas; offscreen renders make another.
+function makeGLContext(canvas,extra){
+  const r=new THREE.WebGLRenderer(Object.assign({canvas,antialias:true,alpha:true},extra));
     const sc=new THREE.Scene(), cam=new THREE.OrthographicCamera(-1,1,1,-1,-100000,100000);
     sc.add(cam); const amb=new THREE.AmbientLight(0xffffff,0.62); sc.add(amb);
     const dl=new THREE.DirectionalLight(0xffffff,0.55); dl.position.set(-0.45,0.7,1); cam.add(dl); cam.add(dl.target); dl.target.position.set(0,0,0);
@@ -920,8 +923,11 @@ function initGL(){
     const cl=(c,o)=>new THREE.MeshLambertMaterial({color:c,transparent:true,opacity:o,depthWrite:false,side:THREE.DoubleSide});
     const hiCap=new THREE.MeshLambertMaterial({color:0xf08a63,emissive:0x5a1a05}), hiSide=new THREE.MeshLambertMaterial({color:0xd0562c,emissive:0x3a1003});
     const eyeCams=[new THREE.OrthographicCamera(),new THREE.OrthographicCamera()];
-    GL={r,sc,cam,eyeCams,root,amb,dl,dl2,cap,side,line,steel:new THREE.MeshLambertMaterial({color:0xb7bcc2,emissive:0x1a1c1f}),nutMat:new THREE.MeshLambertMaterial({color:0x8c9299,emissive:0x111214}),clearCap:cl(0xc4e4ee,0.32),clearSide:cl(0x8fc3d2,0.6),hiCap,hiSide,objs:[]};
-  }catch(e){ GL=null; }
+    return {r,sc,cam,eyeCams,root,amb,dl,dl2,cap,side,line,steel:new THREE.MeshLambertMaterial({color:0xb7bcc2,emissive:0x1a1c1f}),nutMat:new THREE.MeshLambertMaterial({color:0x8c9299,emissive:0x111214}),clearCap:cl(0xc4e4ee,0.32),clearSide:cl(0x8fc3d2,0.6),hiCap,hiSide,objs:[]};
+}
+function initGL(){
+  if(!window.THREE) return;
+  try{ GL=makeGLContext(document.getElementById('gl')); }catch(e){ GL=null; }
 }
 // Painted look for the wood faces and cut edges, cached per paint recipe.
 const paintCache=new Map();
@@ -955,7 +961,7 @@ function makeDecal(s){
   const b=bbox(p.outline), ppm=Math.min(8, 1400/Math.max(b.w,b.h)), cvs=document.createElement('canvas');
   cvs.width=Math.max(4,Math.ceil(b.w*ppm)); cvs.height=Math.max(4,Math.ceil(b.h*ppm));
   const {u,v,n,o}=s.map; const uv=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]];
-  const eng=mul(uv,-1), toOut=sub(s.c,scene?scene.ctr:[0,0,0]); const out = (eng[0]*toOut[0]+eng[1]*toOut[1]+eng[2]*toOut[2])>=0 ? 1 : -1;
+  const eng=mul(uv,-1), toOut=sub(s.c,s.layoutBox?s.layoutBox.model.ctr:scene?scene.ctr:[0,0,0]); const out = (eng[0]*toOut[0]+eng[1]*toOut[1]+eng[2]*toOut[2])>=0 ? 1 : -1;
   const outDir=mul(eng,out), mirror = out<0, onN = (outDir[0]*n[0]+outDir[1]*n[1]+outDir[2]*n[2])>0;
   const c=cvs.getContext('2d');
   const TX=x=>(mirror? (b.x+b.w-x) : (x-b.x))*ppm, TY=y=>(b.y+b.h-y)*ppm;
@@ -966,7 +972,7 @@ function makeDecal(s){
     c.fillStyle=burnt?'rgba(58,34,18,0.82)':hexA(m.color,0.95);
     c.strokeStyle=m.outline?hexA(m.outline,1):(burnt?'rgba(58,34,18,0.9)':hexA(m.color,1));
     if(m.img){ const im=getImg(m.img,()=>{ if(scene) buildGL(), render(); }); if(im.complete&&im.naturalWidth){ c.save(); c.translate(TX(m.cx),TY(m.cy)); c.scale(mirror?-1:1,-1); c.rotate((m.rot||0)*PI/180); c.globalAlpha=0.85; c.globalCompositeOperation='multiply'; c.drawImage(im,-m.w/2*ppm,-m.h/2*ppm,m.w*ppm,m.h*ppm); c.restore(); } continue; }
-    const tl=+S.textLine>0?+S.textLine*ppm:0; c.lineWidth=tl||Math.max(1.6,ppm*0.35);
+    const textLine=s.layoutBox?(s.layoutBox.settings.textLine??DEFAULTS.textLine):S.textLine, tl=+textLine>0?+textLine*ppm:0; c.lineWidth=tl||Math.max(1.6,ppm*0.35);
     c.beginPath(); for(const l of m.loops){ l.forEach((q,i)=>i?c.lineTo(TX(q[0]),TY(q[1])):c.moveTo(TX(q[0]),TY(q[1]))); c.closePath(); }
     if(m.kind==='fill'){ c.fill('evenodd'); if(m.outline && !m.preview){ const lw0=c.lineWidth; c.lineWidth=tl||Math.max(1.4,ppm*0.3); c.stroke(); c.lineWidth=lw0; } } else { c.stroke(); for(const l of (m.open||[])){ c.beginPath(); l.forEach((q,i)=>i?c.lineTo(TX(q[0]),TY(q[1])):c.moveTo(TX(q[0]),TY(q[1]))); c.stroke(); } }
   }
@@ -1028,6 +1034,17 @@ function rotPt(q,R){ const a=R.a, ca=Math.cos(a), sa=Math.sin(a), P0=R.p, x=q[0]
   if(R.axis==='z') return [P0[0]+x*ca-y*sa, P0[1]+x*sa+y*ca, q[2]];
   if(R.axis==='y') return [P0[0]+x*ca+z*sa, q[1], P0[2]-x*sa+z*ca];
   return [q[0], P0[1]+y*ca-z*sa, P0[2]+y*sa+z*ca]; }
+// In lamp mode the room stays put and the model turns inside it: the rotation to apply, and the camera axes.
+function lampBasis(lamp,right,up,away,c0){
+  const cp0=Math.cos(LAMP.pitch), sp0=Math.sin(LAMP.pitch);
+  if(!lamp) return {Rl:null,CAMV:{away,up,right}};
+  const r0=[Math.cos(LAMP.yaw),-Math.sin(LAMP.yaw),0], a0=[cp0*Math.sin(LAMP.yaw),cp0*Math.cos(LAMP.yaw),-sp0], u0=[sp0*Math.sin(LAMP.yaw),sp0*Math.cos(LAMP.yaw),cp0];
+  const Bm=[[right[0],up[0],away[0]],[right[1],up[1],away[1]],[right[2],up[2],away[2]]], B0=[[r0[0],u0[0],a0[0]],[r0[1],u0[1],a0[1]],[r0[2],u0[2],a0[2]]];
+  const Q=[0,1,2].map(i=>[0,1,2].map(j=>B0[i][0]*Bm[j][0]+B0[i][1]*Bm[j][1]+B0[i][2]*Bm[j][2]));
+  const Rl=new THREE.Matrix4().set(Q[0][0],Q[0][1],Q[0][2],0, Q[1][0],Q[1][1],Q[1][2],0, Q[2][0],Q[2][1],Q[2][2],0, 0,0,0,1);
+  Rl.premultiply(new THREE.Matrix4().makeTranslation(c0[0],c0[1],c0[2])); Rl.multiply(new THREE.Matrix4().makeTranslation(-c0[0],-c0[1],-c0[2]));
+  return {Rl,CAMV:{away:a0,up:u0,right:r0}};
+}
 function renderGL(){
   const w=cv.clientWidth, h=cv.clientHeight; if(!w||!h) return;
   GL.r.setPixelRatio(window.devicePixelRatio||1); GL.r.setSize(w,h,false);
@@ -1041,14 +1058,7 @@ function renderGL(){
   const stereo=stereoActive(), vw=stereo?w/2:w;
   const scale=Math.min(vw,h)*(stereo?0.42:0.40)/(radius*(1+explode*0.9)+up0*0.45)*view.zoom;
   const away=[cp*sy,cp*cy,-sp], up=[sp*sy,sp*cy,cp], dist=radius*20, right=[cy,-sy,0];
-  let Rl=null; if(lamp){ // the room stays put; the model turns inside it
-    const r0=[Math.cos(LAMP.yaw),-Math.sin(LAMP.yaw),0], a0=[cp0*Math.sin(LAMP.yaw),cp0*Math.cos(LAMP.yaw),-sp0], u0=[sp0*Math.sin(LAMP.yaw),sp0*Math.cos(LAMP.yaw),cp0];
-    const Bm=[[right[0],up[0],away[0]],[right[1],up[1],away[1]],[right[2],up[2],away[2]]], B0=[[r0[0],u0[0],a0[0]],[r0[1],u0[1],a0[1]],[r0[2],u0[2],a0[2]]];
-    const Q=[0,1,2].map(i=>[0,1,2].map(j=>B0[i][0]*Bm[j][0]+B0[i][1]*Bm[j][1]+B0[i][2]*Bm[j][2]));
-    Rl=new THREE.Matrix4().set(Q[0][0],Q[0][1],Q[0][2],0, Q[1][0],Q[1][1],Q[1][2],0, Q[2][0],Q[2][1],Q[2][2],0, 0,0,0,1);
-    const c0=scene.ctr; Rl.premultiply(new THREE.Matrix4().makeTranslation(c0[0],c0[1],c0[2])); Rl.multiply(new THREE.Matrix4().makeTranslation(-c0[0],-c0[1],-c0[2]));
-    cp_=cp0; }
-  const CAMV=lamp?{away:[cp0*Math.sin(LAMP.yaw),cp0*Math.cos(LAMP.yaw),-sp0],up:[sp0*Math.sin(LAMP.yaw),sp0*Math.cos(LAMP.yaw),cp0],right:[Math.cos(LAMP.yaw),-Math.sin(LAMP.yaw),0]}:{away,up,right};
+  const {Rl,CAMV}=lampBasis(lamp,right,up,away,scene.ctr);
   const cam=GL.cam;
   const setCam=(eye)=>{ const e=eye*dist*Math.tan((view.stereoDeg||3.5)/2*PI/180);
     cam.position.set(C[0]-CAMV.away[0]*dist+CAMV.right[0]*e,C[1]-CAMV.away[1]*dist+CAMV.right[1]*e,C[2]-CAMV.away[2]*dist); cam.up.set(CAMV.up[0],CAMV.up[1],CAMV.up[2]); cam.lookAt(C[0],C[1],C[2]);
@@ -1512,7 +1522,7 @@ $('#artList').addEventListener('click',e=>{ const b=e.target.closest('[data-del]
 
 /* ================= COST ================= */
 function costs(fparts,lay,cutLen,area){
-  const q=Math.max(1,S.qty|0), SA=S.sheetW*S.sheetH;
+  const q=qtyOf(), SA=S.sheetW*S.sheetH;
   const engArea=fparts.reduce((a,f)=>a+f.marks.reduce((b,m)=>{ if(m.img) return b+m.w*m.h*0.5; if(m.kind==='fill'){ const bb=bbox(m.loops.flat()); return b+(isFinite(bb.w)?bb.w*bb.h*0.6:0);} return b; },0),0);
   const cutSec=(cutLen*q)/Math.max(1,S.speed)*1.15, engSec=engArea*q/(0.1*250), sec=cutSec+engSec;
   const matShare=area*q/SA*S.sheetPrice, sheetsCost=lay.sheets.length*S.sheetPrice, machine=sec/3600*S.rate;
@@ -1583,7 +1593,7 @@ function update(resetView){
   markSheetSel();
   const rows=fparts.map(f=>'<tr><td>'+esc(f.name)+'</td><td class="m">'+fmt(f.bb.w)+' × '+fmt(f.bb.h)+'</td></tr>').join('');
   const ty=TYPES.find(x=>x.id===S.type);
-  $('#guide').innerHTML='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap"><div><h3>'+ty.name+' — assembly</h3><p style="color:var(--muted);margin:0 0 8px">'+fparts.length+' parts'+(S.qty>1?' per box · '+S.qty+' boxes':'')+' · material '+fmt(S.t)+' · kerf '+fmt(S.kerf)+'</p></div><button class="btn primary" id="cardBtn">Download assembly card</button></div><ol>'
+  $('#guide').innerHTML='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap"><div><h3>'+ty.name+' — assembly</h3><p style="color:var(--muted);margin:0 0 8px">'+fparts.length+' parts'+(qtyOf()>1?' per box · '+qtyOf()+' boxes':'')+' · material '+fmt(S.t)+' · kerf '+fmt(S.kerf)+'</p></div><button class="btn primary" id="cardBtn">Download assembly card</button></div><ol>'
     +(S.type!=='kerftest'?'<li>Cut one corner first if this is a new material — fingers should press in by hand and hold. Adjust kerf ±0.02 mm if not.</li>':'')
     +(G.ts?'<li>Screw joints: drop an '+S.tslot+' nut into each T-slot, then drive an '+S.tslot+' × '+fmt(S.screwLen)+' screw through the matching hole.</li>':'')
     +res.notes.map(n=>'<li>'+esc(n)+'</li>').join('')
@@ -1593,9 +1603,9 @@ function update(resetView){
   $('#cardBtn').addEventListener('click',()=>saveFile(baseName()+'-assembly-card.html', cardHTML()));
   const warns=[...res.warns,...lay.warns];
   $('#warns').innerHTML=warns.map(w=>'<div class="warn">'+esc(w)+'</div>').join('');
-  const util=lay.sheets.length? ar*Math.max(1,S.qty|0)/(lay.sheets.length*S.sheetW*S.sheetH)*100:0;
+  const util=lay.sheets.length? ar*qtyOf()/(lay.sheets.length*S.sheetW*S.sheetH)*100:0;
   const C=costs(fparts,lay,cutLen,ar);
-  $('#stats').innerHTML='<div class="stat"><span>Parts</span><b>'+fparts.length*Math.max(1,S.qty|0)+'</b></div><div class="stat"><span>Sheets</span><b>'+lay.sheets.length+'</b></div><div class="stat"><span>Bed use</span><b>'+util.toFixed(0)+'%</b></div><div class="stat"><span>Cut length</span><b>'+(S.unit==='in'?(cutLen*C.q/25.4/12).toFixed(1)+' ft':(cutLen*C.q/1000).toFixed(2)+' m')+'</b></div><div class="stat"><span>Laser time</span><b>'+mmss(C.sec)+'</b></div><div class="stat"><span>Cost/box</span><b>'+$$m(C.perBox)+'</b></div><div class="stat"><span>Price</span><b>'+$$m(C.price)+'</b></div>';
+  $('#stats').innerHTML='<div class="stat"><span>Parts</span><b>'+fparts.length*qtyOf()+'</b></div><div class="stat"><span>Sheets</span><b>'+lay.sheets.length+'</b></div><div class="stat"><span>Bed use</span><b>'+util.toFixed(0)+'%</b></div><div class="stat"><span>Cut length</span><b>'+(S.unit==='in'?(cutLen*C.q/25.4/12).toFixed(1)+' ft':(cutLen*C.q/1000).toFixed(2)+' m')+'</b></div><div class="stat"><span>Laser time</span><b>'+mmss(C.sec)+'</b></div><div class="stat"><span>Cost/box</span><b>'+$$m(C.perBox)+'</b></div><div class="stat"><span>Price</span><b>'+$$m(C.price)+'</b></div>';
   $('#costBox').innerHTML='Material share <b>'+$$m(C.matShare)+'</b> ('+lay.sheets.length+' sheet'+(lay.sheets.length>1?'s':'')+' = <b>'+$$m(C.sheetsCost)+'</b> if bought whole)<br>Laser time <b>'+mmss(C.sec)+'</b> = <b>'+$$m(C.machine)+'</b><br>Cost per box <b>'+$$m(C.perBox)+'</b> · suggested price <b>'+$$m(C.price)+'</b>'+(C.q>1?' · batch of '+C.q:'');
   renderArt(); renderLibrary();
 }

@@ -439,7 +439,7 @@ body.max3d .lamp-ctl{top:190px}
   <div class="sec" data-adv>
     <h2>Production</h2>
     <div class="grid2">
-      <div class="f"><label for="lbl-37">Boxes to cut</label><input id="lbl-37" type="number" data-k="qty" min="1" max="50" step="1"></div>
+      <div class="f"><label for="lbl-37">Boxes to cut</label><input id="lbl-37" type="number" data-k="qty" min="1" max="500" step="1"></div>
       <div class="f"><label>Hold tabs per part</label><input type="number" data-k="holdTabs" min="0" max="8" step="1"><span class="hint">Kit mode: parts stay in the sheet</span></div>
       <div class="f" data-showk="holdTabs"><label for="lbl-38">Tab width</label><input id="lbl-38" type="number" data-k="holdW" data-len step="0.05"></div>
       <div class="f full" style="margin-top:4px"><label style="font-weight:600;color:var(--ink)">Cost estimate</label></div>
@@ -753,7 +753,7 @@ body.max3d .lamp-ctl{top:190px}
 
 <h2 id="h-production">14. Production: batches, kits, cost</h2>
 <dl>
-<dt>Boxes to cut</dt><dd>Lays out that many complete boxes (up to 50) across your sheets. Parts are numbered #1, #2…</dd>
+<dt>Boxes to cut</dt><dd>Lays out that many complete boxes (up to 500) across your sheets. Parts are numbered #1, #2…</dd>
 <dt>Hold tabs per part</dt><dd>Kit mode: leaves tiny uncut bridges (set by <i>Tab width</i>) so parts stay in the sheet until someone snaps them out. Good for paintable kits and shipping flat.</dd>
 <dt>Assembly card</dt><dd>On the <i>Assembly guide</i> tab. Downloads a printable page with a picture of the box, the parts list and step-by-step instructions, ready to tuck into a kit.</dd>
 <dt>Cost estimate</dt><dd>Enter <i>Sheet price</i>, <i>Machine rate</i> ($/hour), <i>Cut speed</i> (mm/s) and <i>Markup %</i>. Boxsmith estimates laser time, the share of material used, cost per box and a suggested price. Times are estimates; check them against your real job times and adjust the cut speed to match.</dd>
@@ -769,7 +769,7 @@ body.max3d .lamp-ctl{top:190px}
 </ul>
 
 <h3 id="h-api">Use the JavaScript API</h3>
-<p>Everything the page does is available from code: cut sheets, SVG and DXF files, parts, costs and assembly cards with <code>Boxsmith.design.compute(settings)</code>; whole-box layouts with <code>Boxsmith.assemblies</code> (including <code>snap</code>, <code>overlaps</code> and <code>measure</code>); <code>Boxsmith.mosaic</code>; saved materials and recipes in <code>Boxsmith.library</code>; and the preview with <code>Boxsmith.browser.view</code>. Use <code>Boxsmith</code> in the browser console on the Boxsmith page, or in Node.js with <code>boxsmith-node.js</code> (run <code>npm install jsdom @napi-rs/canvas</code> first). Loading only <code>boxsmith-api.js</code> gives you settings and layout files, without geometry. See <code>API.md</code> for every method. The API uses millimeters for dimensions and positions, and degrees for rotations. The layout’s <code>unit</code> setting controls how measurements are displayed.</p>
+<p>Everything the page does is available from code: cut sheets, SVG and DXF files, parts, costs and assembly cards with <code>Boxsmith.design.compute(settings)</code>; whole-box layouts with <code>Boxsmith.assemblies</code> (including <code>snap</code>, <code>overlaps</code>, <code>measure</code> and <code>render</code>, which draws a layout to a PNG); <code>Boxsmith.mosaic</code>; saved materials and recipes in <code>Boxsmith.library</code>; and the preview with <code>Boxsmith.browser.view</code>. Use <code>Boxsmith</code> in the browser console on the Boxsmith page, or in Node.js with <code>boxsmith-node.js</code> (run <code>npm install jsdom @napi-rs/canvas</code> first, plus <code>playwright-core</code> and Chrome if you want pictures). Loading only <code>boxsmith-api.js</code> gives you settings and layout files, without geometry. See <code>API.md</code> for every method. The API uses millimeters for dimensions and positions, and degrees for rotations. The layout’s <code>unit</code> setting controls how measurements are displayed.</p>
 <p>Run this in the browser console to open a 140 mm wide tray in <b>3D preview</b>.</p>
 <pre style="overflow-x:auto"><code>const tray = Boxsmith.boxes.create('open', { W: 140 });
 Boxsmith.browser.showBox(tray);</code></pre>
@@ -777,7 +777,7 @@ Boxsmith.browser.showBox(tray);</code></pre>
 <li><code>boxes.list()</code> lists the style IDs. <code>boxes.defaults(type)</code> shows the available parameter keys and default values.</li>
 <li><code>assemblies.place()</code> positions an intact box. <code>assemblies.create()</code> collects those placements into one layout, and <code>assemblies.serialize()</code> produces JSON that <b>Open layout</b> accepts.</li>
 </ul>
-<p>Follow the illustrated walkthrough to build a Frame layout, save it, and reopen it, or use the reference to look up a method. <a href="docs/boxsmith-api-guide.pdf">Illustrated API guide (PDF)</a> · <a href="https://github.com/markplaga/Boxsmith/blob/Assemble/API.md">API reference</a> · <a href="boxsmith-api.js" download>Download API script</a></p>
+<p>Follow the illustrated walkthrough to build a Frame layout, save it, and reopen it, or use the reference to look up a method. <a href="docs/boxsmith-api-guide.pdf">Illustrated API guide (PDF)</a> · <a href="https://github.com/markplaga/Boxsmith/blob/main/API.md">API reference</a> · <a href="boxsmith-api.js" download>Download API script</a></p>
 
 <h2 id="h-kerftest">16. Dialing in fit with the kerf test</h2>
 <ol>

@@ -2,6 +2,10 @@
 
 /* Boxsmith in Node.js, with every feature of the page (cut sheets, SVG/DXF, costs, layouts, snapping, mosaic).
    It runs the real page headlessly, so it needs two npm packages:   npm install jsdom @napi-rs/canvas
+   Rendering pictures (assemblies.render, design.render) also needs a browser, because jsdom has no WebGL:
+                                                                     npm install playwright-core
+   and Chrome, Chromium or Edge installed (or BOXSMITH_CHROME=/path/to/it, or load({ chrome: '/path' })).
+   The browser starts the first time you render and is closed by close().
    Usage:   const { load } = require('./boxsmith-node.js');
             const Boxsmith = await load();
             const result = Boxsmith.design.compute({ type: 'closed', W: 120, D: 80, H: 50 });
@@ -12,7 +16,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-async function load({ dir = __dirname, timeout = 20000 } = {}) {
+async function load({ dir = __dirname, timeout = 20000, chrome } = {}) {
   let jsdom;
   try { jsdom = require('jsdom'); require.resolve('@napi-rs/canvas'); }
   catch (error) { throw new Error('boxsmith-node.js needs: npm install jsdom @napi-rs/canvas'); }
@@ -73,7 +77,64 @@ async function load({ dir = __dirname, timeout = 20000 } = {}) {
     throw new Type(error && error.message ? error.message : String(error));
   };
   const node = wrap(api);
-  node.close = () => window.close();
+  delete node._checkRender;
+
+  // ---- pictures: the real page in headless Chromium (software GL, so no graphics card is needed) ----
+  let browser = null, starting = null;
+  const pageError = error => {
+    const text = String((error && error.message) || error).split('\n')[0].replace(/^[\w.]+: (?:(?:Type|Range)?Error: )?/, '');
+    return new Error(text);
+  };
+  const renderPage = () => starting || (starting = (async () => {
+    let playwright;
+    try { playwright = require('playwright-core'); }
+    catch (error) { throw new Error('Rendering from Node needs: npm install playwright-core (and Chrome, Chromium or Edge installed)'); }
+    const args = ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
+    if (typeof process.getuid === 'function' && process.getuid() === 0) args.push('--no-sandbox');
+    const executablePath = chrome || process.env.BOXSMITH_CHROME;
+    const attempts = executablePath ? [{ executablePath }] : [{ channel: 'chrome' }, { channel: 'msedge' }, {}];
+    let last;
+    for (const attempt of attempts) {
+      try { browser = await playwright.chromium.launch({ headless: true, args, ...attempt }); break; }
+      catch (error) { last = error; }
+    }
+    if (!browser) throw new Error('Could not start Chrome for rendering. Install Chrome or Chromium, or set BOXSMITH_CHROME to its path. (' + String(last && last.message).split('\n')[0] + ')');
+    const page = await browser.newPage();
+    await page.route('**/*', route => {
+      const url = route.request().url();
+      if (url === 'http://boxsmith.local/index.html') route.fulfill({ contentType: 'text/html', body: html });
+      else route.abort();
+    });
+    await page.goto('http://boxsmith.local/index.html', { waitUntil: 'load', timeout });
+    await page.waitForFunction(() => !!(window.Boxsmith && Boxsmith.assemblies && Boxsmith.assemblies.render), null, { timeout });
+    await page.evaluate(() => { if (window.BOX) window.BOX.noSave = true; });
+    return page;
+  })().catch(error => { starting = null; if (browser) { browser.close().catch(() => {}); browser = null; } throw error; }));
+
+  const renderChecked = async (layout, options) => {
+    let checked;
+    try { checked = api._checkRender(layout, options); } catch (error) { return rethrow(error); }
+    const page = await renderPage();
+    try {
+      const result = await page.evaluate(([file, opts]) => Boxsmith.assemblies.render(file, opts), [plain(checked.layout), plain(checked.options)]);
+      return { png: Buffer.from(result.png.slice(result.png.indexOf(',') + 1), 'base64'), width: result.width, height: result.height };
+    } catch (error) { throw pageError(error); }
+  };
+  node.assemblies.render = (layout, options) => renderChecked(layout, options);
+  node.design.render = async (settings, options) => {
+    try {
+      const { type = 'closed', ...rest } = settings && typeof settings === 'object' && !Array.isArray(settings) ? settings : {};
+      const box = api.boxes.create(type, rest);
+      return renderChecked(api.assemblies.create({ boxes: [api.assemblies.place(box)] }), options);
+    } catch (error) { return rethrow(error); }
+  };
+  /** The headless Chromium page that does the rendering (starts it if needed): the real Boxsmith page, with WebGL. */
+  node.page = () => renderPage();
+  node.close = () => {
+    window.close();
+    const open = browser; browser = null; starting = null;
+    return open ? open.close() : undefined;
+  };
   return node;
 
 }

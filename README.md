@@ -23,14 +23,14 @@ Closed box · open tray · lift-off lid · split lid · sliding lid · hinged li
 
 ## JavaScript API
 
-Everything the page does can be scripted: cut sheets, SVG and DXF, parts, costs and assembly cards, arranging and snapping whole boxes, saved materials and recipes, picture mosaics and the 3D preview. Use it in the browser console, or in Node.js with `npm install jsdom @napi-rs/canvas` and `require('./boxsmith-node.js')`. `npm test` checks that every control on the page is reachable from the API. [API reference and examples](API.md)
+Everything the page does can be scripted: cut sheets, SVG and DXF, parts, costs and assembly cards, arranging and snapping whole boxes, saved materials and recipes, picture mosaics, rendering layouts to PNG and the 3D preview. Use it in the browser console, or in Node.js with `npm install jsdom @napi-rs/canvas` and `require('./boxsmith-node.js')`. `npm test` checks that every control on the page is reachable from the API. [API reference and examples](API.md)
 
 ## Files
 - `index.html` — page and styles
 - `app.js` — box geometry, layout, export, UI
 - `boxsmith-api.js` — box catalog and portable assembly files
 - `boxsmith-engine.js` — adds cut sheets, costs, layout measuring and snapping, mosaic, library and preview control to the API
-- `boxsmith-node.js` — runs the whole page headlessly so Node.js gets the complete API
+- `boxsmith-node.js` — runs the whole page headlessly so Node.js gets the complete API (pictures also need `playwright-core` and Chrome)
 - `test/` — API tests (`npm test`)
 - `box-layout.js` — placement and browser storage for whole boxes
 - `mosaic-core.js` — picture-to-mosaic algorithm (colour picking, dithering, layout); also usable from Node
