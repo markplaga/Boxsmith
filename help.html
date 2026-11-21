@@ -236,7 +236,7 @@
 </ul>
 
 <h3 id="h-api">Use the JavaScript API</h3>
-<p>Use <code>Boxsmith</code> in the browser console on the Boxsmith page, or load <code>boxsmith-api.js</code> in Node.js to generate layout files from a terminal. The API uses millimeters for dimensions and positions, and degrees for rotations. The layout’s <code>unit</code> setting controls how measurements are displayed.</p>
+<p>Everything the page does is available from code: cut sheets, SVG and DXF files, parts, costs and assembly cards with <code>Boxsmith.design.compute(settings)</code>; whole-box layouts with <code>Boxsmith.assemblies</code> (including <code>snap</code>, <code>overlaps</code> and <code>measure</code>); <code>Boxsmith.mosaic</code>; saved materials and recipes in <code>Boxsmith.library</code>; and the preview with <code>Boxsmith.browser.view</code>. Use <code>Boxsmith</code> in the browser console on the Boxsmith page, or in Node.js with <code>boxsmith-node.js</code> (run <code>npm install jsdom @napi-rs/canvas</code> first). Loading only <code>boxsmith-api.js</code> gives you settings and layout files, without geometry. See <code>API.md</code> for every method. The API uses millimeters for dimensions and positions, and degrees for rotations. The layout’s <code>unit</code> setting controls how measurements are displayed.</p>
 <p>Run this in the browser console to open a 140 mm wide tray in <b>3D preview</b>.</p>
 <pre style="overflow-x:auto"><code>const tray = Boxsmith.boxes.create('open', { W: 140 });
 Boxsmith.browser.showBox(tray);</code></pre>

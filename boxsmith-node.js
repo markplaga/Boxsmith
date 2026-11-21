@@ -1,0 +1,81 @@
+'use strict';
+
+/* Boxsmith in Node.js, with every feature of the page (cut sheets, SVG/DXF, costs, layouts, snapping, mosaic).
+   It runs the real page headlessly, so it needs two npm packages:   npm install jsdom @napi-rs/canvas
+   Usage:   const { load } = require('./boxsmith-node.js');
+            const Boxsmith = await load();
+            const result = Boxsmith.design.compute({ type: 'closed', W: 120, D: 80, H: 50 });
+            ...
+            Boxsmith.close();                                       // when you are done
+   The folder with index.html and the scripts is found next to this file; pass { dir } to use another one. */
+
+const fs = require('node:fs');
+const path = require('node:path');
+
+async function load({ dir = __dirname, timeout = 20000 } = {}) {
+  let jsdom;
+  try { jsdom = require('jsdom'); require.resolve('@napi-rs/canvas'); }
+  catch (error) { throw new Error('boxsmith-node.js needs: npm install jsdom @napi-rs/canvas'); }
+  const { JSDOM, VirtualConsole } = jsdom;
+  const root = path.resolve(dir);
+
+  // Put the page's own scripts inline, so nothing is fetched (this also skips the web fonts) and it works
+  // the same in every jsdom version.
+  let html = await fs.promises.readFile(path.join(root, 'index.html'), 'utf8');
+  html = html.replace(/<link[^>]*fonts\.googleapis[^>]*>/g, '');
+  const scripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)];
+  for (const [tag, name] of scripts) {
+    const file = path.join(root, name);
+    if (!file.startsWith(root)) throw new Error('Unexpected script path: ' + name);
+    const code = (await fs.promises.readFile(file, 'utf8')).replace(/<\/script/gi, '<\\/script');
+    html = html.replace(tag, () => '<script>' + code + '</script>');
+  }
+
+  const virtualConsole = new VirtualConsole();
+  virtualConsole.on('jsdomError', error => { if (!/Not implemented/.test(String(error.message))) console.error('[boxsmith]', error.message); });
+  const dom = new JSDOM(html, {
+    url: 'http://boxsmith.local/index.html', runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole,
+    beforeParse(window) {
+      window.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+      window.matchMedia = window.matchMedia || (query => ({ matches: false, media: query, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
+      window.URL.createObjectURL = () => 'blob:boxsmith';
+      window.URL.revokeObjectURL = () => {};
+    },
+  });
+  const { window } = dom;
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Boxsmith did not start in time')), timeout);
+    const ready = () => { clearTimeout(timer); resolve(); };
+    if (window.document.readyState === 'complete') ready(); else window.addEventListener('load', ready);
+  });
+  if (window.BOX) window.BOX.noSave = true;
+  const api = window.Boxsmith;
+  if (!api || !api.design) throw new Error('Boxsmith loaded without its engine. Check that boxsmith-engine.js is next to index.html.');
+  // The page runs in its own JavaScript realm. Hand back plain objects and errors from this one, so that
+  // `instanceof RangeError`, deepEqual and JSON all behave as you would expect.
+  const plain = value => (value === undefined || value === null || typeof value !== 'object') ? value : JSON.parse(JSON.stringify(value));
+  const wrap = target => {
+    const out = {};
+    for (const key of Object.keys(target)) {
+      const value = target[key];
+      if (typeof value === 'function') {
+        out[key] = (...args) => {
+          const done = result => (result && typeof result.then === 'function') ? result.then(plain, rethrow) : plain(result);
+          try { return done(value.apply(target, args)); } catch (error) { return rethrow(error); }
+        };
+      } else if (value && typeof value === 'object' && !Array.isArray(value)) out[key] = wrap(value);
+      else out[key] = plain(value);
+    }
+    return out;
+  };
+  const rethrow = error => {
+    const Type = (error && globalThis[error.name] && /Error$/.test(error.name)) ? globalThis[error.name] : Error;
+    throw new Type(error && error.message ? error.message : String(error));
+  };
+  const node = wrap(api);
+  node.close = () => window.close();
+  return node;
+
+}
+
+module.exports = { load };

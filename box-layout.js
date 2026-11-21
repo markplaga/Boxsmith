@@ -95,11 +95,11 @@ function ringPieces(part,solid,pose){
 
 // Pairs of visible boxes whose individual parts intersect. Parts are compared
 // one by one, so a box sitting inside a Frame's opening is not a false alarm.
-function layoutOverlaps(){
+function layoutOverlaps(list=layoutBoxes){
   const EPS=0.05, pairs=[];
-  for(let i=0;i<layoutBoxes.length;i++){
-    for(let j=i+1;j<layoutBoxes.length;j++){
-      const a=layoutBoxes[i], b=layoutBoxes[j];
+  for(let i=0;i<list.length;i++){
+    for(let j=i+1;j<list.length;j++){
+      const a=list[i], b=list[j];
       if(a.hidden||b.hidden||!a.bounds||!b.bounds) continue;
       const near=a.bounds.clone().expandByScalar(-EPS);
       if(!near.intersectsBox(b.bounds)) continue;
@@ -113,36 +113,43 @@ function layoutOverlaps(){
   return pairs;
 }
 
-// Put a box in the opening of a Frame: centered, or pushed against one wall
-// (the wall's own thickness is allowed for), resting at the Frame's base.
-function snapInsideOpening(box,target,where,gap){
-  const O=target.opening;
-  if(!O){ toast('That box has no opening to snap into. Pick a Frame.'); return false; }
-  const wall=+target.settings.t||0, B=box.bounds, T=target.bounds;
-  const oc=O.getCenter(new THREE.Vector3()), bc=B.getCenter(new THREE.Vector3());
-  const d=[oc.x-bc.x,oc.y-bc.y,T.min.z-B.min.z];
-  if(where==='-x') d[0]=O.min.x+wall+gap-B.min.x;
-  if(where==='+x') d[0]=O.max.x-wall-gap-B.max.x;
-  if(where==='-y') d[1]=O.min.y+wall+gap-B.min.y;
-  if(where==='+y') d[1]=O.max.y-wall-gap-B.max.y;
+// Move `box` flush against a face of `target` (world axes), or into a Frame's
+// opening with side 'in:c', 'in:-x', 'in:+x', 'in:-y' or 'in:+y' (the wall's own
+// thickness is allowed for). Works on plain layout boxes, with no page needed.
+// Returns null on success, or a message saying why it could not.
+function snapBoxes(box,target,side,gap=0){
+  if(!box||!target||box===target) return 'Pick two different boxes.';
+  const B=box.bounds, T=target.bounds, bc=B.getCenter(new THREE.Vector3());
+  let d;
+  if(String(side).startsWith('in:')){
+    const O=target.opening, where=side.slice(3);
+    if(!O) return 'That box has no opening to snap into. Pick a Frame.';
+    if(!['c','-x','+x','-y','+y'].includes(where)) return 'Unknown side: '+side;
+    const wall=+target.settings.t||0, oc=O.getCenter(new THREE.Vector3());
+    d=[oc.x-bc.x,oc.y-bc.y,T.min.z-B.min.z];
+    if(where==='-x') d[0]=O.min.x+wall+gap-B.min.x;
+    if(where==='+x') d[0]=O.max.x-wall-gap-B.max.x;
+    if(where==='-y') d[1]=O.min.y+wall+gap-B.min.y;
+    if(where==='+y') d[1]=O.max.y-wall-gap-B.max.y;
+  } else {
+    if(!/^[+-][xyz]$/.test(side)) return 'Unknown side: '+side;
+    const tc=T.getCenter(new THREE.Vector3());
+    d=[tc.x-bc.x,tc.y-bc.y,T.min.z-B.min.z];
+    const axis={x:0,y:1,z:2}[side[1]], k=side[1];
+    d[axis]=side[0]==='+'?T.max[k]+gap-B.min[k]:T.min[k]-gap-B.max[k];
+  }
   for(let i=0;i<3;i++) box.position[i]=Math.round((box.position[i]+d[i])*1000)/1000;
-  moveLayoutBox();
-  return true;
+  transformLayoutBox(box);
+  return null;
 }
 
-// Move the selected box flush against a face of another box (world axes).
+// The Arrange tab's Snap button.
 function snapLayoutBox(targetIndex,side,gap){
   const box=layoutBoxes[layoutSelection], target=layoutBoxes[targetIndex];
   if(!box||!target||box===target) return false;
-  if(side.startsWith('in:')) return snapInsideOpening(box,target,side.slice(3),gap);
-  const B=box.bounds, T=target.bounds, c=new THREE.Vector3();
-  const bc=B.getCenter(new THREE.Vector3()), tc=T.getCenter(c);
-  const d=[tc.x-bc.x,tc.y-bc.y,T.min.z-B.min.z];
-  const axis={x:0,y:1,z:2}[side[1]], sign=side[0]==='+'?1:-1;
-  const k=['x','y','z'][axis];
-  d[axis]=sign>0?T.max[k]+gap-B.min[k]:T.min[k]-gap-B.max[k];
-  for(let i=0;i<3;i++) box.position[i]=Math.round((box.position[i]+d[i])*1000)/1000;
-  moveLayoutBox();
+  const problem=snapBoxes(box,target,side,gap);
+  if(problem){ toast(problem); return false; }
+  saveBoxLayout(); render();
   return true;
 }
 

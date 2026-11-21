@@ -150,14 +150,11 @@
   }
 
   /* ---------- build the layout ---------- */
-  go.addEventListener('click',async()=>{
-    if(!pic) return toast('Choose a picture first');
+  async function build(){
     try{
       refresh();
       if(!last||go.disabled) return;
       const {m,t}=last;
-      if(m.count>BIG&&!confirm('This builds '+m.count+' boxes and may take a while. Continue?')) return;
-      if(layoutBoxes.length&&!confirm('Replace the current layout with this mosaic?')) return;
       go.disabled=true; go.textContent='Building '+m.count+' boxes…';
       await new Promise(resolve=>setTimeout(resolve,30));
       const assembly=core.makeAssembly(m,{
@@ -175,6 +172,15 @@
       go.textContent='Build the layout';
       refresh();
     }
+  }
+  // confirm() is blocked in the artifact frame, so a big or replacing build asks by relabelling the button
+  go.addEventListener('click',()=>{
+    if(!pic) return toast('Choose a picture first');
+    refresh();
+    if(!last||go.disabled) return;
+    const big=last.m.count>BIG, replacing=layoutBoxes.length>0;
+    if(big||replacing) confirmTwice(go,big&&!replacing?'Click again to build '+last.m.count+' boxes':'Click again to replace the layout',build);
+    else build();
   });
 
   syncFields();

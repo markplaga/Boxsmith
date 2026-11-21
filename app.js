@@ -1285,7 +1285,7 @@ $('#dimSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); i
 $('#tPreset').addEventListener('change',e=>{ if(e.target.value){ S.t=+e.target.value; update(); } });
 $('#bedPreset').addEventListener('change',e=>{ if(e.target.value){ const [a,b]=e.target.value.split('x'); S.sheetW=+a; S.sheetH=+b; update(); } });
 $('#toKerf').addEventListener('click',e=>{ e.preventDefault(); S.type='kerftest'; update(true); });
-$('#resetAll').addEventListener('click',e=>{ e.preventDefault(); if(!confirm('Reset all settings to the defaults? Saved materials and recipes are kept.')) return; S=Object.assign({},DEFAULTS); update(true); toast('Reset to defaults'); });
+$('#resetAll').addEventListener('click',e=>{ e.preventDefault(); confirmTwice(e.currentTarget,'Click again to reset',()=>{ S=Object.assign({},DEFAULTS); update(true); toast('Reset to defaults'); }); });
 let curView='3d';
 $('#tabs').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; const wasLayout=layingOut(); curView=b.dataset.v;
   if(curView!=='3d'&&!layingOut()&&maximizedView()) setMax(false);
@@ -1474,10 +1474,10 @@ $('#matLib').addEventListener('change',e=>{ const mats=lsGet(MAT_KEY,MAT_SEED), 
   S.t=+m.t; S.kerf=+m.kerf; if(m.price!=null) S.sheetPrice=+m.price; S.matName=m.name; if(m.look&&MATS[m.look]) setPreviewMaterial(m.look); update(); toast('Using '+m.name); });
 $('#matSave').addEventListener('click',()=>{ const n=$('#matName').value.trim(); if(!n){ toast('Give the material a name first'); return; }
   const mats=lsGet(MAT_KEY,MAT_SEED).filter(m=>m.name!==n); mats.push({name:n,t:S.t,kerf:S.kerf,price:S.sheetPrice,look:view.mat}); if(lsSet(MAT_KEY,mats)){ S.matName=n; $('#matName').value=''; renderLibrary(); update(); toast('Saved material “'+n+'”'); } });
-$('#matDel').addEventListener('click',()=>{ const i=$('#matLib').value; if(i===''){ toast('Pick a material to delete'); return; } const mats=lsGet(MAT_KEY,MAT_SEED); if(!mats[+i]) return; if(!confirm('Delete the saved material "'+mats[+i].name+'"?')) return; const m=mats.splice(+i,1)[0]; if(lsSet(MAT_KEY,mats)){ if(m&&S.matName===m.name) S.matName=''; renderLibrary(); toast('Deleted '+(m?m.name:'material')); } });
+$('#matDel').addEventListener('click',()=>{ const i=$('#matLib').value; if(i===''){ toast('Pick a material to delete'); return; } const mats=lsGet(MAT_KEY,MAT_SEED); if(!mats[+i]) return; confirmTwice($('#matDel'),'Click again to delete',()=>{ const mats2=lsGet(MAT_KEY,MAT_SEED), j=$('#matLib').value; const m=mats2.splice(+j,1)[0]; if(lsSet(MAT_KEY,mats2)){ if(m&&S.matName===m.name) S.matName=''; renderLibrary(); toast('Deleted '+(m?m.name:'material')); } }); });
 $('#recSave').addEventListener('click',()=>{ const n=$('#recName').value.trim(); if(!n){ toast('Name the recipe first'); return; } const recs=lsGet(REC_KEY,{}); recs[n]=JSON.parse(JSON.stringify(S)); if(lsSet(REC_KEY,recs)){ $('#recName').value=''; renderLibrary(); $('#recSel').value=n; toast('Saved recipe “'+n+'”'); } });
 $('#recLoad').addEventListener('click',()=>{ const n=$('#recSel').value, recs=lsGet(REC_KEY,{}); if(!recs[n]){ toast('Pick a recipe to load'); return; } S=Object.assign({},DEFAULTS,recs[n]); update(true); toast('Loaded “'+n+'”'); });
-$('#recDel').addEventListener('click',()=>{ const n=$('#recSel').value, recs=lsGet(REC_KEY,{}); if(!recs[n]){ toast('Pick a recipe to delete'); return; } if(!confirm('Delete the saved recipe "'+n+'"?')) return; delete recs[n]; if(lsSet(REC_KEY,recs)){ renderLibrary(); toast('Deleted “'+n+'”'); } });
+$('#recDel').addEventListener('click',()=>{ const n=$('#recSel').value, recs=lsGet(REC_KEY,{}); if(!recs[n]){ toast('Pick a recipe to delete'); return; } confirmTwice($('#recDel'),'Click again to delete',()=>{ const recs2=lsGet(REC_KEY,{}); delete recs2[$('#recSel').value]; if(lsSet(REC_KEY,recs2)){ renderLibrary(); toast('Deleted “'+n+'”'); } }); });
 
 /* ================= ARTWORK LIST ================= */
 $('#artFile').addEventListener('change',async e=>{ const f=e.target.files[0]; e.target.value=''; if(!f) return;
@@ -1524,8 +1524,8 @@ const $$m=v=>'$'+v.toFixed(2);
 
 /* ================= ASSEMBLY CARD ================= */
 function snapshot(){ try{ render(); if(GL) return GL.r.domElement.toDataURL('image/png'); return cv.toDataURL('image/png'); }catch(e){ return ''; } }
-function cardHTML(){
-  if(!LAST) return ''; const {res,fparts}=LAST, ty=TYPES.find(x=>x.id===S.type), I=res.info, img=snapshot();
+function cardHTML(noImage){
+  if(!LAST) return ''; const {res,fparts}=LAST, ty=TYPES.find(x=>x.id===S.type), I=res.info, img=noImage?'':snapshot();
   const title=S.text||ty.name, cnt=new Map(); fparts.forEach(f=>{ const k=f.name.replace(/ \d+$/,''); cnt.set(f.name,(cnt.get(f.name)||0)+1); });
   return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+esc(title)+' — assembly</title><style>'
    +'body{font-family:"Times New Roman",Georgia,serif;color:#111;max-width:7.5in;margin:0.5in auto;line-height:1.45}h1{font-size:26pt;margin:0}h2{font-size:14pt;margin:18px 0 6px}'
@@ -1541,6 +1541,25 @@ function cardHTML(){
 function geometryContext(){
   return {t:Math.max(0.5,S.t), fw:Math.max(1,S.fw), ts:S.tslot!=='off'?SCREWS[S.tslot]:null, mat:'main'};
 }
+function designWarnings(res){
+  if(S.bit>0 && S.kerf>0.05) res.warns.push('CNC mode: dogbones are on. Set kerf to 0 and let your CAM software handle tool compensation.');
+  if(S.bit>0 && S.bit>=G.t) res.warns.push('The router bit is as wide as the material — finger slots will be cut oversize. Use a smaller bit.');
+  if(G.ts && G.t<G.ts.d+1.2) res.warns.push(S.tslot+' screw holes ('+G.ts.d+' mm) are too big for '+fmt(G.t)+' material — they\'ll break through the edge. Use thicker stock (about '+fmt(G.ts.d+1.5)+'+) or a smaller screw.');
+  if(G.ts && G.fw<G.ts.nw+3) res.warns.push('Finger width is too narrow for '+S.tslot+' nuts — raise it to '+fmt(G.ts.nw+4)+' or more.');
+  if(S.textMode==='cut' && S.text && !/stencil/i.test(S.font)) res.warns.push('Cut-through text: the middles of letters like O, A and B will fall out. The Stencil font avoids that.');
+}
+function measureParts(fparts){
+  const ar=fparts.reduce((a,f)=>{ let A=Math.abs(area(f.outline)); for(const h of f.holes) A-=Math.abs(area(h)); return a+A; },0);
+  const cutLen=fparts.reduce((a,f)=>a+perim(f.outline)+f.holes.reduce((b,h)=>b+perim(h),0)+f.circles.reduce((b,c)=>b+2*PI*c.r,0)+f.slits.reduce((b,s)=>b+perim(s,false),0),0);
+  return {ar,cutLen};
+}
+// confirm() is blocked in the sandboxed artifact frame, so risky buttons ask by changing their label:
+// the first click arms the button for a few seconds and the second click does the work.
+function confirmTwice(btn,armedText,action){
+  if(btn.dataset.armed==='1'){ clearTimeout(btn._armT); btn.dataset.armed=''; btn.textContent=btn.dataset.label; action(); return; }
+  btn.dataset.label=btn.textContent; btn.dataset.armed='1'; btn.textContent=armedText;
+  btn._armT=setTimeout(()=>{ btn.dataset.armed=''; btn.textContent=btn.dataset.label; },4000);
+}
 function update(resetView){
   save(); syncInputs(); syncBoxLayout();
   G=geometryContext();
@@ -1548,11 +1567,7 @@ function update(resetView){
   try{ res=generate(); decorate(res.parts,res.warns); }
   catch(err){ console.error(err); $('#warns').innerHTML='<div class="warn">These settings produce impossible geometry — try larger dimensions. ('+esc(err.message)+')</div>'; return; }
   G.t=Math.max(0.5,S.t);
-  if(S.bit>0 && S.kerf>0.05) res.warns.push('CNC mode: dogbones are on. Set kerf to 0 and let your CAM software handle tool compensation.');
-  if(S.bit>0 && S.bit>=G.t) res.warns.push('The router bit is as wide as the material — finger slots will be cut oversize. Use a smaller bit.');
-  if(G.ts && G.t<G.ts.d+1.2) res.warns.push(S.tslot+' screw holes ('+G.ts.d+' mm) are too big for '+fmt(G.t)+' material — they\'ll break through the edge. Use thicker stock (about '+fmt(G.ts.d+1.5)+'+) or a smaller screw.');
-  if(G.ts && G.fw<G.ts.nw+3) res.warns.push('Finger width is too narrow for '+S.tslot+' nuts — raise it to '+fmt(G.ts.nw+4)+' or more.');
-  if(S.textMode==='cut' && S.text && !/stencil/i.test(S.font)) res.warns.push('Cut-through text: the middles of letters like O, A and B will fall out. The Stencil font avoids that.');
+  designWarnings(res);
   const cutParts=res.parts.filter(p=>!p.noCut);
   const fparts=cutParts.map(finalize);
   const lay=layout(fparts);
@@ -1561,8 +1576,7 @@ function update(resetView){
   buildScene(res.parts); if(resetView&&!layingOut()){ view.zoom=1; } render(); showSel();
   const I=res.info, inn=I.inner;
   $('#dims').innerHTML='<b>Outside</b><br>'+fmt(I.W)+' × '+fmt(I.D)+' × '+fmt(I.H)+(inn?'<br><b>Inside'+(inn.label?' · '+inn.label:'')+'</b><br>'+fmt(inn.W)+' × '+fmt(inn.D)+' × '+fmt(inn.H):'');
-  const ar=fparts.reduce((a,f)=>{ let A=Math.abs(area(f.outline)); for(const h of f.holes) A-=Math.abs(area(h)); return a+A; },0);
-  const cutLen=fparts.reduce((a,f)=>a+perim(f.outline)+f.holes.reduce((b,h)=>b+perim(h),0)+f.circles.reduce((b,c)=>b+2*PI*c.r,0)+f.slits.reduce((b,s)=>b+perim(s,false),0),0);
+  const {ar,cutLen}=measureParts(fparts);
   $('#sheets').innerHTML=lay.sheets.map((sh,i)=>'<div class="sheet"><div class="cap"><span><b>Sheet '+(i+1)+' of '+lay.sheets.length+'</b> · '+esc(sheetLabel(sh))+' · '+sh.items.length+' parts · '+fmt(S.sheetW)+' × '+fmt(S.sheetH)+'</span><button class="btn" data-sheet="'+i+'" style="padding:4px 10px;font-size:12px">Download this sheet</button></div>'+sheetSVG(sh,{preview:true})+'</div>').join('')
     +'<p style="text-align:center;color:var(--muted);font-size:12.5px">Tap a part to find it in the 3D view.</p>';
   $$('#sheets [data-sheet]').forEach(b=>b.addEventListener('click',()=>{ const i=+b.dataset.sheet; saveFile(baseName()+'-sheet'+(i+1)+'-'+sheetLabel(LAST.sheets[i]).replace(/[^a-z0-9]+/gi,'-')+'.svg', sheetSVG(LAST.sheets[i])); }));

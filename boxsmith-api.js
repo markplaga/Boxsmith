@@ -86,6 +86,35 @@
     return {format:FORMAT,version:VERSION,unit,boxes:placed};
   }
 
+  const asFile=input=>createAssembly(typeof input==='string'?JSON.parse(input):input);
+  const needIndex=(file,index)=>{ if(!Number.isInteger(index)||index<0||index>=file.boxes.length) throw new RangeError('No box at index '+index); };
+
+  /** Edit helpers: each returns a new layout and leaves the one you passed in alone. */
+  function addToAssembly(assembly,placement){
+    const file=asFile(assembly);
+    const item=isRecord(placement)&&placement.settings?placement:placeBox(placement);
+    file.boxes.push(placeBox(item.settings,item));
+    return file;
+  }
+  function removeFromAssembly(assembly,index){
+    const file=asFile(assembly); needIndex(file,index);
+    file.boxes.splice(index,1);
+    return file;
+  }
+  function duplicateInAssembly(assembly,index,{offset=[0,0,0]}={}){
+    const file=asFile(assembly); needIndex(file,index);
+    const source=file.boxes[index], shift=triple(offset,'offset');
+    file.boxes.splice(index+1,0,placeBox(source.settings,{...source,position:source.position.map((v,i)=>v+shift[i])}));
+    return file;
+  }
+  function updateInAssembly(assembly,index,changes={}){
+    const file=asFile(assembly); needIndex(file,index);
+    const source=file.boxes[index];
+    file.boxes[index]=placeBox(changes.settings??source.settings,{
+      position:changes.position??source.position,rotation:changes.rotation??source.rotation,hidden:changes.hidden??source.hidden});
+    return file;
+  }
+
   function parseAssembly(input){
     const file=typeof input==='string'?JSON.parse(input):input;
     if(file?.format!==FORMAT) throw new TypeError('Not a Boxsmith layout file');
@@ -101,6 +130,10 @@
       format:FORMAT,
       place:placeBox,
       create:createAssembly,
+      add:addToAssembly,
+      remove:removeFromAssembly,
+      duplicate:duplicateInAssembly,
+      update:updateInAssembly,
       parse:parseAssembly,
       serialize:assembly=>JSON.stringify(parseAssembly(assembly),null,2)
     }
