@@ -14,7 +14,7 @@ Closed box · open tray · lift-off lid · split lid · sliding lid · hinged li
 - PNG / JPG / SVG artwork on any panel, cut-out patterns, corner accents, rounded or chamfered lid corners
 - 3D preview (three.js) with explode, “show it work” animations, screws and nuts, tap-to-select
 - Paint finish: preview a watercolor wash or acrylic paint color on any box
-- Arrange intact box designs side by side, inside other boxes or in a Frame opening, with snap-to-face, drag to move, overlap warnings, and save and open for layout files
+- Arrange intact box designs side by side, inside other boxes or in a Frame opening, with snap-to-face, drag to move, step-by-size, duplicate in place, per-box materials, part and acrylic coloring, overlap warnings, and save and open for layout files
 - Picture mosaic: upload a picture and Boxsmith picks the paint colours and builds a layout of boxes (optional relief and frame)
 - Sheet nesting with hole filling and grain lock, batch quantity, kit-mode hold tabs
 - SVG and DXF export (simple or LightBurn-ordered layers), printable assembly card

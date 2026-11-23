@@ -9,7 +9,7 @@ There are three ways to use it:
 | Where | How | What you get |
 | --- | --- | --- |
 | Node.js, everything | `npm install jsdom @napi-rs/canvas`, then `const { load } = require('./boxsmith-node.js'); const Boxsmith = await load();` | The whole API below, including cut sheets and layout measuring. Call `await Boxsmith.close()` when done. For pictures (`render`) also `npm install playwright-core` and have Chrome, Chromium or Edge installed. |
-| Node.js, light | `require('./boxsmith-api.js')` | Settings, layouts and layout files only (`boxes`, `assemblies.place/create/parse/serialize/add/remove/duplicate/update`). No geometry, so no cut sheets or snapping. |
+| Node.js, light | `require('./boxsmith-api.js')` | Settings, layouts and layout files only (`boxes`, `assemblies.place/create/parse/serialize/add/remove/duplicate/update/color`, `looks`). No geometry, so no cut sheets or snapping. |
 | The Boxsmith page | `window.Boxsmith` in the browser console | The whole API, plus `Boxsmith.browser`, which drives the page itself. |
 
 Dimensions and positions are in millimeters and rotations are in degrees everywhere in the API.
