@@ -171,7 +171,7 @@ body.max3d #layoutCtl .lgrp[data-g="View"]{display:flex!important}
 .remote-code{font:700 40px/1.1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.08em;text-align:center;margin:8px 0 10px;color:var(--accent)}
 .remote-small{font-size:12.5px;color:var(--muted);word-break:break-all}
 .remote-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
-body.remote-mode>*:not(#remotePanel):not(script){display:none!important}
+body.remote-mode>*:not(#remotePanel):not(script):not(.app),body.remote-mode:not(.rm-design)>.app{display:none!important}
 .remote-panel{max-width:760px;margin:0 auto;padding:max(14px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) 40px max(14px,env(safe-area-inset-left));font-size:15px}
 .remote-panel .btn{min-height:44px;padding:0 14px;font-size:15px}
 .remote-panel select,.remote-panel input[type=number],.remote-panel input:not([type]){min-height:44px;font-size:16px;border:1px solid var(--line2);border-radius:8px;padding:4px 8px;background:#fff}
@@ -194,6 +194,12 @@ body.remote-mode>*:not(#remotePanel):not(script){display:none!important}
 .rm-small{font-size:12.5px;color:var(--muted);margin:4px 0 0}
 .rm-join{display:flex;flex-direction:column;gap:10px;max-width:340px}
 .rm-join input{font:700 28px ui-monospace,Menlo,monospace!important;letter-spacing:.1em;text-align:center}
+.rm-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}
+.rm-tabs .btn.on,.remote-panel .btn.on{border-color:var(--accent);color:var(--accent);font-weight:600}
+body.remote-mode.rm-design>.app{display:block!important;height:auto}
+body.remote-mode.rm-design .app>main,body.remote-mode.rm-design aside .brand,body.remote-mode.rm-design #mosaicSec{display:none!important}
+body.remote-mode.rm-design .remote-panel{padding-bottom:0}
+body.remote-mode.rm-design aside{max-width:760px;margin:0 auto;border:1px solid var(--line);border-radius:12px;overflow:visible}
 
 @media (max-width:760px){
   .v3dctl{max-height:48%;overflow-y:auto}
@@ -766,7 +772,12 @@ body.max3d .lamp-ctl{top:190px}
 <ol>
 <li>On the screen that will show the model, open <b>Arrange boxes</b>, tap <b>📱 Remote</b>, then <b>Show a code here</b>. A 6-digit code appears.</li>
 <li>On the other screen, open Boxsmith, go to <b>Arrange boxes</b>, tap <b>📱 Remote</b>, then <b>Use this screen as the remote</b>, and enter the code. You can also open the link shown under the code.</li>
-<li>Tap a box on the model screen and its controls appear on the remote: Duplicate, Duplicate in place, Hide, Remove, Position, Step, Turn, Rotate, Snap to and Color. Tap the box again on the model screen to pick one part, or choose a part (or <b>All acrylic parts</b>) from the Color list on the remote. Every change shows on the model screen at once.</li>
+<li>Tap a box on the model screen and its controls appear on the remote, in three tabs. Every change shows on the model screen at once.
+<ul>
+<li><b>Place &amp; color</b>: Duplicate, Duplicate in place, Hide, Remove, Position, Step, Turn, Rotate, Snap to and Color. Tap the box again on the model screen to pick one part, or choose a part (or <b>All acrylic parts</b>) from the Color list on the remote.</li>
+<li><b>Box design</b>: the full sidebar (style, size, material, joints, lid, text, decoration and every other setting) for the selected box. Changes rebuild that box where it stands, keeping its place, turn, material and colors. <b>Add this design as a new box</b> adds a copy beside the others. The remote's own saved design is put back when you leave remote mode.</li>
+<li><b>Layout &amp; view</b>: Fit layout, Top view, Place in top view (then tap the spot on the model screen), Maximize, stereo viewing, units, Save layout (it downloads on the model screen), Open a layout file from the remote device, and Clear all boxes (tap twice).</li>
+</ul></li>
 <li>The layout lives on the model screen, so saving, opening and the cut files work there as usual. <b>Stop remote</b> ends the session, and the remote is told.</li>
 </ol>
 <p>Two windows on the same computer connect directly and need no internet. Separate devices connect through a small relay on Hugging Face; the first connection after a quiet spell can take a few seconds while the relay wakes up. The code only works while the model screen is showing it, and nothing passes through the relay except the edits themselves.</p>

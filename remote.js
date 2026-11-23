@@ -13,6 +13,9 @@ const Remote=(()=>{
   };
   const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const fmtCode=c=>c.slice(0,3)+' '+c.slice(3);
+  // JSON with sorted keys, so two copies of the same design compare equal
+  const stable=v=>JSON.stringify(v,(k,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.keys(x).sort().reduce((o,key)=>(o[key]=x[key],o),{}):x);
+  const full=s=>stable(Object.assign({},DEFAULTS,s));
 
   /* ---------- the link: BroadcastChannel + relay WebSocket, messages de-duplicated ---------- */
   function Link(room,role,onMessage,onStatus){
@@ -63,6 +66,19 @@ const Remote=(()=>{
 
   /* ---------- host: the screen with the model ---------- */
   let host=null, hostCode='', remotes=0, localPeer=false, stateTimer=null;
+  function hash(s){ let h=0; for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))|0; return (h>>>0).toString(36); }
+  // A design edited on the remote replaces that box's design; place, turn, look and colors stay.
+  function applyDesign(index,settings){
+    const box=layoutBoxes[index];
+    if(!box||!settings||typeof settings!=='object') return;
+    try{
+      const s=JSON.parse(JSON.stringify(settings)); delete s.assembly;
+      s.look=box.settings.look; if(box.settings.colors) s.colors=box.settings.colors; else delete s.colors;
+      const next=makeLayoutBox(s,box.position.slice(),box.rotation.slice(),box.hidden);
+      layoutBoxes[index]=next;
+      rebuildBoxLayout(); saveBoxLayout(); syncBoxLayout(); render();
+    }catch(err){ console.error(err); toast('Those settings make impossible geometry; the box was not changed.'); if(host) host.send({t:'note',text:'Those settings make impossible geometry, so the box was not changed.'}); }
+  }
   function newCode(){ return String(100000+Math.floor(Math.random()*900000)); }
   function hostStart(){
     hostStop();
@@ -76,10 +92,17 @@ const Remote=(()=>{
     if(!box||typeof GL==='undefined'||!GL) return [];
     return [...new Set(GL.objs.filter(o=>o.s.layoutBox===box&&o.s.part).map(o=>o.s.part.name))];
   }
+  let sentDesign='', forceDesign=false;
   function state(){
     const box=layoutBoxes[layoutSelection];
     const clash=new Set(layoutOverlaps().flat());
+    const design=box?JSON.stringify(box.settings):'';
+    const withDesign=design&&(design!==sentDesign||forceDesign);
+    if(withDesign){ sentDesign=design; forceDesign=false; }
+    const stereo=$('#layoutCtl [data-stereo-mode]');
     return {t:'state',unit:S.unit,scale:layoutCoordinateScale(),sel:box?layoutSelection:-1,part:layoutPart,
+      design:withDesign?box.settings:undefined,designKey:design.length+':'+hash(design),
+      placing:placingBox,maximized:document.body.classList.contains('max3d'),stereo:stereo?stereo.value:'off',boxCount:layoutBoxes.length,
       boxes:layoutBoxes.map((b,i)=>({label:layoutBoxLabel(b,i),hidden:!!b.hidden,clash:clash.has(i),position:b.position,rotation:b.rotation,colors:b.settings.colors||{}})),
       parts:partNames(box),acrylic:!!box&&boxHasAcrylic(box),
       sides:[...$('#layoutSnapSide').options].map(o=>[o.value,o.textContent]),
@@ -89,7 +112,7 @@ const Remote=(()=>{
   const press=sel=>{ const el=$(sel); if(el&&!el.disabled&&!el.hidden) el.click(); };
   function hostMessage(msg){
     if(msg.t==='peers'){ remotes=msg.remotes; renderHostStatus(); return; }
-    if(msg.t==='hello'){ localPeer=true; renderHostStatus(); if(curView!=='layout') document.querySelector('#tabs [data-v="layout"]')?.click(); sendState(); return; }
+    if(msg.t==='hello'){ forceDesign=true; localPeer=true; renderHostStatus(); if(curView!=='layout') document.querySelector('#tabs [data-v="layout"]')?.click(); sendState(); return; }
     if(msg.t!=='cmd') return;
     const a=msg.args||{};
     switch(msg.op){
@@ -116,6 +139,15 @@ const Remote=(()=>{
       case 'nocolor': press('#layoutColorClear'); break;
       case 'fit': press('#layoutFit'); break;
       case 'top': press('#layoutTop'); break;
+      case 'place': press('#layoutPlace'); break;
+      case 'design': applyDesign(a.index,a.settings); break;
+      case 'add': if(a.settings&&typeof a.settings==='object') addLayoutBox({settings:a.settings,rotation:[0,0,0],position:[0,0,0],hidden:false}); break;
+      case 'units': if(a.unit==='mm'||a.unit==='in'){ const u=$('#layoutUnits'); u.value=a.unit; u.dispatchEvent(new Event('change')); } break;
+      case 'maximize': if(document.body.classList.contains('max3d')) press('#previewExitMax'); else press('#layoutCtl [data-maximize-view]'); break;
+      case 'stereo': { const sel=$('#layoutCtl [data-stereo-mode]'); if(sel&&['off','cross','parallel'].includes(a.mode)){ sel.value=a.mode; sel.dispatchEvent(new Event('change')); } break; }
+      case 'save': press('#layoutSave'); break;
+      case 'open': try{ openBoxLayout(a.json); }catch(err){ toast('That layout file could not be opened.'); host.send({t:'note',text:'That layout file could not be opened: '+err.message}); } break;
+      case 'clear': if(layoutBoxes.length){ layoutBoxes=[]; rebuildBoxLayout(); saveBoxLayout(); selectLayoutBox(-1); toast('Layout cleared'); } break;
     }
     sendState();
   }
@@ -136,7 +168,7 @@ const Remote=(()=>{
       '<h3>Remote is on</h3><p>On the other screen, open Boxsmith, go to <b>Arrange boxes</b>, tap <b>📱 Remote</b> then <b>Use this screen as the remote</b>, and enter</p>'+
       '<div class="remote-code">'+fmtCode(hostCode)+'</div><p class="remote-small">or open <a href="'+esc(link)+'" target="_blank" rel="noopener">'+esc(link)+'</a></p>'+
       '<p id="remoteHostStatus" class="remote-small"></p><div class="remote-row"><button type="button" class="btn" data-r="stop">Stop remote</button><button type="button" class="btn primary" data-r="close">Done</button></div>':
-      '<h3>Two-screen editing</h3><p>Show the model on this screen and edit placement and color from another screen, such as an iPad.</p>'+
+      '<h3>Two-screen editing</h3><p>Show the model on this screen and edit it from another screen, such as an iPad: placement, color, every box setting and the layout.</p>'+
       '<div class="remote-row"><button type="button" class="btn primary" data-r="host">Show a code here</button><button type="button" class="btn" data-r="join">Use this screen as the remote</button></div>'+
       '<div class="remote-row"><button type="button" class="btn" data-r="close">Cancel</button></div>';
     renderHostStatus();
@@ -145,8 +177,28 @@ const Remote=(()=>{
   function closeDialog(){ $('#remoteDialog').hidden=true; }
 
   /* ---------- remote: the control screen ---------- */
-  let link=null, st=null, joinedCode='', helloTimer=null, removeArmed=0;
+  let link=null, st=null, joinedCode='', helloTimer=null, removeArmed=0, clearArmed=0, tab='place';
+  // Box design editing uses this page's own sidebar: the selected box's design is loaded into S,
+  // and every change is sent back. The remote's own saved design is put back on exit.
+  let ownS=null, designFor=-1, designKey='', applying=false, lastSent='', sendTimer=null;
+  function loadDesign(settings){
+    applying=true;
+    try{ S=Object.assign({},DEFAULTS,JSON.parse(JSON.stringify(settings))); update(true); }
+    finally{ applying=false; }
+    lastSent=full(S);
+  }
+  function designChanged(){
+    if(applying||!link||!st||st.sel<0||designFor!==st.sel) return;
+    const j=full(S);
+    if(j===lastSent) return;
+    lastSent=j;
+    const index=st.sel, copy=JSON.parse(JSON.stringify(S));
+    clearTimeout(sendTimer);
+    sendTimer=setTimeout(()=>cmd('design',{index,settings:copy}),250);
+  }
   function remoteMode(code){
+    if(!ownS){ ownS=JSON.parse(JSON.stringify(S)); window.BOX=Object.assign({},window.BOX,{noSave:true}); }
+    const panel=$('#remotePanel'); document.body.insertBefore(panel,document.body.firstChild);
     document.body.classList.add('remote-mode');
     closeDialog();
     $('#remotePanel').hidden=false;
@@ -169,9 +221,17 @@ const Remote=(()=>{
     hello(); helloTimer=setInterval(hello,1500);
     renderRemote();
   }
-  function remoteLeave(){ if(link) link.close(); link=null; st=null; joinedCode=''; clearInterval(helloTimer); renderRemote(); }
+  function remoteLeave(){ if(link) link.close(); link=null; st=null; joinedCode=''; designFor=-1; designKey=''; clearInterval(helloTimer); document.body.classList.remove('rm-design'); renderRemote(); }
   function remoteMessage(msg){
-    if(msg.t==='state'){ st=msg; renderRemote(); return; }
+    if(msg.t==='state'){
+      const prev=st; st=msg;
+      if(msg.design&&(msg.sel!==designFor||msg.designKey!==designKey)){ designFor=msg.sel; designKey=msg.designKey; if(full(msg.design)!==lastSent) loadDesign(msg.design); }
+      else if(msg.sel!==designFor&&msg.sel>=0&&!msg.design&&link){ link.send({t:'hello'}); }   // ask again for this box's design
+      if(msg.sel<0) designFor=-1;
+      if(prev&&prev.boxCount!==msg.boxCount) clearArmed=0;
+      renderRemote(); return;
+    }
+    if(msg.t==='note'){ setRemoteStatus(msg.text); return; }
     if(msg.t==='hostgone'||msg.t==='bye'){ st=null; renderRemote(); setRemoteStatus('The model screen stopped the session.'); return; }
     if(msg.t==='hostback'&&link){ link.send({t:'hello'}); }
   }
@@ -192,14 +252,35 @@ const Remote=(()=>{
       if(!link) setRemoteStatus('On the screen showing the model, open Arrange boxes and tap 📱 Remote → Show a code here.');
       return;
     }
+    const tabs='<nav class="rm-tabs">'+[['place','Place & color'],['design','Box design'],['layout','Layout & view']].map(([k,l])=>'<button type="button" class="btn'+(tab===k?' on':'')+'" data-rm-tab="'+k+'">'+l+'</button>').join('')+'</nav>';
+    document.body.classList.toggle('rm-design',tab==='design');
     const box=st.boxes[st.sel], u=st.unit, sc=st.scale||1, dis=box?'':' disabled';
+    const boxPick='<div class="rm-row"><select data-rm="select" class="rm-grow">'+'<option value="-1"'+(st.sel<0?' selected':'')+'>Select a box</option>'+
+      st.boxes.map((b,i)=>'<option value="'+i+'"'+(i===st.sel?' selected':'')+'>'+esc((b.clash?'⚠ ':'')+(b.hidden?'(hidden) ':'')+b.label)+'</option>').join('')+'</select></div>';
+    if(tab==='design'){
+      p.innerHTML=head+tabs+'<section><h4>Box to design</h4>'+boxPick+
+        '<p class="rm-small">'+(box&&designFor===st.sel?'Every change below updates '+esc(box.label)+' on the model screen. Its place, turn, material and colors stay as they are.':box?'Loading this box’s design…':'Select a box to change its design, or set up a design below and add it as a new box.')+'</p>'+
+        '<div class="rm-row"><button type="button" class="btn" data-rm="adddesign">Add this design as a new box</button></div></section>';
+      setRemoteStatus(st.status||''); return;
+    }
+    if(tab==='layout'){
+      p.innerHTML=head+tabs+
+        '<section><h4>View</h4><div class="rm-row"><button type="button" class="btn" data-rm="fit">Fit layout</button><button type="button" class="btn" data-rm="top">Top view</button>'+
+        '<button type="button" class="btn'+(st.placing?' on':'')+'" data-rm="place"'+dis+'>'+(st.placing?'Placing: tap the model screen…':'Place in top view')+'</button>'+
+        '<button type="button" class="btn'+(st.maximized?' on':'')+'" data-rm="max">'+(st.maximized?'✕ Exit maximize':'⤢ Maximize')+'</button></div>'+
+        '<div class="rm-row"><label>Viewing <select data-rm="stereo">'+[['off','Normal view'],['cross','Stereo · cross-eyed'],['parallel','Stereo · parallel']].map(([v,l])=>'<option value="'+v+'"'+(st.stereo===v?' selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
+        '<label>Units <select data-rm="units"><option value="mm"'+(u==='mm'?' selected':'')+'>mm</option><option value="in"'+(u==='in'?' selected':'')+'>in</option></select></label></div></section>'+
+        '<section><h4>Layout file</h4><div class="rm-row"><button type="button" class="btn" data-rm="save">Save layout (downloads on the model screen)</button>'+
+        '<button type="button" class="btn" data-rm="openfile">Open a layout file from this device</button><input type="file" id="rmFile" accept=".json,application/json" hidden></div>'+
+        '<div class="rm-row"><button type="button" class="btn rm-danger" data-rm="clear"'+(st.boxCount?'':' disabled')+'>'+(clearArmed>Date.now()?'Tap again to clear every box':'Clear all boxes')+'</button></div></section>';
+      setRemoteStatus(st.status||''); return;
+    }
     const num=(v,isAngle)=>isAngle?+(+v).toFixed(2):+(v/sc).toFixed(u==='in'?3:1);
     const opt=(v,l,on)=>'<option value="'+esc(v)+'"'+(on?' selected':'')+'>'+esc(l)+'</option>';
     const key=st.part||'*', colors=box?box.colors:{}, own=colors[key];
     const shown=own||(st.part&&st.part!=='acrylic'?colors.acrylic||colors['*']:colors['*'])||'#4da3ff';
-    p.innerHTML=head+
-      '<section><h4>Box</h4><div class="rm-row"><select data-rm="select" class="rm-grow">'+opt('-1','Select a box',st.sel<0)+
-        st.boxes.map((b,i)=>opt(i,(b.clash?'⚠ ':'')+(b.hidden?'(hidden) ':'')+b.label,i===st.sel)).join('')+'</select></div>'+
+    p.innerHTML=head+tabs+
+      '<section><h4>Box</h4>'+boxPick+
         '<div class="rm-row"><button type="button" class="btn" data-rm="dup"'+dis+'>Duplicate</button><button type="button" class="btn" data-rm="dupin"'+dis+'>Duplicate in place</button>'+
         '<button type="button" class="btn" data-rm="hide"'+dis+'>'+(box&&box.hidden?'Show box':'Hide box')+'</button>'+
         '<button type="button" class="btn rm-danger" data-rm="remove"'+dis+'>'+(removeArmed>Date.now()?'Tap again to remove':'Remove')+'</button></div></section>'+
@@ -225,7 +306,15 @@ const Remote=(()=>{
       const r=b.dataset.rm;
       if(r==='join') return remoteJoin($('#rmCode').value);
       if(r==='leave') return remoteLeave();
-      if(r==='exit'){ remoteLeave(); document.body.classList.remove('remote-mode'); p.hidden=true; history.replaceState(null,'',location.pathname); return; }
+      if(r==='exit'){ remoteLeave(); document.body.classList.remove('remote-mode','rm-design'); p.hidden=true; history.replaceState(null,'',location.pathname);
+        if(ownS){ if(window.BOX) window.BOX.noSave=false; S=ownS; ownS=null; designFor=-1; update(true); } return; }
+      if(b.dataset.rmTab){ tab=b.dataset.rmTab; renderRemote(); return; }
+      if(r==='adddesign') return cmd('add',{settings:JSON.parse(JSON.stringify(S))});
+      if(r==='place') return cmd('place',{});
+      if(r==='max') return cmd('maximize',{});
+      if(r==='save') return cmd('save',{});
+      if(r==='openfile') return p.querySelector('#rmFile').click();
+      if(r==='clear'){ if(clearArmed>Date.now()){ clearArmed=0; cmd('clear',{}); } else { clearArmed=Date.now()+4000; renderRemote(); setTimeout(renderRemote,4100); } return; }
       if(r==='dup') return cmd('dup',{});
       if(r==='dupin') return cmd('dup',{inPlace:true});
       if(r==='hide') return cmd('hide',{});
@@ -241,6 +330,9 @@ const Remote=(()=>{
       if(t.dataset.rm==='select') return cmd('select',{index:+t.value});
       if(t.dataset.rm==='part') return cmd('part',{name:t.value||null});
       if(t.dataset.rm==='color') return cmd('color',{hex:t.value,final:true});
+      if(t.dataset.rm==='units') return cmd('units',{unit:t.value});
+      if(t.dataset.rm==='stereo') return cmd('stereo',{mode:t.value});
+      if(t.id==='rmFile'&&t.files[0]){ const f=t.files[0]; f.text().then(json=>{ cmd('open',{json}); setRemoteStatus('Sent '+f.name+' to the model screen.'); }); t.value=''; return; }
       if(t.dataset.rmSet!==undefined&&t.value!=='') return cmd('set',{k:+t.dataset.rmSet,value:+t.value});
       if(t.dataset.rmRot!==undefined&&t.value!=='') return cmd('set',{rot:true,k:+t.dataset.rmRot,value:+t.value});
     });
@@ -267,6 +359,9 @@ const Remote=(()=>{
       else if(r==='join') remoteMode('');
     });
     remoteEvents();
+    // design edits on a remote's sidebar go to the model screen
+    const upd=update;
+    update=function(){ const out=upd.apply(this,arguments); if(document.body.classList.contains('remote-mode')) designChanged(); return out; };
     // every change on the host goes to the remote
     const sync=syncBoxLayout;
     syncBoxLayout=function(){ const out=sync.apply(this,arguments); if(host) sendState(); return out; };

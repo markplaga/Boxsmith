@@ -7,7 +7,7 @@ const { WebSocketServer } = require('ws');
 
 const PORT = +process.env.PORT || 7860;
 const ALLOWED = (process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
-const MAX_ROOMS = 1000, MAX_REMOTES = 8, MAX_BYTES = 256 * 1024, MSGS_PER_SEC = 60;
+const MAX_ROOMS = 1000, MAX_REMOTES = 8, MAX_BYTES = 8 * 1024 * 1024, MSGS_PER_SEC = 60;
 
 const rooms = new Map();   // code -> { host, remotes:Set }
 
