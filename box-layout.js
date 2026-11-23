@@ -267,7 +267,7 @@ function syncBoxLayout(){
     input.disabled=!box;
   });
   for(const id of ['layoutPlace','layoutDuplicate','layoutDuplicateInPlace','layoutHide','layoutRemove']) $('#'+id).disabled=!box;
-  $$('[data-lay-turn]').forEach(b=>{ b.disabled=!box; });
+  $$('[data-lay-turn],[data-lay-step]').forEach(b=>{ b.disabled=!box; });
   $('#layoutHide').textContent=box?.hidden?'Show box':'Hide box';
   $('#layoutTop').disabled=!layoutBoxes.length;
   $('#layoutFit').disabled=!layoutBoxes.length;
@@ -423,6 +423,16 @@ function initBoxLayout(){
       const [axis,deg]=btn.dataset.layTurn.split(':'), k={x:0,y:1,z:2}[axis];
       box.rotation[k]=(((box.rotation[k]+ +deg)%360)+360)%360;
     }
+    moveLayoutBox();
+    syncBoxLayout();
+  }));
+  // Step the selected box by its own size (as it sits now, so turned boxes step by their turned size).
+  $$('[data-lay-step]').forEach(btn=>btn.addEventListener('click',()=>{
+    const box=layoutBoxes[layoutSelection];
+    if(!box) return;
+    const [axis,sign]=btn.dataset.layStep.split(':').map(Number), key=['x','y','z'][axis];
+    const size=box.bounds.max[key]-box.bounds.min[key];
+    box.position[axis]=Math.round((box.position[axis]+sign*size)*1000)/1000;
     moveLayoutBox();
     syncBoxLayout();
   }));
