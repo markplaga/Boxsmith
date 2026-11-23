@@ -152,7 +152,8 @@ body.max3d #cv.layout-placing:active{cursor:grabbing}
 #layoutCtl.folded .lay-fold{transform:rotate(180deg)}
 #layoutCtl .lgrp{display:none;flex-wrap:wrap;align-items:center;gap:6px 10px}
 #layoutCtl[data-tab="Boxes"] .lgrp[data-g="Boxes"],#layoutCtl[data-tab="View"] .lgrp[data-g="View"]{display:flex}
-#layoutCtl[data-tab="Place"] .lgrp[data-g="Place"]{display:flex;flex-direction:column;align-items:stretch}
+#layoutCtl[data-tab="Place"] .lgrp[data-g="Place"]{display:grid;grid-template-columns:minmax(0,1fr);grid-auto-rows:min-content;align-content:start;row-gap:6px}
+#layoutCtl>*{flex:0 0 auto}
 body.max3d #layoutCtl .lgrp[data-g="View"]{display:flex!important}
 #layoutCtl .layout-status{font-size:12.5px;line-height:1.35}
 #layoutCtl .layout-status.warn{color:#a8321a;font-weight:600}
