@@ -546,6 +546,46 @@ function generate(){
     }
     S.corners=savedCorners;
   }
+  else if(ty==='cubeframe'){
+    /* Twelve hollow square beams along the edges of a box: six outer rings plus two inner strips per beam.
+       Every seam is finger-jointed; joint types are chosen so each shared corner has exactly one owner. */
+    const savedTs=G.ts; G.ts=null;
+    const dims=[W,D,H], minW=Math.max(3*t,10), maxW=(Math.min(W,D,H)-10)/2;
+    let w=Math.max(minW,+S.beamW||0);
+    if((+S.beamW||0)<minW) warns.push('Beam width raised to '+fmt(minW)+' — the narrowest that leaves room for finger joints on both sides of each strip.');
+    if(w>maxW){ w=Math.max(minW,maxW); warns.push('The beams are too wide for this size, so the openings would vanish. Beam width reduced to '+fmt(w)+'.'); }
+    if(Math.min(W,D,H)-2*w<10){ warns.push('The box is too small for a cube frame in this material — make it bigger.'); G.ts=savedTs; }
+    else {
+      const Ls=dims.map(d=>d-2*w+2*t);
+      const hole=(a,b)=>panelOutline(a,b,['M','M','M','M']).map(q=>[q[0]+w-t,q[1]+w-t]);
+      const hx=hole(Ls[0],Ls[2]), hy=hole(Ls[1],Ls[2]), hz=hole(Ls[0],Ls[1]);
+      const out=buildBox({W,D,H,f:fAll,pre:'Outer ',holes:{bottom:[hz],top:[hz],front:[hx],back:[hx],left:[hy],right:[hy]}});
+      if(out.top && S.text){ addText(out.top,W,D,true); out.top.texts[0].y=w/2; }
+      parts=Object.values(out);
+      const E=[X,Y,Z], cnt={}, kindName={MM:'A',MF:'B',FM:'C',FF:'D'};
+      for(let a=0;a<3;a++){
+        const oth=[0,1,2].filter(i=>i!==a);
+        for(const h0 of [0,1]) for(const h1 of [0,1]){
+          const hi=[0,0,0]; hi[oth[0]]=h0; hi[oth[1]]=h1;
+          for(const p of oth){ const q=oth.find(i=>i!==p);
+            const sh=a<p?'M':'F', cv=p===oth[0]?'M':'F', k=kindName[sh+cv];
+            cnt[k]=(cnt[k]||0)+1;
+            const o=[0,0,0]; o[a]=w-t; o[p]=hi[p]?dims[p]-w:w-t; o[q]=hi[q]?dims[q]:0;
+            const u=hi[q]?mul(E[q],-1):E[q];
+            parts.push(part('Strip '+k+cnt[k], panelOutline(w,Ls[a],[sh,cv,sh,'M']), {map:mapOf(o,u,E[a],E[p]), role:'strip', size:[w,Ls[a]], beam:a}));
+          }
+        }
+      }
+      G.ts=savedTs;
+      info={W,D,H,inner:{W:w,D:w,H:w,label:'beam'}};
+      info.hole={W:W-2*w,D:D-2*w};
+      notes.push('Thirty parts: six outer rings (one per side) and 24 inner strips that line the tunnels. Each edge of the cube is a hollow square beam '+fmt(w)+' across.');
+      notes.push('Openings: '+fmt(W-2*w)+' × '+fmt(H-2*w)+' front and back, '+fmt(D-2*w)+' × '+fmt(H-2*w)+' on the sides, '+fmt(W-2*w)+' × '+fmt(D-2*w)+' top and bottom.');
+      notes.push('Strips come in four kinds (A–D) that differ only in their finger pattern. Build one beam at a time: glue the two inner strips into the bottom ring\'s opening, then add the side rings, then the top ring last.');
+      if(ins) notes.push('Cube frame sizes are always outside dimensions.');
+      if(S.tslot!=='off') notes.push('Cube frames are glued; screw joints are turned off for this style.');
+    }
+  }
   else if(ty==='kerftest'){
     const vals=[]; for(let i=-3;i<=3;i++) vals.push(+(S.kerf+i*S.kStep).toFixed(3));
     const pitch=Math.max(14,t+10), Wc=vals.length*pitch+8, Hc=34, depth=14;
@@ -591,6 +631,7 @@ function assignAnims(parts,ty,W,D,H){
     if(ty==='puzzle' && n==='Lock pin') p.anim={tr:[0,0,2.5*t],e:0.3};
     if(ty==='puzzle' && n==='Sliding lid') p.anim={tr:[0,-D*0.85,0],d:0.38};
     if(ty==='display' && n.startsWith('Cover ')) p.anim=up(H*0.8);
+    if(ty==='cubeframe' && n.startsWith('Outer ')){ const dir={'Outer Top':[0,0,1],'Outer Bottom':[0,0,-1],'Outer Front':[0,-1,0],'Outer Back':[0,1,0],'Outer Left side':[-1,0,0],'Outer Right side':[1,0,0]}[n]; if(dir) p.anim={tr:mul(dir,Math.max(W,D,H)*0.55),d:0.15}; }
   }
 }
 
@@ -1226,6 +1267,7 @@ const ICONS={
   puzzle:'<rect x="4" y="13" width="22" height="13" fill="#e2461b"/><path d="M4 13l5-5h22l-5 5z" fill="#f2b398"/><path d="M26 13l5-5v13l-5 5z" fill="#b3330f"/><circle cx="12" cy="10.5" r="2" fill="#3a2b22"/><text x="20" y="22" font-size="9" font-weight="700" fill="#fff" font-family="sans-serif">?</text>',
   book:'<path d="M8 6h20v20H8a5 5 0 0 1-5-5V11a5 5 0 0 1 5-5z" fill="#e2461b"/><rect x="9" y="9" width="17" height="14" fill="#fbe6dd"/><path d="M5 10v12" stroke="#fbe6dd" stroke-dasharray="1 1.4"/>',
   frame:'<path fill-rule="evenodd" d="M3 8h26v18H3zM10 14h12v6H10z" fill="#e2461b"/><path d="M3 8l4-4h22l-0 4z" fill="#f2b398"/><path d="M10 14l3-2h9l-0 2z" fill="#b3330f"/>',
+  cubeframe:'<path fill-rule="evenodd" d="M4 11h17v17H4zM9 16h7v7H9z" fill="#e2461b"/><path fill-rule="evenodd" d="M4 11l7-7h17l-7 7zM11.5 8.5l2-2h7l-2 2z" fill="#f2b398"/><path fill-rule="evenodd" d="M21 11l7-7v17l-7 7zM23.5 14.5l2-2v7l-2 2z" fill="#b3330f"/>',
   display:'<rect x="2" y="24" width="28" height="4" fill="#b3330f"/><rect x="6" y="7" width="20" height="17" fill="#c4e4ee" stroke="#5f9fb3"/><circle cx="16" cy="18" r="4" fill="#e2461b"/>',
   kerftest:'<path d="M3 10h4v6h2v-6h4v6h2v-6h4v6h2v-6h8v14H3z" fill="#e2461b"/><rect x="11" y="4" width="2" height="12" fill="#3a2b22"/>'
 };

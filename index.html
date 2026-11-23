@@ -288,7 +288,7 @@ body.max3d .lamp-ctl{top:190px}
     </div>
   </div>
 
-  <div class="sec" data-show="liftoff split sliding hinged drawer polygon rounded open pencil card nested puzzle display frame">
+  <div class="sec" data-show="liftoff split sliding hinged drawer polygon rounded open pencil card nested puzzle display frame cubeframe">
     <h2>Fit &amp; lid</h2>
     <div class="grid2">
       <div class="f"><label for="lbl-7">Clearance</label><input id="lbl-7" type="number" data-k="clr" step="0.05" data-len><span class="hint">Gap for sliding / lift-off fits</span></div>
@@ -304,6 +304,7 @@ body.max3d .lamp-ctl{top:190px}
       <div class="f" data-show="display"><label for="lbl-12">Acrylic thickness</label><input id="lbl-12" type="number" data-k="tAcr" data-len step="0.01"></div>
       <div class="f" data-show="display"><label>Base margin</label><input type="number" data-k="baseM" data-len></div>
       <div class="f" data-show="frame"><label for="lbl-13">Ring width</label><input id="lbl-13" type="number" data-k="frameW" data-len><span class="hint">Width of the hollow ring, outer wall to centre hole</span></div>
+      <div class="f" data-show="cubeframe"><label for="lbl-beam">Beam width</label><input id="lbl-beam" type="number" data-k="beamW" data-len><span class="hint">Thickness of each edge beam, outside face to opening</span></div>
       <div class="f" data-show="polygon rounded"><label>Top</label><select data-k="polyTop"><option value="lift">Lift-off lid</option><option value="glued">Fixed top (closed)</option><option value="none">Open</option></select></div>
       <div class="f" data-show="polygon rounded"><label for="lbl-14">Plate lip</label><input type="number" data-k="lip" data-len><span class="hint">Plate edge past the walls</span></div>
       <label class="chk full" data-show="split"><input id="lbl-14" type="checkbox" data-k="strips"> Add locator strips (lid self-aligns)</label>
@@ -610,6 +611,7 @@ body.max3d .lamp-ctl{top:190px}
 <tr><td>Puzzle box</td><td>A sliding-lid box locked by a hidden gravity pin, plus a decoy rivet.</td><td>Upright, the pin drops into the lid and locks it. Upside-down, it falls into the rivet and the lid slides free.</td></tr>
 <tr><td>Book box</td><td>A cover strip (back cover, living-hinge spine, front cover) with a tray for the “pages.”</td><td>Text goes on the front cover. Bend the spine slowly around a can or dowel.</td></tr>
 <tr><td>Display case</td><td>A clear acrylic cover on a wood base with a locator frame.</td><td>Two materials, two sets of cut sheets. Set <i>Acrylic thickness</i> separately.</td></tr>
+<tr><td>Cube frame</td><td>A hollow cube made of twelve square beams, with an opening straight through every side.</td><td>Set the <i>Beam width</i>. Six outer rings plus 24 inner strips that line the tunnels, all finger-jointed and glued.</td></tr>
 <tr><td>Frame (torus)</td><td>A ring-shaped box: outer walls plus an inner tube around a hole that goes straight through.</td><td>Set the <i>Ring width</i> (outer wall to centre hole). It is sealed, with no lid. Base and top are finger-jointed rings.</td></tr>
 <tr><td>Kerf test</td><td>A slotted comb and a finger-joint pair.</td><td>Use this before your first real box on a new material.</td></tr>
 </table>

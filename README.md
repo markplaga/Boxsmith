@@ -3,7 +3,7 @@
 A laser-cut box generator that runs entirely in the browser. Open `index.html` — no build step, no server.
 
 ## Box styles
-Closed box · open tray · lift-off lid · split lid · sliding lid · hinged lid (pin) · drawer cabinet (1–8 drawers) · polygon box · rounded box (living-hinge corners) · pencil box (swivel lid) · card file box · nested set · puzzle box (gravity-pin lock) · book box (living-hinge spine) · display case (acrylic cover, wood base) · kerf test
+Closed box · open tray · lift-off lid · split lid · sliding lid · hinged lid (pin) · drawer cabinet (1–8 drawers) · polygon box · rounded box (living-hinge corners) · pencil box (swivel lid) · card file box · nested set · puzzle box (gravity-pin lock) · book box (living-hinge spine) · display case (acrylic cover, wood base) · frame (torus) · cube frame (open through every side) · kerf test
 
 ## Features
 - Finger joints with kerf compensation, inside/outside dimensions, mm or inches
