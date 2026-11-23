@@ -163,6 +163,38 @@ body.max3d #layoutCtl .lgrp[data-g="View"]{display:flex!important}
 #layoutCtl input[type=number]{width:5.4em}
 #layoutCtl #layoutSnapGap{width:4.6em}
 #layoutCtl .lay-color-target{min-width:9em;font-weight:600}
+/* Remote (two-screen editing) */
+#remoteBtn.on{border-color:var(--accent);color:var(--accent)}
+.remote-dialog{position:fixed;z-index:60;right:max(16px,env(safe-area-inset-right));top:max(70px,env(safe-area-inset-top));width:min(420px,calc(100vw - 32px));background:#fffdf9;border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 32px rgba(60,40,20,.22);padding:16px 18px;font-size:14px;line-height:1.45}
+.remote-dialog h3{margin:0 0 6px;font-size:16px}
+.remote-dialog p{margin:0 0 10px}
+.remote-code{font:700 40px/1.1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.08em;text-align:center;margin:8px 0 10px;color:var(--accent)}
+.remote-small{font-size:12.5px;color:var(--muted);word-break:break-all}
+.remote-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+body.remote-mode>*:not(#remotePanel):not(script){display:none!important}
+.remote-panel{max-width:760px;margin:0 auto;padding:max(14px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) 40px max(14px,env(safe-area-inset-left));font-size:15px}
+.remote-panel .btn{min-height:44px;padding:0 14px;font-size:15px}
+.remote-panel select,.remote-panel input[type=number],.remote-panel input:not([type]){min-height:44px;font-size:16px;border:1px solid var(--line2);border-radius:8px;padding:4px 8px;background:#fff}
+.remote-panel input[type=number]{width:6.5em}
+.rm-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px}
+.rm-head b{font-size:18px}
+.rm-code{font:700 15px ui-monospace,Menlo,monospace;color:var(--accent);letter-spacing:.06em}
+.rm-sp{flex:1}
+.rm-status{color:var(--muted);font-size:13.5px;min-height:1.3em;margin:4px 0 10px}
+.remote-panel section{background:#fffdf9;border:1px solid var(--line);border-radius:12px;padding:10px 14px 12px;margin-bottom:12px}
+.remote-panel h4{margin:6px 0 6px;font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.remote-panel h4 small{text-transform:none;letter-spacing:0}
+.rm-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px}
+.rm-row label{display:inline-flex;align-items:center;gap:6px}
+.rm-grow{flex:1 1 200px;min-width:0}
+.rm-grid3{display:grid;grid-template-columns:repeat(3,1fr)}
+.rm-color{width:64px;height:44px;border:1px solid var(--line2);border-radius:8px;padding:2px;background:#fff}
+.rm-danger{color:#a8321a}
+.remote-panel .btn:disabled,.remote-panel select:disabled,.remote-panel input:disabled{opacity:.45}
+.rm-small{font-size:12.5px;color:var(--muted);margin:4px 0 0}
+.rm-join{display:flex;flex-direction:column;gap:10px;max-width:340px}
+.rm-join input{font:700 28px ui-monospace,Menlo,monospace!important;letter-spacing:.1em;text-align:center}
+
 @media (max-width:760px){
   .v3dctl{max-height:48%;overflow-y:auto}
   #layoutCtl input[type=number]{width:4.6em}
@@ -515,7 +547,7 @@ body.max3d .lamp-ctl{top:190px}
       </details>
     </div>
     <div class="v3dctl hidden" id="layoutCtl" data-tab="Boxes">
-      <div class="lay-head"><div class="lay-tabs" role="tablist" aria-label="Arrange sections"><button type="button" role="tab" data-lay-tab="Boxes" aria-selected="true">Boxes</button><button type="button" role="tab" data-lay-tab="Place" aria-selected="false">Place</button><button type="button" role="tab" data-lay-tab="View" aria-selected="false">View</button></div><span class="lay-file"><button type="button" class="btn" id="layoutSave" title="Download this layout as a .json file">Save layout</button><button type="button" class="btn" id="layoutOpen" title="Open a saved layout file">Open layout</button><input type="file" id="layoutFile" class="hidden" accept=".json,application/json"></span><button type="button" class="btn lay-fold" id="layoutFold" aria-expanded="true" aria-label="Collapse arrange controls" title="Collapse / expand">▾</button></div>
+      <div class="lay-head"><div class="lay-tabs" role="tablist" aria-label="Arrange sections"><button type="button" role="tab" data-lay-tab="Boxes" aria-selected="true">Boxes</button><button type="button" role="tab" data-lay-tab="Place" aria-selected="false">Place</button><button type="button" role="tab" data-lay-tab="View" aria-selected="false">View</button></div><span class="lay-file"><button type="button" class="btn" id="remoteBtn" title="Edit this layout from another screen">📱 Remote</button><button type="button" class="btn" id="layoutSave" title="Download this layout as a .json file">Save layout</button><button type="button" class="btn" id="layoutOpen" title="Open a saved layout file">Open layout</button><input type="file" id="layoutFile" class="hidden" accept=".json,application/json"></span><button type="button" class="btn lay-fold" id="layoutFold" aria-expanded="true" aria-label="Collapse arrange controls" title="Collapse / expand">▾</button></div>
       <span id="layoutStatus" class="layout-status" role="status"></span>
       <div class="lgrp" data-g="Boxes"><button type="button" class="btn primary" id="layoutAdd">Add current box</button><select id="layoutObjects" aria-label="Box to arrange"></select><button type="button" class="btn" id="layoutDuplicate" title="Copy the selected box and set it beside the others">Duplicate</button><button type="button" class="btn" id="layoutDuplicateInPlace" title="Copy the selected box exactly where it is, then move or turn the copy">Duplicate in place</button><button type="button" class="btn" id="layoutHide">Hide box</button><button type="button" class="btn" id="layoutRemove">Remove</button><button type="button" class="btn" id="layoutClear">Clear all</button></div>
       <div class="lgrp lay-adv" data-g="Place">
@@ -564,6 +596,7 @@ body.max3d .lamp-ctl{top:190px}
 <li><a href="#h-decorate">Decorating: text, accents, patterns, artwork</a></li>
 <li><a href="#h-3d">The 3D preview</a></li>
 <li><a href="#h-arrange">Arrange whole boxes</a></li>
+<li><a href="#h-remote">Two-screen editing (Remote)</a></li>
 <li><a href="#h-sheets">Cut sheets and nesting</a></li>
 <li><a href="#h-export">Exporting files</a></li>
 <li><a href="#h-production">Production: batches, kits, cost</a></li>
@@ -728,6 +761,16 @@ body.max3d .lamp-ctl{top:190px}
 <li><b>Save layout</b> and <b>Open layout</b> sit at the top right of the controls, beside the tabs. Save downloads a JSON copy, and Open makes a saved file active. <b>Remove</b> deletes the selected box. <b>Clear all</b> removes every box from the current layout. Click it a second time within a few seconds to confirm. The ▾ button beside the tabs folds the controls away so you can see more of the preview.</li>
 </ol>
 <p>Click <b>Maximize</b> to show only the layout preview across the browser window. Drag to orbit, or zoom with the wheel or by pinching. Press <b>Esc</b> or double-click or double-tap the preview to bring the controls back. Boxes cannot be dragged while maximized, so exit first to move them.</p>
+<h3 id="h-remote">Two-screen editing (Remote)</h3>
+<p>Show the model on one screen and edit it from another, such as a laptop or TV for the model and an iPad for the controls.</p>
+<ol>
+<li>On the screen that will show the model, open <b>Arrange boxes</b>, tap <b>📱 Remote</b>, then <b>Show a code here</b>. A 6-digit code appears.</li>
+<li>On the other screen, open Boxsmith, go to <b>Arrange boxes</b>, tap <b>📱 Remote</b>, then <b>Use this screen as the remote</b>, and enter the code. You can also open the link shown under the code.</li>
+<li>Tap a box on the model screen and its controls appear on the remote: Duplicate, Duplicate in place, Hide, Remove, Position, Step, Turn, Rotate, Snap to and Color. Tap the box again on the model screen to pick one part, or choose a part (or <b>All acrylic parts</b>) from the Color list on the remote. Every change shows on the model screen at once.</li>
+<li>The layout lives on the model screen, so saving, opening and the cut files work there as usual. <b>Stop remote</b> ends the session, and the remote is told.</li>
+</ol>
+<p>Two windows on the same computer connect directly and need no internet. Separate devices connect through a small relay on Hugging Face; the first connection after a quiet spell can take a few seconds while the relay wakes up. The code only works while the model screen is showing it, and nothing passes through the relay except the edits themselves.</p>
+
 <p>Choose <b>Stereo · cross-eyed</b> or <b>Stereo · parallel</b> from the viewing menu to see two views of the whole arrangement side by side. Adjust <b>Stereo depth</b> to change the separation. You can select or place boxes in either view. Choose <b>Normal view</b> to return to a single image.</p>
 <p>Try a <b>240 × 180 × 50 mm Frame (torus)</b> with a <b>24 mm ring width</b>. Add three <b>55 × 45 × 30 mm Closed boxes</b>. Set their X coordinates to <b>−60</b>, <b>0</b>, and <b>60 mm</b>, with Y and Z at zero. Click <b>Top view</b> to inspect the fit, then drag to see the layout from the side. Or add one box and use <b>Snap to</b> with <b>Inside, centered</b> to drop it into the Frame's opening, then <b>Inside, against left wall</b> to push it to a side.</p>
 
@@ -840,6 +883,8 @@ Boxsmith.browser.showBox(tray);</code></pre>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+<div id="remoteDialog" class="remote-dialog" role="dialog" aria-label="Remote" hidden></div>
+<div id="remotePanel" class="remote-panel" hidden></div>
 <script src="three.min.js"></script>
 <script src="designs.js"></script>
 <script src="tools.js"></script>
@@ -849,6 +894,7 @@ Boxsmith.browser.showBox(tray);</code></pre>
 <script src="app.js"></script>
 <script src="mosaic.js"></script>
 <script src="boxsmith-engine.js"></script>
+<script src="remote.js"></script>
 <script>
 /* Offline / installable support */
 if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

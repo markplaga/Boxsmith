@@ -15,6 +15,7 @@ Closed box · open tray · lift-off lid · split lid · sliding lid · hinged li
 - 3D preview (three.js) with explode, “show it work” animations, screws and nuts, tap-to-select
 - Paint finish: preview a watercolor wash or acrylic paint color on any box
 - Arrange intact box designs side by side, inside other boxes or in a Frame opening, with snap-to-face, drag to move, step-by-size, duplicate in place, per-box materials, part and acrylic coloring, overlap warnings, and save and open for layout files
+- Two-screen editing: pair a second screen (such as an iPad) with a code and edit placement and color from it. Same-computer windows connect directly; other devices use the small relay in `relay/` (a Hugging Face Docker Space)
 - Picture mosaic: upload a picture and Boxsmith picks the paint colours and builds a layout of boxes (optional relief and frame)
 - Sheet nesting with hole filling and grain lock, batch quantity, kit-mode hold tabs
 - SVG and DXF export (simple or LightBurn-ordered layers), printable assembly card
