@@ -231,7 +231,7 @@ The **📱 Remote** button in Arrange boxes links a second screen to the one sho
 | `view` | `{ yaw?, pitch?, zoom?, pan? }` | Sets the camera (degrees). |
 | `fit`, `top`, `place`, `maximize`, `stereo`, `units`, `save`, `open`, `clear` | `{ mode }` for `stereo`, `{ unit }` for `units`, `{ json }` for `open` | The Layout & view controls. |
 | `batch` | `{ cmds: [{ op, args }, …] }` (up to 500) | Runs them all, then sends one state. No need to pace commands for the relay's 60 messages a second. |
-| `animate` | see below | Loads an animation and plays it (unless `autoplay: false`). |
+| `animate` | see below | Loads an animation and plays it (unless `autoplay: false`). Positions are in the display unit, the same as `set`. |
 | `play`, `pause`, `stop`, `seek` | `{ t }` for `seek` | Playback. `stop` puts every animated box and the camera back where they were. |
 | `capture` | see below | Pictures of the view or the animation. |
 | `export` | `{ format: 'webm' \| 'gif', fps?, width?, height? }` | Records the animation from start to finish. The host also shows a Download button. |
@@ -242,7 +242,7 @@ The **📱 Remote** button in Arrange boxes links a second screen to the one sho
 
 ```json
 { "t": "cmd", "op": "animate", "args": {
-  "fps": 30, "easing": "easeInOut", "loop": false,
+  "unit": "mm", "fps": 30, "easing": "easeInOut", "loop": false,
   "keyframes": [
     { "t": 0,   "boxes": { "0": { "position": [0, 0, 0],  "rotation": [0, 0, 0] } } },
     { "t": 0.5, "boxes": { "0": { "position": [0, 0, 60], "rotation": [0, 0, 60] } } },
@@ -257,10 +257,13 @@ The **📱 Remote** button in Arrange boxes links a second screen to the one sho
 } }
 ```
 
-That makes box 0 hop three times while turning a full circle, tints box 1's acrylic blue from 2 seconds, and swings the camera round.
+That makes box 0 hop 60 mm three times while turning a full circle, tints box 1's acrylic blue from 2 seconds, and swings the camera round.
+
+**Units.** Positions are in the display unit, the same as `set`. That's the `unit` in the state (`'mm'` or `'in'`), unless `"unit": "mm"` or `"unit": "in"` in the `animate` args overrides it. Camera `pan` uses the same unit. The `playing` message echoes the unit used: `{"t":"anim","state":"playing","time":0,"unit":"mm"}`. One difference to watch: the positions in the state's `boxes` are always in millimetres. Divide them by the state's `scale` (25.4 when the unit is inches, otherwise 1) to get display units.
 
 - Each box key may hold `position`, `rotation`, `colors`, `hidden` and `settings`. Only the boxes you list move; the rest hold still. A box whose first key comes after 0 eases in from where it stood.
-- Positions and the camera ease between keys (`easing` is `'easeInOut'`, the default, or `'linear'`). Turns of up to 180° per axis take the shortest path; bigger turns are kept as written, so a key of 360 spins a full circle. To cross 0 the short way, write 350 → 370.
+- Positions and the camera ease between keys (`easing` is `'easeInOut'`, the default, or `'linear'`).
+- **Turns.** Each axis is compared separately between two keys. If every axis changes by 180° or less, the box takes the shortest path: 0 → 90 turns 90°. If any axis changes by more than 180°, the angles are kept exactly as written and eased one by one. So 0 → 360 spins a full circle, and 350 → 10 is a −340° turn that goes back the long way, through 180°. To cross 0 the short way, write 350 → 370 (a 20° turn). The keys' angles are taken literally, not reduced to 0–360 first.
 - `colors`, `hidden` and `settings` switch at their key's time and hold until the next. A `settings` key rebuilds that box; each design is built once when the animation loads, and playback otherwise only moves boxes.
 - Playback follows the real clock at up to `fps` frames a second, so it stays on time on a slow device. Optional `base` is a layout (object or JSON text) to open first.
 - Limits: 2000 keyframes, 120 seconds, `fps` 1–60.

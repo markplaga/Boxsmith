@@ -236,7 +236,7 @@ const Remote=(()=>{
       try{ stopAnim(true); openBoxLayout(a.base); }catch(err){ return 'The base layout could not be opened: '+err.message; }
     }
     if(!layoutBoxes.length) return 'There are no boxes to animate. Add boxes or send a base layout.';
-    const v=Anim.validateAnimation(a,layoutBoxes.length);
+    const v=Anim.validateAnimation(a,layoutBoxes.length,S.unit==='in'?'in':'mm');   // positions in the display unit, like set
     if(!v.ok) return v.error;
     stopAnim(true);
     const spec=v.anim, originals={}, variants={};
@@ -254,7 +254,7 @@ const Remote=(()=>{
       }
     }
     const start={}; for(const i of Object.keys(originals)) start[i]=originals[i].pose;
-    anim={spec,start,duration:spec.duration,fps:spec.fps,loop:spec.loop,t:0,playing:false,raf:0,originals,variants,view0:viewDeg(),lastFrameT:-1};
+    anim={spec,unit:spec.unit,start,duration:spec.duration,fps:spec.fps,loop:spec.loop,t:0,playing:false,raf:0,originals,variants,view0:viewDeg(),lastFrameT:-1};
     if(curView!=='layout') document.querySelector('#tabs [data-v="layout"]')?.click();
     applyFrame(0);
     if(a.autoplay!==false) playAnim();
@@ -309,7 +309,7 @@ const Remote=(()=>{
     cancelAnimationFrame(anim.raf);
     anim.playing=true; anim.t0=anim.t; anim.wall0=performance.now(); anim.lastFrameT=-1;
     applyFrame(anim.t);
-    if(host) host.send({t:'anim',state:'playing',time:anim.t});
+    if(host) host.send({t:'anim',state:'playing',time:anim.t,unit:anim.unit});
     anim.raf=requestAnimationFrame(tick);
   }
   function pauseAnim(){ if(!anim) return; anim.playing=false; cancelAnimationFrame(anim.raf); syncBoxLayout(); }

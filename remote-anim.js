@@ -54,7 +54,10 @@
   }
 
   /* ---------- validation ---------- */
-  function validateAnimation(args,boxCount){
+  // displayUnit: the page's display unit ('mm' or 'in'). Positions (and camera pan) in the keyframes are
+  // in that unit, the same as the set command, unless args.unit overrides it. They are converted to
+  // millimetres here, so tracks and samples are always in mm.
+  function validateAnimation(args,boxCount,displayUnit='mm'){
     const bad=error=>({ok:false,error});
     if(!args||typeof args!=='object') return bad('animate needs an object of arguments.');
     const keys=args.keyframes;
@@ -62,6 +65,9 @@
     if(keys.length>MAX_KEYS) return bad('Too many keyframes: '+keys.length+' (the limit is '+MAX_KEYS+').');
     const easing=args.easing===undefined?'easeInOut':args.easing;
     if(!EASE[easing]) return bad("easing must be 'linear' or 'easeInOut'.");
+    const unit=args.unit===undefined?displayUnit:args.unit;
+    if(unit!=='mm'&&unit!=='in') return bad("unit must be 'mm' or 'in'.");
+    const mm=unit==='in'?25.4:1, toMM=p=>p.map(v=>v*mm);
     const fps=args.fps===undefined?30:args.fps;
     if(!isNum(fps)||fps<1||fps>MAX_FPS) return bad('fps must be a number from 1 to '+MAX_FPS+'.');
     const tracks={}, out=[];
@@ -83,7 +89,9 @@
           for(const [part,hex] of Object.entries(pose.colors)) if(!HEX.test(hex)) return bad(where+'.boxes['+name+'].colors.'+part+" must be '#rrggbb'.");
         }
         if(pose.settings!==undefined&&(pose.settings===null||typeof pose.settings!=='object')) return bad(where+'.boxes['+name+'].settings must be an object.');
-        (tracks[i]=tracks[i]||[]).push(Object.assign({t:key.t},pose));
+        const entry=Object.assign({t:key.t},pose);
+        if(pose.position!==undefined) entry.position=toMM(pose.position);
+        (tracks[i]=tracks[i]||[]).push(entry);
       }
       out.push(key.t);
     }
@@ -100,13 +108,14 @@
         if(c.pitch!==undefined&&Math.abs(c.pitch)>90) return bad(where+'.pitch must be between -90 and 90.');
         if(c.zoom!==undefined&&(c.zoom<0.05||c.zoom>20)) return bad(where+'.zoom must be between 0.05 and 20.');
         if(c.pan!==undefined&&!isTriple(c.pan)) return bad(where+'.pan must be three finite numbers.');
-        camera.push(Object.assign({},c));
+        const cam=Object.assign({},c); if(c.pan!==undefined) cam.pan=toMM(c.pan);
+        camera.push(cam);
       }
       camera.sort((a,b)=>a.t-b.t);
       if(camera.length) duration=Math.max(duration,camera[camera.length-1].t);
     }
     for(const list of Object.values(tracks)) list.sort((a,b)=>a.t-b.t);
-    return {ok:true,anim:{tracks,camera,duration,fps,easing,loop:!!args.loop}};
+    return {ok:true,anim:{tracks,camera,duration,fps,easing,loop:!!args.loop,unit}};
   }
 
   /* ---------- sampling ---------- */

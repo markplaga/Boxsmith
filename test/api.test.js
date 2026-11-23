@@ -304,3 +304,34 @@ test('the GIF encoder writes a valid animated GIF', () => {
   assert.equal(gif[gif.length - 1], 0x3b);
   assert.equal([...gif].filter((b, i) => b === 0x2c && gif[i - 1] === 0).length >= 2, true);   // two image blocks
 });
+
+test('animation positions use the display unit (or args.unit), converted to mm', () => {
+  const hop = z => ({ keyframes: [{ t: 0, boxes: { 0: { position: [0, 0, 0] } } }, { t: 1, boxes: { 0: { position: [1, 0, z] } } }] });
+  const endMM = v => Anim.sampleAt(v.anim, 1, {}).boxes[0].position;
+  const mm = Anim.validateAnimation(hop(50.8), 1, 'mm');                                  // display unit mm
+  const inch = Anim.validateAnimation(hop(2), 1, 'in');                                   // display unit inches
+  const override = Anim.validateAnimation(Object.assign(hop(2), { unit: 'in' }), 1, 'mm'); // unit given in args
+  assert.equal(mm.anim.unit, 'mm'); assert.equal(inch.anim.unit, 'in'); assert.equal(override.anim.unit, 'in');
+  assert.deepEqual(endMM(mm), [1, 0, 50.8]);
+  assert.deepEqual(endMM(inch), [25.4, 0, 50.8]);
+  assert.deepEqual(endMM(override), endMM(inch));
+  // the same physical hop written in mm and in inches ends in the same place
+  assert.deepEqual(endMM(Anim.validateAnimation(hop(50.8), 1, 'mm')).map(v => +v.toFixed(9)),
+                   endMM(Anim.validateAnimation({ unit: 'in', keyframes: [{ t: 0, boxes: { 0: { position: [0, 0, 0] } } }, { t: 1, boxes: { 0: { position: [1 / 25.4, 0, 2] } } }] }, 1, 'mm')).map(v => +v.toFixed(9)));
+  // camera pan is a length too
+  const cam = Anim.validateAnimation({ unit: 'in', keyframes: [{ t: 0, boxes: {} }], camera: [{ t: 0, pan: [1, 0, 0] }] }, 1);
+  assert.deepEqual(cam.anim.camera[0].pan, [25.4, 0, 0]);
+  assert.match(Anim.validateAnimation(Object.assign(hop(1), { unit: 'cm' }), 1).error, /unit/);
+});
+
+test('turn rule: up to 180° takes the shortest path, bigger turns are kept as written', () => {
+  const mid = (a, b, u = 0.5) => Anim.rotationBetween([0, 0, a], [0, 0, b], u)[2];
+  assert.equal(mid(0, 90), 45);                                       // ordinary turn
+  assert.deepEqual([0.25, 0.5, 0.75].map(u => mid(0, 360, u)), [90, 180, 270]);   // 0 → 360: a full spin
+  assert.deepEqual([0.25, 0.5, 0.75].map(u => mid(350, 370, u)), [355, 360, 365]); // 350 → 370: crosses 0 the short way (20°)
+  // 350 → 10 is written as a −340° turn, which is more than 180°, so it is kept as written:
+  // the box turns back the long way, through 180°. Write 350 → 370 for the short way.
+  assert.deepEqual([0.25, 0.5, 0.75].map(u => mid(350, 10, u)), [265, 180, 95]);
+  // the shortest-path case on more than one axis still ends exactly on the key
+  assert.deepEqual(Anim.rotationBetween([0, 0, 0], [90, 0, 90], 1), [90, 0, 90]);
+});

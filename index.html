@@ -787,8 +787,8 @@ body.max3d .lamp-ctl{top:190px}
 <p>Two windows on the same computer connect directly and need no internet. Separate devices connect through a small relay on Hugging Face; the first connection after a quiet spell can take a few seconds while the relay wakes up. The code only works while the model screen is showing it, and nothing passes through the relay except the edits themselves.</p>
 <h4 id="h-remote-anim">Animations, pictures and recordings</h4>
 <p>A remote can also be a script or an AI helper. It can send a whole animation in one message, and the model screen plays it smoothly, timed by the real clock. The <b>Layout &amp; view</b> tab on a remote has <b>Play</b>, <b>Pause</b> and <b>Stop</b>, plus <b>Capture view</b>, <b>Contact sheet</b> (12 frames in one picture, each labelled with its time), <b>Record WebM</b> and <b>Record GIF</b>. Pictures and recordings appear on the remote with a Save link, and a recording also gets a Download button on the model screen. Captures never change what the model screen is showing. <b>Stop</b> puts every box and the camera back where they were before the animation.</p>
-<p>For example, this makes box 0 hop three times while turning a full circle:</p>
-<pre style="white-space:pre-wrap;font-size:12px;background:#f3eee6;padding:10px;border-radius:6px">{"t":"cmd","op":"animate","args":{"fps":30,"keyframes":[
+<p>For example, this makes box 0 hop 60 mm three times while turning a full circle:</p>
+<pre style="white-space:pre-wrap;font-size:12px;background:#f3eee6;padding:10px;border-radius:6px">{"t":"cmd","op":"animate","args":{"unit":"mm","fps":30,"keyframes":[
  {"t":0,"boxes":{"0":{"position":[0,0,0],"rotation":[0,0,0]}}},
  {"t":0.5,"boxes":{"0":{"position":[0,0,60],"rotation":[0,0,60]}}},
  {"t":1,"boxes":{"0":{"position":[0,0,0],"rotation":[0,0,120]}}},
@@ -798,7 +798,7 @@ body.max3d .lamp-ctl{top:190px}
  {"t":3,"boxes":{"0":{"position":[0,0,0],"rotation":[0,0,360]}}}]}}</pre>
 <p>and this returns a 12-frame contact sheet of it:</p>
 <pre style="white-space:pre-wrap;font-size:12px;background:#f3eee6;padding:10px;border-radius:6px">{"t":"cmd","op":"capture","args":{"mode":"sheet","count":12}}</pre>
-<p>Positions, turns and the camera ease between keyframes. Colors, hiding and design changes switch at their keyframe. The limits are 2000 keyframes and 120 seconds. Every command, including <b>batch</b> (many commands in one message), <b>play</b>, <b>pause</b>, <b>stop</b>, <b>seek</b>, <b>capture</b> and <b>export</b>, is listed with its options in the API reference (API.md, “Remote control”).</p>
+<p>Positions are in the display unit, the same as <b>set</b> (the example says <code>"unit":"mm"</code> so it means the same thing whatever your unit setting is). Turns of up to 180° take the shortest path; bigger turns are kept as written, so 0 → 360 spins a full circle and 350 → 10 goes the long way round (write 350 → 370 to cross 0 the short way). Positions, turns and the camera ease between keyframes. Colors, hiding and design changes switch at their keyframe. The limits are 2000 keyframes and 120 seconds. Every command, including <b>batch</b> (many commands in one message), <b>play</b>, <b>pause</b>, <b>stop</b>, <b>seek</b>, <b>capture</b> and <b>export</b>, is listed with its options in the API reference (API.md, “Remote control”).</p>
 
 
 <p>Choose <b>Stereo · cross-eyed</b> or <b>Stereo · parallel</b> from the viewing menu to see two views of the whole arrangement side by side. Adjust <b>Stereo depth</b> to change the separation. You can select or place boxes in either view. Choose <b>Normal view</b> to return to a single image.</p>
