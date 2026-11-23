@@ -226,3 +226,81 @@ test('view({ pitch: 90 }) is the Top view of Arrange boxes', async t => {
   assert.equal(result.api.pitch, result.button.pitch);
   assert.equal(result.api.yaw, result.button.yaw);
 });
+
+/* ---------- Remote animation helpers (remote-anim.js) ---------- */
+const Anim = require('../remote-anim.js');
+
+test('animation: positions and rotations interpolate at mid-times', () => {
+  const v = Anim.validateAnimation({ easing: 'linear', keyframes: [
+    { t: 0, boxes: { 0: { position: [0, 0, 0], rotation: [0, 0, 0] } } },
+    { t: 2, boxes: { 0: { position: [100, 40, 60], rotation: [0, 0, 90] } } },
+    { t: 4, boxes: { 0: { position: [100, 40, 0], rotation: [0, 0, 360] } } }
+  ] }, 2);
+  assert.equal(v.ok, true);
+  assert.equal(v.anim.duration, 4);
+  const at = t => Anim.sampleAt(v.anim, t, {}).boxes[0];
+  assert.deepEqual(at(1).position, [50, 20, 30]);
+  assert.deepEqual(at(1).rotation, [0, 0, 45]);                       // ≤ 180°: shortest-path slerp
+  assert.deepEqual(at(3).rotation, [0, 0, 225]);                      // > 180°: kept as written, so 360 spins fully
+  assert.deepEqual(at(9).position, [100, 40, 0]);                     // after the last key, hold it
+  // easeInOut is symmetric: the middle of a segment is still the middle
+  const e = Anim.validateAnimation({ keyframes: [{ t: 0, boxes: { 0: { position: [0, 0, 0] } } }, { t: 1, boxes: { 0: { position: [0, 0, 10] } } }] }, 1);
+  const mid = Anim.sampleAt(e.anim, 0.5, {}).boxes[0].position[2], early = Anim.sampleAt(e.anim, 0.25, {}).boxes[0].position[2];
+  assert.ok(Math.abs(mid - 5) < 1e-9 && early < 2.5);
+  // a box with only a later key eases in from its starting pose; colors hold until their key's time
+  const s = Anim.validateAnimation({ easing: 'linear', keyframes: [{ t: 2, boxes: { 1: { position: [0, 0, 80], colors: { acrylic: '#2f8cff' } } } }] }, 2);
+  const start = { 1: { position: [0, 0, 0], rotation: [0, 0, 0], colors: undefined } };
+  assert.deepEqual(Anim.sampleAt(s.anim, 1, start).boxes[1].position, [0, 0, 40]);
+  assert.equal(Anim.sampleAt(s.anim, 1.99, start).boxes[1].colors, undefined);
+  assert.deepEqual(Anim.sampleAt(s.anim, 2, start).boxes[1].colors, { acrylic: '#2f8cff' });
+  // tilted rotations survive the round trip through quaternions
+  for (const r of [[10, 20, 30], [-45, 60, 170]]) assert.deepEqual(Anim.quatToEuler(Anim.eulerToQuat(r)), r);
+});
+
+test('animation: bad input is rejected with a message, never thrown', () => {
+  const bad = args => Anim.validateAnimation(args, 2);
+  assert.match(bad({ keyframes: [{ t: 0, boxes: { 5: {} } }] }).error, /no box 5/);
+  assert.match(bad({ keyframes: [{ t: 0, boxes: { 0: { position: [0, NaN, 0] } } }] }).error, /finite/);
+  assert.match(bad({ keyframes: [{ t: 121, boxes: {} }] }).error, /120 s/);
+  assert.match(bad({ keyframes: Array.from({ length: 2001 }, (_, k) => ({ t: k / 100, boxes: {} })) }).error, /2000/);
+  assert.match(bad({ keyframes: [{ t: 0, boxes: {} }], easing: 'bounce' }).error, /easing/);
+  assert.match(bad(null).error, /object/);
+});
+
+test('batch runs every command, reports the failures, and never throws', () => {
+  const ran = [];
+  const run = (op, args) => { if (op === 'select' && !(args.index >= 0 && args.index < 2)) return 'There is no box ' + args.index + '.'; if (op === 'boom') throw new Error('kaput'); ran.push(op); };
+  const r = Anim.runBatch([{ op: 'select', args: { index: 0 } }, { op: 'color', args: { hex: '#c0392b' } }, { op: 'select', args: { index: 9 } }, { op: 'boom' }, { op: 'batch' }, { nope: 1 }], run);
+  assert.deepEqual(ran, ['select', 'color']);
+  assert.equal(r.ran, 2);
+  assert.equal(r.errors.length, 4);
+  assert.match(r.errors[0], /no box 9/);
+  assert.match(r.errors[1], /kaput/);
+  assert.equal(Anim.runBatch('nope', run).errors.length, 1);
+  assert.equal(Anim.runBatch(Array(501).fill({ op: 'fit' }), run).errors.length, 1);
+});
+
+test('big messages are split under the relay limit and put back together', () => {
+  const limit = 700000;
+  const capture = { t: 'capture', id: 'c1', images: Array.from({ length: 5 }, () => 'data:image/png;base64,' + 'A'.repeat(300000)), times: [0, 1, 2, 3, 4] };
+  const parts = Anim.splitMessage(capture, limit);
+  assert.ok(parts.length > 1 && parts.every(p => JSON.stringify(p).length <= limit));
+  assert.deepEqual(parts.flatMap(p => p.times), capture.times);
+  assert.ok(parts.every(p => p.part >= 1 && p.of === parts.length));
+  const video = { t: 'export', id: 'e1', data: 'data:video/webm;base64,' + 'B'.repeat(2500000) };
+  const chunks = Anim.splitMessage(video, 1000000), store = {};
+  assert.ok(chunks.length === 3 && chunks.every(c => c.t === 'chunk' && JSON.stringify(c).length <= 1000000));
+  let whole = null;
+  for (const c of chunks.reverse()) whole = Anim.joinParts(store, c) || whole;   // order doesn't matter
+  assert.deepEqual(whole, video);
+  assert.deepEqual(Anim.splitMessage({ t: 'state', small: true }, limit), [{ t: 'state', small: true }]);
+});
+
+test('the GIF encoder writes a valid animated GIF', () => {
+  const w = 8, h = 4, frame = c => Uint8ClampedArray.from({ length: w * h * 4 }, (_, i) => (i % 4 === 3 ? 255 : c));
+  const gif = Anim.encodeGIF([frame(0), frame(255)], w, h, 5);
+  assert.equal(Buffer.from(gif.slice(0, 6)).toString(), 'GIF89a');
+  assert.equal(gif[6] | (gif[7] << 8), w);
+  assert.equal(gif[gif.length - 1], 0x3b);
+  assert.equal([...gif].filter((b, i) => b === 0x2c && gif[i - 1] === 0).length >= 2, true);   // two image blocks
+});

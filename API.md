@@ -209,6 +209,76 @@ Browser (or the Node page) only.
 
 For example, `Boxsmith.browser.showBox(Boxsmith.boxes.create('open', { W: 100 }))` opens a tray in 3D preview.
 
+## Remote control: two screens, scripts and AI helpers
+
+The **📱 Remote** button in Arrange boxes links a second screen to the one showing the model (the *host*). Anything that can send JSON can be that second screen: a person on an iPad, a script, or an AI helper. The host owns the layout; the remote sends commands and gets state, notes, pictures and recordings back.
+
+**Connecting.** Two windows in one browser use `new BroadcastChannel('boxsmith-remote-' + code)`. Anything else opens a WebSocket to the relay (`wss://marktheartist-boxsmith-relay.hf.space/ws`) and first sends `{"t":"join","room":"482917","role":"remote"}` with the 6-digit code the host shows. Then send `{"t":"hello"}`; the host answers with a `state` message.
+
+**Commands** are `{"t":"cmd","op":"…","args":{…}}`. The host answers every command (or batch) with one fresh `state`. Anything wrong comes back as `{"t":"note","text":"…"}`: a bad index, a number that isn't finite, an unknown op. Nothing is thrown.
+
+| op | args | What it does |
+| --- | --- | --- |
+| `select` | `{ index }` (`-1` for none) | Selects a box. |
+| `part` | `{ name }` (a part name, `'acrylic'` or `null`) | Picks one part of the selected box for coloring. |
+| `set` | `{ k: 0–2, value, rot? }` | Sets x, y or z of the position (in the display unit), or of the turn in degrees with `rot: true`. |
+| `step` | `{ key: '0:1' }` (`axis:direction`) | Moves the box by its own size (axis 0 x, 1 y, 2 z). |
+| `turn` | `{ kind: 'z:90' }` (`'z:-90'`, `'x:90'`, `'y:90'`, `'reset'`) | The Rotate buttons. |
+| `snap` | `{ to, side, gap? }` | Snaps against box `to` (sides as in `assemblies.snap`). |
+| `dup`, `hide`, `remove` | `{ inPlace? }` for `dup` | The Boxes buttons. |
+| `color`, `nocolor` | `{ hex: '#rrggbb' }` | Colors the selected box or part. |
+| `design`, `add` | `{ index, settings }` / `{ settings }` | Replaces a box's design in place, or adds a new box. |
+| `view` | `{ yaw?, pitch?, zoom?, pan? }` | Sets the camera (degrees). |
+| `fit`, `top`, `place`, `maximize`, `stereo`, `units`, `save`, `open`, `clear` | `{ mode }` for `stereo`, `{ unit }` for `units`, `{ json }` for `open` | The Layout & view controls. |
+| `batch` | `{ cmds: [{ op, args }, …] }` (up to 500) | Runs them all, then sends one state. No need to pace commands for the relay's 60 messages a second. |
+| `animate` | see below | Loads an animation and plays it (unless `autoplay: false`). |
+| `play`, `pause`, `stop`, `seek` | `{ t }` for `seek` | Playback. `stop` puts every animated box and the camera back where they were. |
+| `capture` | see below | Pictures of the view or the animation. |
+| `export` | `{ format: 'webm' \| 'gif', fps?, width?, height? }` | Records the animation from start to finish. The host also shows a Download button. |
+
+**State** (`{"t":"state",…}`) includes `boxes` (label, position, rotation, colors, hidden), `sel`, `part`, `parts`, `unit`, `stereo`, `view` (`yaw`, `pitch` in degrees, `zoom`, `pan`), `anim` (`playing`, `t`, `duration`, `loop`, or `null`) and `exporting`.
+
+### Animate
+
+```json
+{ "t": "cmd", "op": "animate", "args": {
+  "fps": 30, "easing": "easeInOut", "loop": false,
+  "keyframes": [
+    { "t": 0,   "boxes": { "0": { "position": [0, 0, 0],  "rotation": [0, 0, 0] } } },
+    { "t": 0.5, "boxes": { "0": { "position": [0, 0, 60], "rotation": [0, 0, 60] } } },
+    { "t": 1,   "boxes": { "0": { "position": [0, 0, 0],  "rotation": [0, 0, 120] } } },
+    { "t": 1.5, "boxes": { "0": { "position": [0, 0, 60], "rotation": [0, 0, 180] } } },
+    { "t": 2,   "boxes": { "0": { "position": [0, 0, 0],  "rotation": [0, 0, 240] },
+                           "1": { "colors": { "acrylic": "#2f8cff" } } } },
+    { "t": 2.5, "boxes": { "0": { "position": [0, 0, 60], "rotation": [0, 0, 300] } } },
+    { "t": 3,   "boxes": { "0": { "position": [0, 0, 0],  "rotation": [0, 0, 360] } } }
+  ],
+  "camera": [ { "t": 0, "yaw": -35, "pitch": 30, "zoom": 1 }, { "t": 3, "yaw": 35, "pitch": 30, "zoom": 1 } ]
+} }
+```
+
+That makes box 0 hop three times while turning a full circle, tints box 1's acrylic blue from 2 seconds, and swings the camera round.
+
+- Each box key may hold `position`, `rotation`, `colors`, `hidden` and `settings`. Only the boxes you list move; the rest hold still. A box whose first key comes after 0 eases in from where it stood.
+- Positions and the camera ease between keys (`easing` is `'easeInOut'`, the default, or `'linear'`). Turns of up to 180° per axis take the shortest path; bigger turns are kept as written, so a key of 360 spins a full circle. To cross 0 the short way, write 350 → 370.
+- `colors`, `hidden` and `settings` switch at their key's time and hold until the next. A `settings` key rebuilds that box; each design is built once when the animation loads, and playback otherwise only moves boxes.
+- Playback follows the real clock at up to `fps` frames a second, so it stays on time on a slow device. Optional `base` is a layout (object or JSON text) to open first.
+- Limits: 2000 keyframes, 120 seconds, `fps` 1–60.
+- The host sends `{"t":"anim","state":"playing","time":0}` when playback starts and `{"t":"anim","state":"done","time":3}` at the end.
+
+### Capture
+
+```json
+{ "t": "cmd", "op": "capture", "args": { "mode": "sheet", "count": 12, "id": "review-1" } }
+```
+
+- `mode: 'still'` captures the current view. `'frames'` renders the animation at the times in `at`, or `count` evenly spaced times. `'sheet'` puts those frames in one grid PNG with `#n  t = 1.25 s` printed in each cell. It's the easiest way for a reviewer, human or AI, to see a whole animation at once.
+- `width` and `height` (default 640 × 400, or 320 × 200 per cell for a sheet), `format` (`'png'` or `'jpeg'`) and `quality` (0.1–1).
+- Captures never disturb the live view. Each frame is posed, drawn and read, and the live pose and camera are put back, all before the screen next updates.
+- The reply is `{"t":"capture","id":"review-1","mode":"sheet","images":["data:image/png;base64,…"],"times":[…]}`.
+
+**Big replies.** Messages over about 7.5 MB are split. A capture with many images arrives as several `capture` messages with `part` and `of`. Anything still too big, such as a long recording, arrives as `{"t":"chunk","id","part","of","data"}` pieces: join the `data` strings in `part` order and parse the result. `BoxsmithAnim.joinParts` in `remote-anim.js` does it for you. The same splitting works in the other direction for large `open`, `add` or `animate` messages.
+
 ## Tests
 
 `npm install` then `npm test` runs `test/api.test.js` against the real page. It checks that every control on the page is an API setting, every box type builds, 100 boxes nest across sheets, and the layout, mosaic, library, preview and render calls work. The render tests need Chrome and skip themselves if it is missing.

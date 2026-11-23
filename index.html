@@ -165,6 +165,10 @@ body.max3d #layoutCtl .lgrp[data-g="View"]{display:flex!important}
 #layoutCtl .lay-color-target{min-width:9em;font-weight:600}
 /* Remote (two-screen editing) */
 #remoteBtn.on{border-color:var(--accent);color:var(--accent)}
+.remote-download{position:fixed;z-index:70;left:50%;bottom:max(18px,env(safe-area-inset-bottom));transform:translateX(-50%);display:flex;align-items:center;gap:10px;background:#fffdf9;border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 24px rgba(60,40,20,.2);padding:10px 12px;font-size:14px}
+.rm-shots{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:8px}
+.rm-shots figure{margin:0;font-size:12px;color:var(--muted)}
+.rm-shots img{width:100%;border:1px solid var(--line);border-radius:6px;background:#fff}
 .remote-dialog{position:fixed;z-index:60;right:max(16px,env(safe-area-inset-right));top:max(70px,env(safe-area-inset-top));width:min(420px,calc(100vw - 32px));background:#fffdf9;border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 32px rgba(60,40,20,.22);padding:16px 18px;font-size:14px;line-height:1.45}
 .remote-dialog h3{margin:0 0 6px;font-size:16px}
 .remote-dialog p{margin:0 0 10px}
@@ -781,6 +785,21 @@ body.max3d .lamp-ctl{top:190px}
 <li>The layout lives on the model screen, so saving, opening and the cut files work there as usual. <b>Stop remote</b> ends the session, and the remote is told.</li>
 </ol>
 <p>Two windows on the same computer connect directly and need no internet. Separate devices connect through a small relay on Hugging Face; the first connection after a quiet spell can take a few seconds while the relay wakes up. The code only works while the model screen is showing it, and nothing passes through the relay except the edits themselves.</p>
+<h4 id="h-remote-anim">Animations, pictures and recordings</h4>
+<p>A remote can also be a script or an AI helper. It can send a whole animation in one message, and the model screen plays it smoothly, timed by the real clock. The <b>Layout &amp; view</b> tab on a remote has <b>Play</b>, <b>Pause</b> and <b>Stop</b>, plus <b>Capture view</b>, <b>Contact sheet</b> (12 frames in one picture, each labelled with its time), <b>Record WebM</b> and <b>Record GIF</b>. Pictures and recordings appear on the remote with a Save link, and a recording also gets a Download button on the model screen. Captures never change what the model screen is showing. <b>Stop</b> puts every box and the camera back where they were before the animation.</p>
+<p>For example, this makes box 0 hop three times while turning a full circle:</p>
+<pre style="white-space:pre-wrap;font-size:12px;background:#f3eee6;padding:10px;border-radius:6px">{"t":"cmd","op":"animate","args":{"fps":30,"keyframes":[
+ {"t":0,"boxes":{"0":{"position":[0,0,0],"rotation":[0,0,0]}}},
+ {"t":0.5,"boxes":{"0":{"position":[0,0,60],"rotation":[0,0,60]}}},
+ {"t":1,"boxes":{"0":{"position":[0,0,0],"rotation":[0,0,120]}}},
+ {"t":1.5,"boxes":{"0":{"position":[0,0,60],"rotation":[0,0,180]}}},
+ {"t":2,"boxes":{"0":{"position":[0,0,0],"rotation":[0,0,240]}}},
+ {"t":2.5,"boxes":{"0":{"position":[0,0,60],"rotation":[0,0,300]}}},
+ {"t":3,"boxes":{"0":{"position":[0,0,0],"rotation":[0,0,360]}}}]}}</pre>
+<p>and this returns a 12-frame contact sheet of it:</p>
+<pre style="white-space:pre-wrap;font-size:12px;background:#f3eee6;padding:10px;border-radius:6px">{"t":"cmd","op":"capture","args":{"mode":"sheet","count":12}}</pre>
+<p>Positions, turns and the camera ease between keyframes. Colors, hiding and design changes switch at their keyframe. The limits are 2000 keyframes and 120 seconds. Every command, including <b>batch</b> (many commands in one message), <b>play</b>, <b>pause</b>, <b>stop</b>, <b>seek</b>, <b>capture</b> and <b>export</b>, is listed with its options in the API reference (API.md, “Remote control”).</p>
+
 
 <p>Choose <b>Stereo · cross-eyed</b> or <b>Stereo · parallel</b> from the viewing menu to see two views of the whole arrangement side by side. Adjust <b>Stereo depth</b> to change the separation. You can select or place boxes in either view. Choose <b>Normal view</b> to return to a single image.</p>
 <p>Try a <b>240 × 180 × 50 mm Frame (torus)</b> with a <b>24 mm ring width</b>. Add three <b>55 × 45 × 30 mm Closed boxes</b>. Set their X coordinates to <b>−60</b>, <b>0</b>, and <b>60 mm</b>, with Y and Z at zero. Click <b>Top view</b> to inspect the fit, then drag to see the layout from the side. Or add one box and use <b>Snap to</b> with <b>Inside, centered</b> to drop it into the Frame's opening, then <b>Inside, against left wall</b> to push it to a side.</p>
@@ -905,6 +924,7 @@ Boxsmith.browser.showBox(tray);</code></pre>
 <script src="app.js"></script>
 <script src="mosaic.js"></script>
 <script src="boxsmith-engine.js"></script>
+<script src="remote-anim.js"></script>
 <script src="remote.js"></script>
 <script>
 /* Offline / installable support */
