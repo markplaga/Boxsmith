@@ -54,6 +54,21 @@ test('boxes snap flush, and into a Frame, without colliding', () => {
   assert.throws(() => B.assemblies.snap(layout, 1, { to: 2, side: 'in:c' }), RangeError); // no opening there
 });
 
+test('cube frames build, boxes step by their own size, and keep their own look', () => {
+  const cube = B.boxes.create('cubeframe', { W: 100, D: 100, H: 100, beamW: 20, look: 'walnut' });
+  assert.equal(B.design.compute(cube).parts.length, 30);
+  assert.throws(() => B.boxes.create('closed', { look: 'oak' }), RangeError);
+  let layout = B.assemblies.create({ boxes: [B.assemblies.place(cube)] });
+  layout = B.assemblies.duplicate(layout, 0);                      // in place
+  assert.deepEqual(layout.boxes[1].position, layout.boxes[0].position);
+  assert.equal(layout.boxes[1].settings.look, 'walnut');
+  layout = B.assemblies.step(layout, 1, 'right');
+  layout = B.assemblies.step(layout, 1, 'up', { count: 2 });
+  assert.deepEqual(layout.boxes[1].position, [100, 0, 200]);
+  assert.deepEqual(B.assemblies.overlaps(layout), []);
+  assert.throws(() => B.assemblies.step(layout, 1, 'sideways'), RangeError);
+});
+
 test('layouts can be edited without changing the original', () => {
   const box = B.assemblies.place(B.boxes.create('open'));
   const one = B.assemblies.create({ boxes: [box] });

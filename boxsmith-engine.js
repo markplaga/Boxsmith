@@ -143,6 +143,17 @@
       file.boxes[index].position=boxes[index].position.slice();
       return file;
     },
+    /** Move a box by its own size (as turned): 'left','right','up','down','in' (+y, away) or 'out' (-y), count times. */
+    step(assembly,index,direction,{count=1}={}){
+      const axis={left:[0,-1],right:[0,1],in:[1,1],out:[1,-1],up:[2,1],down:[2,-1]}[direction];
+      if(!axis) throw new RangeError("direction must be 'left', 'right', 'up', 'down', 'in' or 'out'");
+      if(!Number.isFinite(count)) throw new TypeError('count must be a number');
+      const {file,boxes}=placed(assembly);
+      if(!Number.isInteger(index)||!boxes[index]) throw new RangeError('No box at index '+index);
+      const [k,sign]=axis, key='xyz'[k], B=boxes[index].bounds;
+      file.boxes[index].position[k]=round(boxes[index].position[k]+sign*count*(B.max[key]-B.min[key]));
+      return file;
+    },
     /** Lay the boxes out in a row along x or y with a gap between them (starts where the first box is). */
     row(assembly,{axis='x',gap=10}={}){
       if(axis!=='x'&&axis!=='y') throw new RangeError("axis must be 'x' or 'y'");

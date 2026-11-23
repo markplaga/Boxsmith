@@ -60,7 +60,7 @@ Open `frame-and-boxes.json` with **Open layout** in Boxsmith. You can also read 
 | `boxes.defaults(type = 'closed')` | A settings object containing all parameter keys and their defaults. |
 | `boxes.create(type, parameters = {})` | A new settings object with your overrides. It rejects unknown types, unknown keys and values of the wrong type. |
 
-Every control on the page is a settings key (a test checks this). `W`, `D` and `H` are width, depth and height. Common keys are `t` for material thickness, `fw` for finger width, `kerf`, and `dimMode` with `'inside'` or `'outside'`. `paint` (`'none'`, `'watercolor'` or `'acrylic'`), `paintColor` (like `'#3a7bd5'`) and `paintStrength` (10 to 100, watercolor only) set the painted look in the preview. Style keys include `frameW` for a Frame's ring width, `beamW` for a Cube frame's beam width, `drawers` for drawer count and `sides` for polygon sides. `unit` selects the display unit. `qty` is the number of boxes to cut (1 to 500); `design.compute` nests every copy across as many sheets as needed, and `stats.parts` counts them all. For a decorated design, a Settings JSON file exported from Boxsmith shows the matching keys and nested artwork records.
+Every control on the page is a settings key (a test checks this). `W`, `D` and `H` are width, depth and height. Common keys are `t` for material thickness, `fw` for finger width, `kerf`, and `dimMode` with `'inside'` or `'outside'`. `paint` (`'none'`, `'watercolor'` or `'acrylic'`), `paintColor` (like `'#3a7bd5'`) and `paintStrength` (10 to 100, watercolor only) set the painted look in the preview. `look` is optional and sets the material a box keeps in a layout (see below). Style keys include `frameW` for a Frame's ring width, `beamW` for a Cube frame's beam width, `drawers` for drawer count and `sides` for polygon sides. `unit` selects the display unit. `qty` is the number of boxes to cut (1 to 500); `design.compute` nests every copy across as many sheets as needed, and `stats.parts` counts them all. For a decorated design, a Settings JSON file exported from Boxsmith shows the matching keys and nested artwork records.
 
 ## Cut sheets, files, costs: `design`
 
@@ -95,11 +95,13 @@ Pure helpers (always available). Each returns a new layout and leaves yours unch
 | `assemblies.create({ boxes, unit })` | A versioned layout from placements. `unit` is `'mm'` or `'in'` (display only). |
 | `assemblies.add(layout, placement)` | The layout with one more box. |
 | `assemblies.remove(layout, index)` | The layout without that box. |
-| `assemblies.duplicate(layout, index, { offset })` | A copy of that box placed next to it, moved by `offset`. |
+| `assemblies.duplicate(layout, index, { offset })` | A copy of that box, moved by `offset`. With no offset the copy sits exactly on the original (the page's *Duplicate in place*). |
 | `assemblies.update(layout, index, { position, rotation, hidden, settings })` | The layout with those changes to one box. |
 | `assemblies.serialize(layout)` / `assemblies.parse(jsonOrObject)` | The JSON text Boxsmith reopens, or a validated copy of a layout. |
 
 X and Y locate a box's center. Z is the height of its lowest point after rotation, so a tipped box rests on the floor.
+
+Each box in a layout can keep its own material look in `settings.look`: one of `Boxsmith.looks` (`'birch'`, `'walnut'`, `'mdf'`, `'clear'`, `'black'`, `'pink'`, `'card'`). Pictures and the Arrange view draw that box in that material. A box with no `look` uses the render's `material` option (or the page's preview material). Boxes added on the page record the preview material they had.
 
 With geometry (full API only):
 
@@ -109,6 +111,7 @@ With geometry (full API only):
 | `assemblies.overlaps(layout)` | Pairs of box indexes whose parts collide, such as `[[1, 2]]`. A box in a Frame's opening is fine; one touching a wall is not. |
 | `assemblies.snap(layout, index, { to, side, gap = 0 })` | The box moved flush against a face of box `to`. `side` is `'+x'`, `'-x'`, `'+y'`, `'-y'` or `'+z'`. For a Frame, `'in:c'` centers it in the opening, and `'in:-x'`, `'in:+x'`, `'in:-y'` or `'in:+y'` push it against a wall. |
 | `assemblies.row(layout, { axis = 'x', gap = 10 })` | The boxes in a row along `x` or `y` with that gap. |
+| `assemblies.step(layout, index, direction, { count = 1 })` | The box moved by its own size, as turned (the page's *Step* buttons). `direction` is `'left'`, `'right'`, `'up'`, `'down'`, `'in'` (+Y, away from you) or `'out'` (−Y). |
 
 ```js
 let layout = assemblies.create({ boxes: [assemblies.place(frame), assemblies.place(closed), assemblies.place(closed)] });
@@ -139,7 +142,7 @@ Draw a layout, or one box, to a PNG from code. The picture uses the same scene a
 | `width`, `height` | Pixels, whole numbers from 1 to 8192. Default `1600` by `1200`. |
 | `fit` | `true` (default) frames every visible box with a small margin. `false` uses `zoom` instead. |
 | `zoom` | Used only when `fit` is `false`. Default `1`. |
-| `material`, `edgeColor`, `lamp` | As in `browser.view`: `material` (default `'birch'`), `edgeColor` (`'#rrggbb'`), `lamp` (`{ on, gain, color }`). A render never uses the page's current preview settings, so the same call always gives the same picture. |
+| `material`, `edgeColor`, `lamp` | As in `browser.view`: `material` (default `'birch'`; boxes with their own `settings.look` keep it), `edgeColor` (`'#rrggbb'`), `lamp` (`{ on, gain, color }`). A render never uses the page's current preview settings, so the same call always gives the same picture. |
 | `background` | `'#rrggbb'` or `'transparent'`. Default white. |
 | `showHidden` | `true` also draws boxes marked `hidden`. Default `false`. |
 
@@ -196,7 +199,7 @@ Browser (or the Node page) only.
 | `browser.getSettings()` / `setSettings(settings)` / `updateSettings(changes)` | Read the editor's settings, replace them, or change a few. |
 | `browser.current()` | The same result as `design.compute`, for the editor's box. |
 | `browser.showTab(name)` | `'preview'`, `'sheets'`, `'arrange'`, `'guide'` or `'help'`. |
-| `browser.view(changes)` | Reads and changes the preview: `material` (`birch`, `walnut`, `mdf`, `clear`, `black`, `pink`, `card`), `explode`, `spin`, `yaw` and `pitch` in degrees (pitch is down from horizontal, so `90` is straight down, the Top view), `zoom`, `hardware`, `stereo` (`'off'`, `'cross'`, `'parallel'`), `stereoDepth`, `edgeColor` (`'#rrggbb'` or `null`), `lamp` (`{ on, gain, color }`), `maximize`. Returns the current view. |
+| `browser.view(changes)` | Reads and changes the preview: `material` (`birch`, `walnut`, `mdf`, `clear`, `black`, `pink`, `card`), `explode`, `spin`, `yaw` and `pitch` in degrees (pitch is down from horizontal, so `90` is straight down, the Top view), `zoom`, `hardware`, `stereo` (`'off'`, `'cross'`, `'parallel'`), `stereoDepth`, `edgeColor` (`'#rrggbb'` or `null`), `lamp` (`{ on, gain, color }`), `maximize`. Returns the current view. Changing `material` affects only the box being designed; boxes already arranged keep their own look. |
 | `browser.play(loop)` | Plays the "show it work" animation. |
 | `browser.snapshot()` | The preview as a PNG data URL. |
 | `browser.topView()` | Turns on the Arrange boxes top view. |

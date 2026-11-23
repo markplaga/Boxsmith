@@ -36,6 +36,10 @@
     qty:1, holdTabs:0, holdW:0.4, layerScheme:'simple', grain:false, sheetPrice:8, rate:30, speed:18, markup:150, matName:''
   };
 
+  /** Material looks a box can keep in a layout (the 3D preview's material list). */
+  const LOOKS=['birch','walnut','mdf','clear','black','pink','card'];
+  const checkLook=look=>{ if(look!==undefined&&!LOOKS.includes(look)) throw new RangeError('look must be one of: '+LOOKS.join(', ')); };
+
   const FORMAT='boxsmith-layout';
   const VERSION=1;
   const clone=value=>JSON.parse(JSON.stringify(value));
@@ -48,7 +52,9 @@
   function createBox(type,parameters={}){
     requireType(type);
     if(!isRecord(parameters)) throw new TypeError('Box parameters must be an object');
+    checkLook(parameters.look);
     for(const [key,value] of Object.entries(parameters)){
+      if(key==='look') continue;
       if(key==='type'||!Object.hasOwn(DEFAULTS,key)) throw new RangeError('Unknown box parameter: '+key);
       const expected=DEFAULTS[key];
       const valid=Array.isArray(expected)?Array.isArray(value):
@@ -73,6 +79,7 @@
     if(!isRecord(settings)) throw new TypeError('Box settings must be an object');
     requireType(settings.type);
     if(typeof hidden!=='boolean') throw new TypeError('hidden must be a boolean');
+    checkLook(settings.look);
     return {settings:clone(settings),position:triple(position,'position'),rotation:triple(rotation,'rotation'),hidden};
   }
 
@@ -126,6 +133,7 @@
 
   return {
     version:VERSION,
+    looks:LOOKS.slice(),
     boxes:{list:()=>clone(TYPES),defaults:(type='closed')=>createBox(type),create:createBox},
     assemblies:{
       format:FORMAT,
