@@ -456,8 +456,9 @@
         ob.mesh.matrix.copy(M); ob.edges.matrix.copy(M); ob.edges.visible=!lamp;
         if(ob.decal){ ob.decal.matrix.copy(M).multiply(Tm.makeTranslation(0,0,ob.dz)); ob.decal.visible=!lamp; }
         if(ob.hw){ ob.hw.matrix.copy(M); ob.hw.matrixWorldNeedsUpdate=true; }
-        const clear=ob.s.look==='clear', paint=clear?null:paintMaterials(box.settings);
-        ob.mesh.material=clear?[off.clearCap,off.clearSide]:paint?[paint.cap,paint.side]:[off.cap,off.side];
+        const look=boxLook(box.settings), base=look===view.mat?off:lookMaterials(off,look);
+        const clear=ob.s.look==='clear', paint=clear?null:paintMaterials(box.settings,look);
+        ob.mesh.material=clear?[off.clearCap,off.clearSide]:paint?[paint.cap,paint.side]:[base.cap,base.side];
       }
       off.r.setPixelRatio(1); off.r.setSize(w,h,false); off.r.setViewport(0,0,w,h);
       if(o.background==='transparent') off.r.setClearColor(0x000000,0); else off.r.setClearColor(parseInt(o.background.slice(1),16),1);

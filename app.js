@@ -864,8 +864,8 @@ const savedEdgeColors=lsGet(EDGE_COLOR_KEY,{});
 for(const [material,color] of Object.entries(savedEdgeColors)){
   if(MATS[material]?.wood&&typeof color==='string'&&/^#[0-9a-f]{6}$/i.test(color)) cutEdgeColors[material]=color.toLowerCase();
 }
-function cutEdgeRGB(material){
-  const color=cutEdgeColors[view.mat];
+function cutEdgeRGB(material,key=view.mat){
+  const color=cutEdgeColors[key];
   if(!color) return material.side;
   const hex=Number.parseInt(color.slice(1),16);
   return [hex>>16,(hex>>8)&255,hex&255];
@@ -972,15 +972,15 @@ function initGL(){
 }
 // Painted look for the wood faces and cut edges, cached per paint recipe.
 const paintCache=new Map();
-function paintMaterials(S0){
-  const m=MATS[view.mat];
+function paintMaterials(S0,look=view.mat){
+  const m=MATS[look];
   if(!S0||!S0.paint||S0.paint==='none'||!m.wood||!/^#[0-9a-f]{6}$/i.test(S0.paintColor||'')) return null;
   const strength=Math.max(0.1,Math.min(1,(+S0.paintStrength||60)/100));
-  const key=[S0.paint,S0.paintColor,strength,view.mat,cutEdgeColors[view.mat]||''].join('|');
+  const key=[S0.paint,S0.paintColor,strength,look,cutEdgeColors[look]||''].join('|');
   if(paintCache.has(key)) return paintCache.get(key);
   const hex=Number.parseInt(S0.paintColor.slice(1),16), p=[hex>>16,(hex>>8)&255,hex&255];
   const mix=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t), mul=(a,b)=>a.map((v,i)=>v*b[i]/255);
-  const edge=cutEdgeRGB(m);
+  const edge=cutEdgeRGB(m,look);
   let face,side;
   if(S0.paint==='watercolor'){ // pigment tints the wood: half multiply (keeps the grain's depth), half straight color
     const wash=base=>mix(mul(base,p),mix(base,p,0.7),0.5);
@@ -989,6 +989,20 @@ function paintMaterials(S0){
   const c=a=>new THREE.Color(Math.round(a[0])/255,Math.round(a[1])/255,Math.round(a[2])/255);
   const mats={cap:new THREE.MeshLambertMaterial({color:c(face)}),side:new THREE.MeshLambertMaterial({color:c(side)})};
   paintCache.set(key,mats);
+  return mats;
+}
+// The material an arranged box keeps: the look it had when it was added. Boxes made without one follow the preview.
+function boxLook(settings){ return settings&&MATS[settings.look]?settings.look:view.mat; }
+// Face and edge materials for a look other than the preview's own, cached per renderer.
+function lookMaterials(ctx,look){
+  if(!ctx.lookCache) ctx.lookCache=new Map();
+  const m=MATS[look], key=look+'|'+(cutEdgeColors[look]||'');
+  if(ctx.lookCache.has(key)) return ctx.lookCache.get(key);
+  const c=a=>new THREE.Color(a[0]/255,a[1]/255,a[2]/255), mats={};
+  for(const [k,rgb] of [['cap',m.face],['side',cutEdgeRGB(m,look)]]){
+    mats[k]=new THREE.MeshLambertMaterial({color:c(rgb),transparent:m.a<1,opacity:m.a,depthWrite:m.a===1,side:m.a<1?THREE.DoubleSide:THREE.FrontSide});
+  }
+  ctx.lookCache.set(key,mats);
   return mats;
 }
 function glColors(){
@@ -1126,9 +1140,11 @@ function renderGL(){
     if(ob.hw){ ob.hw.matrix.copy(M); ob.hw.matrixWorldNeedsUpdate=true; }
     const sel=arranging?s.layoutBox===layoutBoxes[layoutSelection]:s.pi===selPi&&selPi>=0;
     const clear=s.look==='clear';
-    const highlightEdge=!clear&&cutEdgeColors[view.mat]?GL.side:GL.hiSide;
-    const paint=sel||clear||s.hw?null:paintMaterials(arranging?s.layoutBox.settings:S);
-    ob.mesh.material = sel ? [GL.hiCap,highlightEdge] : (clear?[GL.clearCap,GL.clearSide]:paint?[paint.cap,paint.side]:[GL.cap,GL.side]);
+    const look=arranging?boxLook(s.layoutBox.settings):view.mat;
+    const base=look===view.mat?GL:lookMaterials(GL,look);
+    const highlightEdge=!clear&&cutEdgeColors[look]?base.side:GL.hiSide;
+    const paint=sel||clear||s.hw?null:paintMaterials(arranging?s.layoutBox.settings:S,look);
+    ob.mesh.material = sel ? [GL.hiCap,highlightEdge] : (clear?[GL.clearCap,GL.clearSide]:paint?[paint.cap,paint.side]:[base.cap,base.side]);
   }
   if(!stereo){ GL.r.setScissorTest(false); GL.r.setViewport(0,0,w,h); GL.r.render(GL.sc,cam); }
   else {

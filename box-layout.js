@@ -189,7 +189,10 @@ function loadBoxLayout(){
   const stored=lsGet(BOX_LAYOUT_KEY,[]);
   if(!Array.isArray(stored)) return;
   for(const entry of stored){
-    try{ layoutBoxes.push(restoreLayoutBox(entry)); }
+    try{
+      if(entry?.settings&&!MATS[entry.settings.look]) entry.settings.look=view.mat;
+      layoutBoxes.push(restoreLayoutBox(entry));
+    }
     catch(error){ console.warn('Could not load a box in the layout',error); }
   }
   rebuildBoxLayout();
@@ -214,7 +217,7 @@ function downloadBoxLayout(assembly=currentBoxLayout(),filename='boxsmith-layout
 function openBoxLayout(input){
   if(!GL) throw new Error('Opening a box layout requires WebGL');
   const file=Boxsmith.assemblies.parse(input);
-  const boxes=file.boxes.map(entry=>restoreLayoutBox(entry));
+  const boxes=file.boxes.map(entry=>{ if(!MATS[entry.settings.look]) entry.settings.look=view.mat; return restoreLayoutBox(entry); });
   layoutBoxes=boxes;
   layoutSelection=-1;
   placingBox=false;
@@ -289,6 +292,7 @@ function addLayoutBox(source){
   try{
     const settings=JSON.parse(JSON.stringify(source?source.settings:S));
     delete settings.assembly;
+    if(!source||!MATS[settings.look]) settings.look=view.mat;
     const box=makeLayoutBox(settings,[0,0,0],source?.rotation.slice());
     transformLayoutBox(box);
     if(layoutBoxes.length){
