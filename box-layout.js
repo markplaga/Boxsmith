@@ -1,7 +1,7 @@
 'use strict';
 
 const BOX_LAYOUT_KEY='boxsmith-box-layout-v1';
-let layoutBoxes=[], layoutSelection=-1, placingBox=false;
+let layoutBoxes=[], layoutSelection=-1, placingBox=false, layoutPart=null;   // layoutPart: name of one part picked inside the selected box
 let boxLayoutScene={solids:[],ctr:[0,0,0],R:100};
 const layingOut=()=>curView==='layout';
 let layoutCamera={yaw:-0.6,pitch:0.6,zoom:1,stereo:'off',stereoDeg:3.5}, boxPreviewCamera;
@@ -268,6 +268,16 @@ function syncBoxLayout(){
   });
   for(const id of ['layoutPlace','layoutDuplicate','layoutDuplicateInPlace','layoutHide','layoutRemove']) $('#'+id).disabled=!box;
   $$('[data-lay-turn],[data-lay-step]').forEach(b=>{ b.disabled=!box; });
+  if(!box) layoutPart=null;
+  const colors=box?.settings.colors||{}, key=layoutPart||'*', own=colors[key];
+  $('#layoutColorTarget').textContent=!box?'Select a box':layoutPart==='acrylic'?'All acrylic parts':layoutPart?'Part: '+layoutPart:'Whole box';
+  const acrylic=!!box&&boxHasAcrylic(box);
+  $('#layoutColorAcrylic').hidden=!acrylic;
+  $('#layoutColorAcrylic').setAttribute('aria-pressed',String(layoutPart==='acrylic'));
+  $('#layoutColor').disabled=!box;
+  if(box) $('#layoutColor').value=own||(layoutPart?colors['*']:null)||'#4da3ff';
+  $('#layoutColorClear').disabled=!own;
+  $('#layoutColorClear').textContent=layoutPart&&(colors['*']||(layoutPart!=='acrylic'&&colors.acrylic))?'Use box color':'No color';
   $('#layoutHide').textContent=box?.hidden?'Show box':'Hide box';
   $('#layoutTop').disabled=!layoutBoxes.length;
   $('#layoutFit').disabled=!layoutBoxes.length;
@@ -277,11 +287,15 @@ function syncBoxLayout(){
   const status=$('#layoutStatus');
   status.classList.toggle('warn',!!warn&&!placingBox);
   status.textContent=warn&&!placingBox?warn:!GL?'Arranging boxes requires WebGL.':placingBox?'Click where the center of the selected box should go.':
+    layoutPart==='acrylic'?'Coloring every acrylic part of this box. Tap Acrylic again for the whole box.':
+    layoutPart?'Coloring '+layoutPart+'. Tap it again for the whole box.':
+    box?(acrylic?'Tap Acrylic to tint all its acrylic, or tap the selected box again to pick one part.':'Tap the selected box again to pick one part to color.'):
     layoutBoxes.length?'Select a box to move it. X and Y locate its center. Z sets the height of its base.':
     'Choose a box style and size in the sidebar, then add a copy to this layout.';
 }
 
 function selectLayoutBox(index){
+  if(index!==layoutSelection) layoutPart=null;
   layoutSelection=index;
   placingBox=false;
   syncBoxLayout();
@@ -329,8 +343,10 @@ function pickLayoutBox(raycaster,hit){
       syncBoxLayout();
     }
   } else if(hit){
-    selectLayoutBox(layoutBoxes.indexOf(hit.object.userData.layoutBox));
-  }
+    const index=layoutBoxes.indexOf(hit.object.userData.layoutBox), name=hit.object.userData.partName;
+    if(index===layoutSelection&&name){ layoutPart=layoutPart===name?null:name; syncBoxLayout(); render(); }   // tap a selected box again to pick one part
+    else selectLayoutBox(index);
+  } else if(layoutPart){ layoutPart=null; syncBoxLayout(); render(); }
 }
 
 // Drag a box across the floor plane (its base height) with the mouse or a
@@ -427,6 +443,20 @@ function initBoxLayout(){
     syncBoxLayout();
   }));
   // Step the selected box by its own size (as it sits now, so turned boxes step by their turned size).
+  // Colour the selected part, or the whole box. Acrylic stays see-through, just tinted.
+  const setLayoutColor=(hex,save)=>{
+    const box=layoutBoxes[layoutSelection];
+    if(!box) return;
+    const colors=Object.assign({},box.settings.colors), key=layoutPart||'*';
+    if(hex) colors[key]=hex; else delete colors[key];
+    if(Object.keys(colors).length) box.settings.colors=colors; else delete box.settings.colors;
+    render();
+    if(save){ saveBoxLayout(); syncBoxLayout(); }
+  };
+  $('#layoutColor').addEventListener('input',e=>setLayoutColor(e.target.value,false));
+  $('#layoutColor').addEventListener('change',e=>setLayoutColor(e.target.value,true));
+  $('#layoutColorClear').addEventListener('click',()=>setLayoutColor(null,true));
+  $('#layoutColorAcrylic').addEventListener('click',()=>{ layoutPart=layoutPart==='acrylic'?null:'acrylic'; syncBoxLayout(); render(); });
   $$('[data-lay-step]').forEach(btn=>btn.addEventListener('click',()=>{
     const box=layoutBoxes[layoutSelection];
     if(!box) return;

@@ -39,6 +39,13 @@
   /** Material looks a box can keep in a layout (the 3D preview's material list). */
   const LOOKS=['birch','walnut','mdf','clear','black','pink','card'];
   const checkLook=look=>{ if(look!==undefined&&!LOOKS.includes(look)) throw new RangeError('look must be one of: '+LOOKS.join(', ')); };
+  const HEX=/^#[0-9a-fA-F]{6}$/;
+  /** colors: {'*': whole box, 'Part name': that part} → '#rrggbb'. */
+  const checkColors=colors=>{
+    if(colors===undefined) return;
+    if(!isRecord(colors)) throw new TypeError("colors must be an object like {'*':'#3a7bd5','Cover top':'#ff4080'}");
+    for(const [part,hex] of Object.entries(colors)) if(typeof hex!=='string'||!HEX.test(hex)) throw new TypeError('color for '+part+" must be '#rrggbb'");
+  };
 
   const FORMAT='boxsmith-layout';
   const VERSION=1;
@@ -52,9 +59,9 @@
   function createBox(type,parameters={}){
     requireType(type);
     if(!isRecord(parameters)) throw new TypeError('Box parameters must be an object');
-    checkLook(parameters.look);
+    checkLook(parameters.look); checkColors(parameters.colors);
     for(const [key,value] of Object.entries(parameters)){
-      if(key==='look') continue;
+      if(key==='look'||key==='colors') continue;
       if(key==='type'||!Object.hasOwn(DEFAULTS,key)) throw new RangeError('Unknown box parameter: '+key);
       const expected=DEFAULTS[key];
       const valid=Array.isArray(expected)?Array.isArray(value):
@@ -79,7 +86,7 @@
     if(!isRecord(settings)) throw new TypeError('Box settings must be an object');
     requireType(settings.type);
     if(typeof hidden!=='boolean') throw new TypeError('hidden must be a boolean');
-    checkLook(settings.look);
+    checkLook(settings.look); checkColors(settings.colors);
     return {settings:clone(settings),position:triple(position,'position'),rotation:triple(rotation,'rotation'),hidden};
   }
 
@@ -115,6 +122,17 @@
     file.boxes.splice(index+1,0,placeBox(source.settings,{...source,position:source.position.map((v,i)=>v+shift[i])}));
     return file;
   }
+  /** Colour one part of a box (by its part name), or the whole box with part '*' (the default). color null removes it. */
+  function colorInAssembly(assembly,index,{part='*',color}={}){
+    const file=asFile(assembly); needIndex(file,index);
+    if(typeof part!=='string'||!part) throw new TypeError('part must be a part name or *');
+    if(color!==null&&(typeof color!=='string'||!HEX.test(color))) throw new TypeError("color must be '#rrggbb' or null");
+    const settings=clone(file.boxes[index].settings), colors=Object.assign({},settings.colors);
+    if(color===null) delete colors[part]; else colors[part]=color;
+    if(Object.keys(colors).length) settings.colors=colors; else delete settings.colors;
+    file.boxes[index]=placeBox(settings,file.boxes[index]);
+    return file;
+  }
   function updateInAssembly(assembly,index,changes={}){
     const file=asFile(assembly); needIndex(file,index);
     const source=file.boxes[index];
@@ -143,6 +161,7 @@
       remove:removeFromAssembly,
       duplicate:duplicateInAssembly,
       update:updateInAssembly,
+      color:colorInAssembly,
       parse:parseAssembly,
       serialize:assembly=>JSON.stringify(parseAssembly(assembly),null,2)
     }

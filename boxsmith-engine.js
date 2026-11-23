@@ -468,8 +468,9 @@
         if(ob.decal){ ob.decal.matrix.copy(M).multiply(Tm.makeTranslation(0,0,ob.dz)); ob.decal.visible=!lamp; }
         if(ob.hw){ ob.hw.matrix.copy(M); ob.hw.matrixWorldNeedsUpdate=true; }
         const look=boxLook(box.settings), base=look===view.mat?off:lookMaterials(off,look);
-        const clear=ob.s.look==='clear', paint=clear?null:paintMaterials(box.settings,look);
-        ob.mesh.material=clear?[off.clearCap,off.clearSide]:paint?[paint.cap,paint.side]:[base.cap,base.side];
+        const clear=ob.s.look==='clear', seeThrough=clear||MATS[look].a<1, color=partColor(box,ob.s,seeThrough), tint=color?colorMaterials(off,color,seeThrough):null;
+        const paint=clear||tint?null:paintMaterials(box.settings,look);
+        ob.mesh.material=tint?[tint.cap,tint.side]:clear?[off.clearCap,off.clearSide]:paint?[paint.cap,paint.side]:[base.cap,base.side];
       }
       off.r.setPixelRatio(1); off.r.setSize(w,h,false); off.r.setViewport(0,0,w,h);
       if(o.background==='transparent') off.r.setClearColor(0x000000,0); else off.r.setClearColor(parseInt(o.background.slice(1),16),1);

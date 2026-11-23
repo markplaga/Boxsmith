@@ -991,6 +991,21 @@ function paintMaterials(S0,look=view.mat){
   paintCache.set(key,mats);
   return mats;
 }
+// Colour given in Arrange boxes: the part's own colour, else all see-through parts' ('acrylic'), else the whole box's ('*').
+function partColor(box,s,clear){ const c=box&&box.settings&&box.settings.colors; return c?(c[s.part&&s.part.name]||(clear&&c.acrylic)||c['*']||null):null; }
+// Does this arranged box have see-through (acrylic) parts?
+function boxHasAcrylic(box){ return !!(GL&&GL.objs.some(o=>o.s.layoutBox===box&&(o.s.look==='clear'||MATS[boxLook(box.settings)].a<1))); }
+// Face and edge materials for a colour; acrylic and other see-through parts stay see-through, just tinted.
+function colorMaterials(ctx,hex,clear){
+  if(!ctx.colorCache) ctx.colorCache=new Map();
+  const key=hex+(clear?'|clear':'');
+  if(ctx.colorCache.has(key)) return ctx.colorCache.get(key);
+  const col=new THREE.Color(hex), edge=col.clone().multiplyScalar(clear?0.8:0.72);
+  const mk=(c,o)=>clear?new THREE.MeshLambertMaterial({color:c,transparent:true,opacity:o,depthWrite:false,side:THREE.DoubleSide}):new THREE.MeshLambertMaterial({color:c});
+  const mats={cap:mk(col,0.42),side:mk(edge,0.78)};
+  ctx.colorCache.set(key,mats);
+  return mats;
+}
 // The material an arranged box keeps: the look it had when it was added. Boxes made without one follow the preview.
 function boxLook(settings){ return settings&&MATS[settings.look]?settings.look:view.mat; }
 // Face and edge materials for a look other than the preview's own, cached per renderer.
@@ -1063,7 +1078,7 @@ function buildGL(model=layingOut()?boxLayoutScene:scene){
       const geo=new THREE.ExtrudeGeometry(shape,{depth:s.th,bevelEnabled:false,curveSegments:1,steps:1});
       const {o,u,v,n}=s.map;
       const base=new THREE.Matrix4().set(u[0],v[0],n[0],o[0], u[1],v[1],n[1],o[1], u[2],v[2],n[2],o[2], 0,0,0,1);
-      const mesh=new THREE.Mesh(geo,s.look==='clear'?[GL.clearCap,GL.clearSide]:[GL.cap,GL.side]); mesh.matrixAutoUpdate=false; mesh.userData.pi=s.pi; mesh.userData.layoutBox=s.layoutBox;
+      const mesh=new THREE.Mesh(geo,s.look==='clear'?[GL.clearCap,GL.clearSide]:[GL.cap,GL.side]); mesh.matrixAutoUpdate=false; mesh.userData.pi=s.pi; mesh.userData.layoutBox=s.layoutBox; mesh.userData.partName=s.part&&s.part.name;
       const ev=[]; const th=s.th;
       for(const L of [s.pts,...s.holes]){ const n=L.length;
         for(let i=0;i<n;i++){ const p=L[i], q=L[(i+1)%n]; ev.push(p[0],p[1],0,q[0],q[1],0, p[0],p[1],th,q[0],q[1],th);
@@ -1138,13 +1153,18 @@ function renderGL(){
     ob.mesh.matrix.copy(M); ob.edges.matrix.copy(M);
     if(ob.decal){ ob.decal.matrix.copy(M).multiply(Tm.makeTranslation(0,0,ob.dz)); }
     if(ob.hw){ ob.hw.matrix.copy(M); ob.hw.matrixWorldNeedsUpdate=true; }
-    const sel=arranging?s.layoutBox===layoutBoxes[layoutSelection]:s.pi===selPi&&selPi>=0;
     const clear=s.look==='clear';
     const look=arranging?boxLook(s.layoutBox.settings):view.mat;
+    const seeThrough=clear||MATS[look].a<1;
+    const sel=arranging?s.layoutBox===layoutBoxes[layoutSelection]&&(!layoutPart||(layoutPart==='acrylic'?seeThrough:(s.part&&s.part.name)===layoutPart)):s.pi===selPi&&selPi>=0;
     const base=look===view.mat?GL:lookMaterials(GL,look);
     const highlightEdge=!clear&&cutEdgeColors[look]?base.side:GL.hiSide;
-    const paint=sel||clear||s.hw?null:paintMaterials(arranging?s.layoutBox.settings:S,look);
-    ob.mesh.material = sel ? [GL.hiCap,highlightEdge] : (clear?[GL.clearCap,GL.clearSide]:paint?[paint.cap,paint.side]:[base.cap,base.side]);
+    const color=arranging?partColor(s.layoutBox,s,seeThrough):null;
+    const tint=color?colorMaterials(GL,color,seeThrough):null;
+    const paint=sel||clear||s.hw||tint?null:paintMaterials(arranging?s.layoutBox.settings:S,look);
+    if(!GL.hiLine) GL.hiLine=new THREE.LineBasicMaterial({color:0xe2461b});
+    ob.edges.material = sel&&tint ? GL.hiLine : GL.line;   // a coloured selection keeps its colour and gets orange outlines
+    ob.mesh.material = sel&&!tint ? [GL.hiCap,highlightEdge] : tint?[tint.cap,tint.side]:(clear?[GL.clearCap,GL.clearSide]:paint?[paint.cap,paint.side]:[base.cap,base.side]);
   }
   if(!stereo){ GL.r.setScissorTest(false); GL.r.setViewport(0,0,w,h); GL.r.render(GL.sc,cam); }
   else {

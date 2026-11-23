@@ -67,6 +67,12 @@ test('cube frames build, boxes step by their own size, and keep their own look',
   assert.deepEqual(layout.boxes[1].position, [100, 0, 200]);
   assert.deepEqual(B.assemblies.overlaps(layout), []);
   assert.throws(() => B.assemblies.step(layout, 1, 'sideways'), RangeError);
+  layout = B.assemblies.color(layout, 0, { color: '#c0392b' });
+  layout = B.assemblies.color(layout, 0, { part: 'Outer Top', color: '#4da3ff' });
+  assert.deepEqual(layout.boxes[0].settings.colors, { '*': '#c0392b', 'Outer Top': '#4da3ff' });
+  layout = B.assemblies.color(layout, 0, { part: '*', color: null });
+  assert.deepEqual(B.assemblies.parse(B.assemblies.serialize(layout)).boxes[0].settings.colors, { 'Outer Top': '#4da3ff' });
+  assert.throws(() => B.assemblies.color(layout, 0, { color: 'red' }), TypeError);
 });
 
 test('layouts can be edited without changing the original', () => {

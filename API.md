@@ -97,11 +97,12 @@ Pure helpers (always available). Each returns a new layout and leaves yours unch
 | `assemblies.remove(layout, index)` | The layout without that box. |
 | `assemblies.duplicate(layout, index, { offset })` | A copy of that box, moved by `offset`. With no offset the copy sits exactly on the original (the page's *Duplicate in place*). |
 | `assemblies.update(layout, index, { position, rotation, hidden, settings })` | The layout with those changes to one box. |
+| `assemblies.color(layout, index, { part = '*', color })` | That box colored: `part` is a part name from `design.compute(...).parts` (such as `'Cover Top'`), `'acrylic'` for every see-through part, or `'*'` for the whole box. `color` is `'#rrggbb'`, or `null` to remove it. A part's own color beats `'acrylic'`, which beats the whole-box color. See-through parts (acrylic) stay see-through, just tinted. |
 | `assemblies.serialize(layout)` / `assemblies.parse(jsonOrObject)` | The JSON text Boxsmith reopens, or a validated copy of a layout. |
 
 X and Y locate a box's center. Z is the height of its lowest point after rotation, so a tipped box rests on the floor.
 
-Each box in a layout can keep its own material look in `settings.look`: one of `Boxsmith.looks` (`'birch'`, `'walnut'`, `'mdf'`, `'clear'`, `'black'`, `'pink'`, `'card'`). Pictures and the Arrange view draw that box in that material. A box with no `look` uses the render's `material` option (or the page's preview material). Boxes added on the page record the preview material they had.
+Each box in a layout can keep its own material look in `settings.look`: one of `Boxsmith.looks` (`'birch'`, `'walnut'`, `'mdf'`, `'clear'`, `'black'`, `'pink'`, `'card'`). Pictures and the Arrange view draw that box in that material. A box with no `look` uses the render's `material` option (or the page's preview material). Boxes added on the page record the preview material they had. Colors live in `settings.colors`, for example `{ '*': '#c0392b', 'Cover top': '#4da3ff' }`, and are what the page's *Color* row sets.
 
 With geometry (full API only):
 
