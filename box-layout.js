@@ -266,7 +266,7 @@ function syncBoxLayout(){
     input.value=box?box.rotation[+input.dataset.layoutRotation]:'';
     input.disabled=!box;
   });
-  for(const id of ['layoutPlace','layoutDuplicate','layoutHide','layoutRemove']) $('#'+id).disabled=!box;
+  for(const id of ['layoutPlace','layoutDuplicate','layoutDuplicateInPlace','layoutHide','layoutRemove']) $('#'+id).disabled=!box;
   $$('[data-lay-turn]').forEach(b=>{ b.disabled=!box; });
   $('#layoutHide').textContent=box?.hidden?'Show box':'Hide box';
   $('#layoutTop').disabled=!layoutBoxes.length;
@@ -288,14 +288,15 @@ function selectLayoutBox(index){
   render();
 }
 
-function addLayoutBox(source){
+function addLayoutBox(source,inPlace=false){
   try{
     const settings=JSON.parse(JSON.stringify(source?source.settings:S));
     delete settings.assembly;
     if(!source||!MATS[settings.look]) settings.look=view.mat;
     const box=makeLayoutBox(settings,[0,0,0],source?.rotation.slice());
+    if(source&&inPlace){ box.position=source.position.slice(); box.hidden=source.hidden; }
     transformLayoutBox(box);
-    if(layoutBoxes.length){
+    if(layoutBoxes.length&&!(source&&inPlace)){
       const right=Math.max(...layoutBoxes.map(item=>item.bounds.max.x));
       box.position=[Math.ceil(right-box.bounds.min.x+10),source?.position[1]||0,source?.position[2]||0];
     }
@@ -453,6 +454,11 @@ function initBoxLayout(){
   $('#layoutUnits').addEventListener('change',e=>setMeasurementUnit(e.target.value));
   $('#layoutAdd').addEventListener('click',()=>addLayoutBox());
   $('#layoutDuplicate').addEventListener('click',()=>addLayoutBox(layoutBoxes[layoutSelection]));
+  $('#layoutDuplicateInPlace').addEventListener('click',()=>{
+    if(!layoutBoxes[layoutSelection]) return;
+    addLayoutBox(layoutBoxes[layoutSelection],true);
+    toast('Copy placed on top of the original — move or turn it');
+  });
   $('#layoutObjects').addEventListener('change',e=>selectLayoutBox(e.target.value===''?-1:+e.target.value));
   for(const input of $$('[data-layout-axis],[data-layout-rotation]')){
     input.addEventListener('change',()=>{
