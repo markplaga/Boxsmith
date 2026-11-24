@@ -1007,6 +1007,22 @@ Boxsmith.browser.showBox(tray);</code></pre>
 <script>
 /* Offline / installable support */
 if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+  /* The page opens from the saved copy, and a new version downloads in the background. When it is ready,
+     reload straight away if the page was only just opened (it was a refresh to get the update), so one
+     refresh is enough. Later on, offer a Reload button instead of interrupting the work. */
+  var bsLoadedAt = Date.now(), bsHadWorker = !!navigator.serviceWorker.controller, bsReloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', function () {
+    if (!bsHadWorker || bsReloading) return;   // the first install: this page is already the newest
+    var busy = document.body.classList.contains('lab-open') || (window.Remote && Remote.relayState);
+    if (Date.now() - bsLoadedAt < 20000 && !busy) { bsReloading = true; location.reload(); return; }
+    if (document.getElementById('updateBar')) return;
+    var bar = document.createElement('div'); bar.id = 'updateBar'; bar.setAttribute('role', 'status');
+    bar.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:90;background:#2a2a2e;color:#fff;border-radius:10px;padding:9px 10px 9px 16px;display:flex;gap:10px;align-items:center;font:500 13px var(--sans);box-shadow:0 6px 24px rgba(0,0,0,.25)';
+    bar.innerHTML = '<span>Boxsmith has been updated.</span><button class="btn sm primary" type="button">Reload</button><button class="btn sm" type="button" aria-label="Later">Later</button>';
+    bar.children[1].onclick = function () { bsReloading = true; location.reload(); };
+    bar.children[2].onclick = function () { bar.remove(); };
+    document.body.appendChild(bar);
+  });
   window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
 }
 </script>
