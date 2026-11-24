@@ -218,7 +218,7 @@ Try a type with a few different settings (small and large, inside measurements, 
 
 ## Writing a type with an AI
 
-In the **Type lab** (at the end of the Box style list), open **Have an AI write one**, describe the box and click **Copy AI prompt**. That copies this whole page, an example and your description, with rules for the reply; tick *Change the file below instead* to have the AI edit the type that's open. Paste the prompt into any chat AI, paste its JSON back into the Type lab and click **Check**. If there are problems, **Copy problems for an AI** and paste them back.
+In the **Type lab** (at the end of the Box style list), open **Have an AI write one**, describe the box and click **Copy AI prompt**. That copies [AI-TYPE-BUILDER.md](AI-TYPE-BUILDER.md) (how the AI connects to Boxsmith's checker and tests its file at many settings before handing it over), this whole page, two examples and your description. Tick *Let the AI check on this screen* to start a Remote session and put its code in the prompt, so an AI that can open a web connection checks its file on your screen; tick *Change the file below* to have the AI edit the type that's open. Paste the prompt into any chat AI, paste its JSON back into the Type lab and click **Check**. If there are problems, **Copy problems for an AI** and paste them back.
 
 An AI connected through **📱 Remote** (like Box Bot) can do the same itself: `typeFormat` gives it this page and the schema, `typeCheck` and `typeAdd` check and add its file, and `add` puts boxes of the new style in the layout. See *Remote control* in [API.md](API.md).
 

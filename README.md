@@ -28,7 +28,7 @@ Everything the page does can be scripted: cut sheets, SVG and DXF, parts, costs 
 
 ## New box styles
 
-A box type file describes a new style of box in JSON, with formulas but no code, and Boxsmith builds it, checks that every joint meets, and treats it like a built-in style. [Format reference](BOX-TYPES.md) (written to hand to an AI) · [JSON Schema](boxsmith-type.schema.json) · [Examples](types/) · [Shared types](https://github.com/markplaga/markplaga-boxsmith-type)
+A box type file describes a new style of box in JSON, with formulas but no code, and Boxsmith builds it, checks that every joint meets, and treats it like a built-in style. [Format reference](BOX-TYPES.md) · [How an AI builds and checks one](AI-TYPE-BUILDER.md) · [JSON Schema](boxsmith-type.schema.json) · [Examples](types/) · [Shared types](https://github.com/markplaga/markplaga-boxsmith-type)
 
 ## Files
 - `index.html` — page and styles

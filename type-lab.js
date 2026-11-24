@@ -95,9 +95,12 @@ function labEl(){
    +'<select id="labExample" aria-label="Start from"><option value="">Start from…</option><option value="starter">A plain box</option>'+LAB_EXAMPLES.map(([f,n])=>'<option value="'+f+'">'+n+'</option>').join('')+'</select>'
    +'<button class="btn sm" id="labClear" type="button" title="Empty the box below">Clear</button></div>'
    +'<details class="labAi" id="labAi"><summary>Have an AI write one</summary>'
-   +'<p class="hint">Describe the box. Boxsmith copies a prompt with the whole format, an example and your description; paste it into any chat AI (Claude, ChatGPT, Gemini…), then paste its answer below.</p>'
+   +'<p class="hint">Describe the box and copy the prompt into any chat AI (Claude, ChatGPT, Gemini…). It tells the AI how to test its file with Boxsmith\'s own checker until it passes, and only then give you the file with a build guide. Paste the file it gives you below.</p>'
    +'<textarea id="labAsk" rows="3" placeholder="A tray with a sloped front and three compartments, and a lid that slides in from the back"></textarea>'
-   +'<div class="labRow"><button class="btn sm primary" id="labPrompt" type="button">Copy AI prompt</button><label class="chk" style="font-size:12px"><input type="checkbox" id="labAskEdit"> Change the file below instead</label></div></details>'
+   +'<label class="chk" style="font-size:12px"><input type="checkbox" id="labLive"> Let the AI check on this screen</label>'
+   +'<p class="hint" id="labLiveHint">Starts a Remote session and puts its code in the prompt, so an AI that can open a web connection can check its file here. Keep this page open while it works. AIs with a browser tool check on the Boxsmith website instead; the rest ask you to check here.</p>'
+   +'<label class="chk" style="font-size:12px"><input type="checkbox" id="labAskEdit"> Change the file below instead of making a new one</label>'
+   +'<div class="labRow"><button class="btn sm primary" id="labPrompt" type="button">Copy AI prompt</button></div></details>'
    +'<textarea id="labText" spellcheck="false" aria-label="Type file"></textarea>'
    +'<div class="labRow"><button class="btn sm" id="labCheck" type="button">Check</button><button class="btn sm" id="labTry" type="button">Try it</button><button class="btn sm primary" id="labSave" type="button">Save to My types</button></div>'
    +'<div id="labReport" aria-live="polite"></div>'
@@ -118,7 +121,9 @@ function labEl(){
   });
   $('#labPrompt').addEventListener('click',async()=>{
     const ask=$('#labAsk').value.trim(); if(!ask){ toast('Describe the box first'); $('#labAsk').focus(); return; }
-    let text; try{ text=await typePrompt(ask,$('#labAskEdit').checked?$('#labText').value:''); }catch(e){ toast('Couldn\'t read the format reference — are you offline?'); return; }
+    let code='';
+    if($('#labLive').checked&&typeof Remote!=='undefined'){ if(!Remote.code) Remote.hostStart({stay:true}); code=Remote.code; syncLabLive(); }
+    let text; try{ text=await typePrompt(ask,$('#labAskEdit').checked?$('#labText').value:'',code); }catch(e){ toast('Couldn\'t read the format reference — are you offline?'); return; }
     try{ await navigator.clipboard.writeText(text); toast('Prompt copied ('+Math.round(text.length/1000)+'k characters) — paste it into a chat AI'); }
     catch(e){ $('#labText').value=text; toast('Clipboard blocked: the prompt is in the box below; copy it from there'); } });
   $('#labClear').addEventListener('click',e=>{
@@ -126,6 +131,7 @@ function labEl(){
     if(!$('#labText').value.trim()){ clear(); return; }
     confirmTwice(e.currentTarget,'Click again to clear',clear);   // unsaved work is lost, so ask once
   });
+  $('#labLive').addEventListener('change',syncLabLive);
   $('#labText').addEventListener('keydown',e=>{ if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){ e.preventDefault(); labCheck(); } });
   $('#labCheck').addEventListener('click',()=>labCheck());
   $('#labTry').addEventListener('click',()=>{ const def=labCheck(); if(!def) return; Boxsmith.types.register(def); renderTypeList(); renderLabMine(); S.type=def.id; update(true); toast('Showing '+def.name+' (not saved yet)'); });
@@ -210,32 +216,53 @@ function shareType(def){
   if(url.length<7500){ window.open(url,'_blank','noopener'); toast('On GitHub: “Propose changes”, then open the pull request. The check runs on it.'); }
   else { saveFile(def.id+'.json',text); window.open(base,'_blank','noopener'); toast('This type is long, so it was downloaded: paste its contents into the GitHub page, then propose the change.'); }
 }
-// a prompt any chat AI can answer with a type file: the format, one worked example, the user's words
-let typeRefText='';
-async function typePrompt(ask,current){
-  if(!typeRefText) typeRefText=await (await fetch('BOX-TYPES.md')).text();
-  const [example,example2]=await Promise.all(['types/open-tray.json','types/box-with-shelf.json'].map(async u=>(await fetch(u)).text()));
+// the Remote code line under "Let the AI check on this screen"
+function syncLabLive(){
+  const code=typeof Remote!=='undefined'&&Remote.code, box=$('#labLive'); if(!box) return;
+  if(code&&!box.dataset.touched){ box.checked=true; }
+  box.dataset.touched='1';
+  $('#labLiveHint').innerHTML=code
+    ? 'Remote code <b>'+esc(code.slice(0,3)+' '+code.slice(3))+'</b> is open: the AI can check its file on this screen while this page stays open. (Stop it under Arrange boxes → 📱 Remote.)'
+    : 'Starts a Remote session and puts its code in the prompt, so an AI that can open a web connection can check its file here. Keep this page open while it works. AIs with a browser tool check on the Boxsmith website instead; the rest ask you to check here.';
+}
+// a prompt any chat AI can answer with a checked type file: the method (AI-TYPE-BUILDER.md), the user's
+// request and size, a live Remote code if there is one, two worked examples, and the format (BOX-TYPES.md)
+let typeRefText='', typeMethodText='';
+async function typePrompt(ask,current,code){
+  const get=async u=>{ const r=await fetch(u); if(!r.ok) throw new Error(u+': '+r.status); return r.text(); };
+  if(!typeRefText) typeRefText=await get('BOX-TYPES.md');
+  if(!typeMethodText) typeMethodText=await get('AI-TYPE-BUILDER.md');
+  const [example,example2]=await Promise.all(['types/open-tray.json','types/box-with-shelf.json'].map(get));
   const std=Object.keys(DEFAULTS).filter(k=>!['type','typeParams','assembly'].includes(k));
-  const size=fmt(S.W)+' × '+fmt(S.D)+' × '+fmt(S.H)+(S.dimMode==='inside'?' inside':' outside')+', '+fmt(S.t)+' material';
+  const size='W '+Math.round(S.W)+', D '+Math.round(S.D)+', H '+Math.round(S.H)+' mm ('+(S.dimMode==='inside'?'inside':'outside')+' sizes), '+S.t+' mm material; as settings: '
+    +JSON.stringify({W:S.W,D:S.D,H:S.H,t:S.t,dimMode:S.dimMode});
+  const connect=code
+    ? ['## Connecting','','My Boxsmith screen is open and waiting for you on the Remote. **Code: '+code+'**. Use way B with this code (or way A if you have a browser tool). If you can\'t open a WebSocket or a browser, say so and use way D.']
+    : ['## Connecting','','Use way A if you have a browser tool, else way C if you can run code with internet access. If you can do neither, use way D and say clearly that the file is untested.'];
   return [
-    'You are writing a box type file for Boxsmith, a laser-cut box generator. The format is described below in full. A type file is JSON only: no code, no comments.',
+    '# Build me a Boxsmith box type',
     '',
-    current?'Change this type file as I describe. Keep its "id" unless I ask otherwise.\n\n```json\n'+current.trim()+'\n```':'Write a new type file for this box:',
+    'Follow the method in "Building a Boxsmith type with an AI" below. Test the file with Boxsmith\'s own checker, at many settings, until it passes. Only then give it to me, with the test result and a build guide.',
     '',
-    ask,
+    current?'## What I want changed\n\n'+ask+'\n\nThis is the current file. Keep its "id" and raise "typeVersion".\n\n```json\n'+current.trim()+'\n```':'## What I want\n\n'+ask,
     '',
-    'Rules:',
-    '- Reply with the complete JSON file in one ```json block, then at most three short sentences about what you assumed.',
-    '- Use "box" parts where the shape allows (Boxsmith then handles fingers, corners and screws), and "panel" parts with "f"/"F" edges for anything else. Panels that join must overlap by one thickness t along the joint, one edge "f" and the other "F".',
-    '- Every size should follow from W, D, H, t and your params, so the box works at any size, not just one.',
-    '- Give the user settings (params) for what they would want to change. Reuse a standard setting key when it means the same thing.',
-    '- Pick a new lower-case "id" with dashes. Don\'t use a built-in style id ('+TYPES.map(t=>t.id).join(', ')+').',
-    '- Boxsmith will check the file and build it in 3D. If I paste back problems, each starts with its place in the file (like parts[2].panel.edges[1]); fix them and send the whole file again.',
+    '## My setup',
     '',
-    'The user is currently working at '+size+'.',
-    'Standard setting keys a param can reuse: '+std.join(', ')+'.',
+    '- I am working at '+size+'. Test that too.',
+    '- Pick a new lower-case "id" with dashes. Built-in style ids are taken: '+TYPES.map(t=>t.id).join(', ')+'.',
+    '- Standard setting keys a param can reuse: '+std.join(', ')+'.',
     '',
-    'Two example type files. The built-in Open tray, re-expressed (params, a shaped edge, dividers):',
+    ...connect,
+    '',
+    '---',
+    '',
+    typeMethodText.trim(),
+    '',
+    '---',
+    '',
+    '# Two example type files',
+    '',
+    'The built-in Open tray, written as a type file (params, a shaped edge, dividers):',
     '',
     '```json',example.trim(),'```',
     '',
@@ -243,7 +270,7 @@ async function typePrompt(ask,current){
     '',
     '```json',example2.trim(),'```',
     '',
-    '=== The Boxsmith box type format (BOX-TYPES.md) ===',
+    '---',
     '',
     typeRefText.trim()
   ].join('\n');
@@ -322,7 +349,7 @@ function labShow(r){
   $('#labCopy').classList.toggle('hidden',!(r.errors&&r.errors.length)&&!(r.warnings&&r.warnings.length));
 }
 function openTypeLab(){
-  const el=labEl(); el.classList.remove('hidden'); document.body.classList.add('lab-open'); renderLabMine();
+  const el=labEl(); el.classList.remove('hidden'); document.body.classList.add('lab-open'); renderLabMine(); syncLabLive();
   const def=customTypeDef(S.type);
   if(!$('#labText').value.trim()) $('#labText').value=JSON.stringify(def||LAB_STARTER,null,2);
   labCheck();

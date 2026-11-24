@@ -130,11 +130,12 @@ const Remote=(()=>{
     }catch(err){ console.error(err); toast('Those settings make impossible geometry; the box was not changed.'); if(host) host.send({t:'note',text:'Those settings make impossible geometry, so the box was not changed.'}); }
   }
   function newCode(){ return String(100000+Math.floor(Math.random()*900000)); }
-  function hostStart(){
+  // stay: true keeps the current view (the Type lab starts a session for an AI that only checks types)
+  function hostStart(opts){
     hostStop();
     hostCode=newCode(); remotes=0; localPeer=false;
     host=Link(hostCode,'host',hostMessage,()=>renderHostStatus());
-    if(typeof curView!=='undefined'&&curView!=='layout') document.querySelector('#tabs [data-v="layout"]')?.click();
+    if(!(opts&&opts.stay)&&typeof curView!=='undefined'&&curView!=='layout') document.querySelector('#tabs [data-v="layout"]')?.click();
     renderDialog();
   }
   function hostStop(){ if(host){ host.send({t:'bye'}); host.close(); } host=null; hostCode=''; renderDialog(); }
@@ -416,7 +417,7 @@ const Remote=(()=>{
         if(a.settings!==undefined&&(!a.settings||typeof a.settings!=='object')) return 'settings must be an object of box settings.';
         const settings=Object.assign({},a.settings||{}); delete settings.type;
         let r; try{ r=Boxsmith.types.check(a.type,settings); }catch(e){ r={ok:false,stage:'build',errors:[{path:'',message:e.message}],warnings:[]}; }
-        const reply={t:'typeCheck',op,id:a.type.id,ok:r.ok,stage:r.stage,errors:r.errors,warnings:r.warnings,parts:r.parts,size:r.size,text:Boxsmith.types.explain((r.errors||[]).concat(r.warnings||[]))};
+        const reply={t:'typeCheck',op,id:a.type.id,tag:a.tag===undefined?undefined:String(a.tag).slice(0,100),settings:a.settings||{},ok:r.ok,stage:r.stage,errors:r.errors,warnings:r.warnings,parts:r.parts,size:r.size,text:Boxsmith.types.explain((r.errors||[]).concat(r.warnings||[]))};
         if(op==='typeAdd'){
           if(r.stage==='format') reply.added=false;
           else if(!r.ok&&!a.force) { reply.added=false; reply.text=(reply.text?reply.text+'\n':'')+'Not added because the parts don\'t fit together. Fix the problems, or send force: true to add it anyway.'; }
@@ -1530,6 +1531,6 @@ const Remote=(()=>{
     if(q.has('remote')) remoteMode(q.get('remote'));
     window.addEventListener('pagehide',()=>{ if(host) host.send({t:'bye'}); });
   }
-  return {get groups(){ return groupStates(); },get sending(){ return host&&host.sending; },get relayState(){ return host&&host.relay; },record:a=>startRecording(a||{}),recordStop:()=>stopRecording(),get recording(){ return !!recording; },init,hostStart,hostStop,remoteMode,animationFromFile,importAnimationFile,playLibrary,get library(){ return library&&{title:library.title,current:library.current,animations:library.animations.map(x=>x.name),designs:library.designs.map(x=>x.name)}; },run:(op,args)=>{ let e; try{ e=op==='batch'?Anim.runBatch(args&&args.cmds,runCmd).errors.join(' '):runCmd(op,args||{}); }catch(err){ e=err.message; } sendState(true); return e||null; },get anim(){ return anim&&{playing:anim.playing,t:anim.t,duration:anim.duration,soundtrack:anim.sound?{name:anim.sound.name,state:anim.sound.state,error:anim.sound.error,clock:anim.sound.src&&!anim.sound.stalled?'audio':'system'}:null}; },get code(){ return hostCode; }};
+  return {get code(){ return host?hostCode:''; },get groups(){ return groupStates(); },get sending(){ return host&&host.sending; },get relayState(){ return host&&host.relay; },record:a=>startRecording(a||{}),recordStop:()=>stopRecording(),get recording(){ return !!recording; },init,hostStart,hostStop,remoteMode,animationFromFile,importAnimationFile,playLibrary,get library(){ return library&&{title:library.title,current:library.current,animations:library.animations.map(x=>x.name),designs:library.designs.map(x=>x.name)}; },run:(op,args)=>{ let e; try{ e=op==='batch'?Anim.runBatch(args&&args.cmds,runCmd).errors.join(' '):runCmd(op,args||{}); }catch(err){ e=err.message; } sendState(true); return e||null; },get anim(){ return anim&&{playing:anim.playing,t:anim.t,duration:anim.duration,soundtrack:anim.sound?{name:anim.sound.name,state:anim.sound.state,error:anim.sound.error,clock:anim.sound.src&&!anim.sound.stalled?'audio':'system'}:null}; },get code(){ return hostCode; }};
 })();
 Remote.init();
