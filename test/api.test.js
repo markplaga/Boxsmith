@@ -117,6 +117,12 @@ test('view() takes and returns degrees', () => {
   assert.equal(B.browser.view({ yaw: -90 }).yaw, -90);
   assert.throws(() => B.browser.view({ pitch: 120 }), RangeError);
   assert.throws(() => B.browser.view({ yaw: 'left' }), TypeError);
+  assert.deepEqual([B.browser.view().projection, B.browser.view().fov], ['ortho', 30]);
+  const p = B.browser.view({ projection: 'perspective', fov: 40 });
+  assert.deepEqual([p.projection, p.fov], ['perspective', 40]);
+  assert.throws(() => B.browser.view({ projection: 'fisheye' }), RangeError);
+  assert.throws(() => B.browser.view({ fov: 200 }), RangeError);
+  B.browser.view({ projection: 'ortho', fov: 30 });
 });
 
 test('Boxes to cut goes past 50: 100 boxes nest across as many sheets as needed', () => {

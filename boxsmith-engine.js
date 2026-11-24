@@ -286,7 +286,7 @@
       if(!id) throw new RangeError("tab must be one of: "+Object.keys(TABS).join(', '));
       document.querySelector('#tabs [data-v="'+id+'"]').click();
     },
-    /** Read or change the 3D preview. Pass any of: material, explode (0-1), spin, yaw and pitch (degrees; pitch 90 is straight down), zoom, hardware, stereo ('off'|'cross'|'parallel'), stereoDepth, edgeColor, lamp ({on,gain,color}), maximize. */
+    /** Read or change the 3D preview. Pass any of: material, explode (0-1), spin, yaw and pitch (degrees; pitch 90 is straight down), zoom, hardware, stereo ('off'|'cross'|'parallel'), stereoDepth, projection ('ortho'|'perspective'), fov (5-120 degrees), edgeColor, lamp ({on,gain,color}), maximize. */
     view(changes){
       requirePage();
       if(changes){
@@ -308,6 +308,16 @@
           if(typeof syncStereoControls==='function') syncStereoControls();
         }
         if(changes.stereoDepth!==undefined) view.stereoDeg=changes.stereoDepth;
+        if(changes.projection!==undefined){
+          if(!['ortho','perspective'].includes(changes.projection)) throw new RangeError("projection must be 'ortho' or 'perspective'");
+          view.projection=changes.projection;
+        }
+        if(changes.fov!==undefined){
+          if(!Number.isFinite(changes.fov)) throw new TypeError('fov must be a number');
+          if(changes.fov<5||changes.fov>120) throw new RangeError('fov must be from 5 to 120 degrees');
+          view.fov=changes.fov;
+        }
+        if((changes.projection!==undefined||changes.fov!==undefined)&&typeof syncProjectionControls==='function') syncProjectionControls();
         if(changes.edgeColor!==undefined){
           if(changes.edgeColor!==null&&!/^#[0-9a-f]{6}$/i.test(changes.edgeColor)) throw new RangeError('edgeColor must look like #rrggbb');
           if(changes.edgeColor===null){ delete cutEdgeColors[view.mat]; saveCutEdgeColors(); syncCutEdgeControls(); } else setCutEdgeColor(changes.edgeColor.toLowerCase());
@@ -317,6 +327,7 @@
         render();
       }
       return {material:view.mat,explode:view.explode,spin:view.spin,yaw:round(view.yaw*180/Math.PI,2),pitch:round(view.pitch*180/Math.PI,2),zoom:view.zoom,hardware:view.hw,stereo:view.stereo,stereoDepth:view.stereoDeg,
+        projection:view.projection||'ortho',fov:view.fov||30,   // the same as the Remote state's view
         edgeColor:cutEdgeColors[view.mat]||null,lamp:{on:LAMP.on,gain:LAMP.gain,color:LAMP.color}};
     },
     /** Play the "show it work" animation. */
