@@ -231,6 +231,7 @@ The **📱 Remote** button in Arrange boxes links a second screen to the one sho
 | `view` | `{ yaw?, pitch?, zoom?, pan?, projection?, fov? }` | Sets the camera (degrees). `projection` is `'ortho'` or `'perspective'`; `fov` is the perspective lens, 5–120° vertical. |
 | `frame` | `{ boxes?: [i, …] \| 'all', margin?, yaw?, pitch? }` | Zooms and pans so those boxes (default: every box not hidden) fill the view, leaving `margin` (default 0.1, a fraction of their size) free on each side. `yaw` and `pitch` (degrees) turn the view first. Works in either projection. |
 | `fit`, `top`, `place`, `maximize`, `stereo`, `units`, `save`, `open`, `clear` | `{ mode }` for `stereo`, `{ unit }` for `units`, `{ json }` for `open` | The Layout & view controls. |
+| `state` | none | Does nothing but answer with a fresh `state` (as every command does), with no note. `{"t":"hello"}` does the same. |
 | `batch` | `{ cmds: [{ op, args }, …] }` (up to 500) | Runs them all, then sends one state. No need to pace commands for the relay's 60 messages a second. |
 | `animate` | see below | Loads an animation and plays it (unless `autoplay: false`). Positions are in the display unit, the same as `set`. |
 | `library` | none, or `{ kind: 'animation' \| 'design', index }` | With no args, replies `{"t":"library","library":{…}}` listing what's in the zip imported on the model screen. With `kind` and `index`, plays an animation or opens a design from it. |

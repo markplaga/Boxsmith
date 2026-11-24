@@ -233,6 +233,7 @@ const Remote=(()=>{
       case 'save': press('#layoutSave'); return;
       case 'open': try{ stopAnim(true); openBoxLayout(a.json); }catch(err){ toast('That layout file could not be opened.'); return 'That layout file could not be opened: '+err.message; } return;
       case 'clear': stopAnim(true); if(layoutBoxes.length){ layoutBoxes=[]; rebuildBoxLayout(); saveBoxLayout(); selectLayoutBox(-1); toast('Layout cleared'); } return;
+      case 'state': case 'hello': return;   // nothing to do: every command is answered with a fresh state
       case 'animate': return loadAnim(a);
       case 'play': return playAnim();
       case 'pause': if(!anim) return 'No animation is loaded.'; pauseAnim(); return;
