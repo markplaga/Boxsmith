@@ -268,6 +268,7 @@ That makes box 0 hop 60 mm three times while turning a full circle, tints box 1'
 - `colors`, `hidden` and `settings` switch at their key's time and hold until the next. A `settings` key rebuilds that box; each design is built once when the animation loads, and playback otherwise only moves boxes.
 - Playback follows the real clock at up to `fps` frames a second, so it stays on time on a slow device. Optional `base` is a layout (object or JSON text) to open first.
 - Limits: 2000 keyframes, 120 seconds, `fps` 1–60.
+- While an animation plays, the model screen hides its whole interface and fills the screen (cinema mode). It comes back when playback ends, pauses or stops. A tap, click, Esc or Space on the model screen pauses it. Exports play without cinema mode.
 - The host sends `{"t":"anim","state":"playing","time":0}` when playback starts and `{"t":"anim","state":"done","time":3}` at the end.
 
 ### Capture

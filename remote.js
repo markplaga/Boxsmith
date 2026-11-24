@@ -350,10 +350,47 @@ const Remote=(()=>{
   }
   const settle=()=>{ if(anim) for(const i of Object.keys(anim.originals)) if(layoutBoxes[i]) transformLayoutBox(layoutBoxes[i]); };
   function finishAnim(){
-    settle(); renderAnimBar();
+    settle(); exitCinema(); renderAnimBar();
     if(host) host.send({t:'anim',state:'done',time:anim.duration});
     syncBoxLayout(); sendState(true);
     const done=anim.onDone; anim.onDone=null; if(done) done();
+  }
+  /* ---------- cinema: everything hidden while an animation plays ---------- */
+  // The 3D view fills the screen (true fullscreen when the browser allows it: a click or tap just
+  // before is needed for that), and every control is hidden. A tap, click, Esc or Space stops it.
+  // When playback ends, pauses or stops, the interface comes back as it was.
+  let cinema=null, fsByUs=false;
+  const fsElement=()=>document.fullscreenElement||document.webkitFullscreenElement;
+  function goFullscreen(){
+    if(fsElement()) return;
+    const el=document.documentElement, f=el.requestFullscreen||el.webkitRequestFullscreen;
+    if(!f) return;
+    try{ const p=f.call(el); fsByUs=true; if(p&&p.catch) p.catch(()=>{ fsByUs=false; }); }catch(e){ fsByUs=false; }
+  }
+  function enterCinema(){
+    if(cinema||exporting||typeof setMax!=='function') return;   // recordings play without it, so a tap can't cut them short
+    cinema={wasMax:maximizedView()};
+    goFullscreen();                       // works when this follows a click or tap
+    setMax(true);
+    document.body.classList.add('cinema');
+    if(document.activeElement&&document.activeElement.blur) document.activeElement.blur();
+    requestAnimationFrame(render);
+  }
+  function exitCinema(){
+    if(!cinema) return;
+    const was=cinema.wasMax; cinema=null;
+    document.body.classList.remove('cinema');
+    if(!was) setMax(false);
+    if(fsByUs&&fsElement()){ const x=document.exitFullscreen||document.webkitExitFullscreen; try{ const p=x&&x.call(document); if(p&&p.catch) p.catch(()=>{}); }catch(e){} }
+    fsByUs=false;
+    renderAnimBar(); renderLibrary(); requestAnimationFrame(render);
+  }
+  let swallowClicksUntil=0;
+  function stopFromCinema(e){
+    if(!cinema) return;
+    if(e){ e.preventDefault(); e.stopPropagation(); }
+    swallowClicksUntil=performance.now()+700;   // the stopping tap must not also press whatever reappears under it
+    pauseAnim(); sendState(true);
   }
   function playAnim(){
     if(!anim) return 'No animation is loaded. Send animate first.';
@@ -362,9 +399,10 @@ const Remote=(()=>{
     anim.playing=true; anim.t0=anim.t; anim.wall0=performance.now(); anim.lastFrameT=-1;
     applyFrame(anim.t);
     if(host) host.send({t:'anim',state:'playing',time:anim.t,unit:anim.unit});
+    enterCinema();
     anim.raf=requestAnimationFrame(tick);
   }
-  function pauseAnim(){ if(!anim) return; anim.playing=false; cancelAnimationFrame(anim.raf); settle(); syncBoxLayout(); renderAnimBar(); }
+  function pauseAnim(){ if(!anim) return; anim.playing=false; cancelAnimationFrame(anim.raf); settle(); exitCinema(); syncBoxLayout(); renderAnimBar(); }
   function seekAnim(t){
     t=Math.max(0,Math.min(anim.duration,t));
     applyFrame(t);
@@ -387,7 +425,7 @@ const Remote=(()=>{
     if(swapped) relayoutNoFit();
     const v=anim.view0; view.yaw=v.yaw*PI/180; view.pitch=v.pitch*PI/180; view.zoom=v.zoom; view.pan=v.pan.slice();
     if(forget) anim=null; else { anim.t=0; anim.lastFrameT=-1; }
-    render(); syncBoxLayout(); renderAnimBar();
+    exitCinema(); render(); syncBoxLayout(); renderAnimBar();
   }
 
   /* ---------- capture ---------- */
@@ -595,7 +633,7 @@ const Remote=(()=>{
       p.addEventListener('click',e=>{
         const b=e.target.closest('button'); if(!b) return;
         if(b.dataset.lib==='close'){ library.hidden=true; renderLibrary(); return; }
-        if(b.dataset.play!==undefined) playLibrary('animation',+b.dataset.play);
+        if(b.dataset.play!==undefined){ if(library.owns||!layoutBoxes.length) goFullscreen(); playLibrary('animation',+b.dataset.play); }
         if(b.dataset.open!==undefined) playLibrary('design',+b.dataset.open);
         if(b.dataset.video!==undefined) showLibraryVideo(+b.dataset.video);
       });
@@ -621,7 +659,7 @@ const Remote=(()=>{
       document.body.appendChild(bar);
       bar.addEventListener('click',e=>{
         const b=e.target.closest('[data-ab]'); if(!b||!anim) return;
-        if(b.dataset.ab==='play'){ if(anim.playing) pauseAnim(); else playAnim(); }
+        if(b.dataset.ab==='play'){ if(anim.playing) pauseAnim(); else { goFullscreen(); playAnim(); } }
         else if(b.dataset.ab==='stop') stopAnim(false);
         else if(b.dataset.ab==='close') stopAnim(true);
         sendState(true); renderAnimBar();
@@ -867,6 +905,10 @@ const Remote=(()=>{
     });
     remoteEvents();
     $('#animImport').addEventListener('click',()=>$('#animFile').click());
+    for(const type of ['pointerdown','touchstart']) window.addEventListener(type,e=>{ if(cinema) stopFromCinema(e); },{capture:true,passive:false});
+    for(const type of ['click','pointerup','mouseup','touchend']) window.addEventListener(type,e=>{ if(performance.now()<swallowClicksUntil){ e.preventDefault(); e.stopPropagation(); } },{capture:true,passive:false});
+    window.addEventListener('keydown',e=>{ if(cinema&&(e.key==='Escape'||e.key===' '||e.key==='Spacebar')) stopFromCinema(e); },true);
+    for(const type of ['fullscreenchange','webkitfullscreenchange']) document.addEventListener(type,()=>{ if(cinema&&fsByUs&&!fsElement()){ fsByUs=false; stopFromCinema(); } });
     $('#animLibBtn').addEventListener('click',()=>{ if(library){ library.hidden=!library.hidden; renderLibrary(); } });
     $('#animFile').addEventListener('change',e=>{ const f=e.target.files[0]; e.target.value=''; importAnimationFile(f); });
     // design edits on a remote's sidebar go to the model screen
