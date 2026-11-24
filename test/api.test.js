@@ -463,3 +463,17 @@ test('constant-rate video: frame times and the WebM writer', () => {
   assert.ok(hex.includes('23e383' + '84' + (Math.round(1e9 / 30)).toString(16).padStart(8, '0')));   // DefaultDuration = 1/30 s
   assert.ok(hex.includes('1c53bb6b'));                                // Cues, so players can seek
 });
+
+test('soundtracks: named in the animation, matched in a zip, fitted to the animation length', () => {
+  const files = [{ name: 'Reel/boxbot-reel-loop-sfx-v1.mp3' }, { name: 'Reel/other.wav' }];
+  assert.equal(Anim.findSoundtrack('BOXBOT-reel-loop-sfx-v1.mp3', files), files[0]);          // by name, folders and case ignored
+  assert.equal(Anim.findSoundtrack(undefined, files, 'boxbot-reel-loop-anim'), files[0]);     // by the animation's own name
+  assert.equal(Anim.findSoundtrack(undefined, files, 'tower-crash-anim'), null);
+  assert.equal(Anim.findSoundtrack('https://example.com/a.mp3', files), null);                // URLs are fetched, not matched
+  const [ch] = Anim.fitAudio([new Float32Array([1, 2, 3, 4, 5])], 4, 2);                      // 2 s at 4 Hz = 8 samples
+  assert.deepEqual([...ch], [1, 2, 3, 4, 5, 0, 0, 0]);
+  assert.equal(Anim.fitAudio([new Float32Array(100)], 10, 3)[0].length, 30);                  // longer audio is cut
+  const ok = Anim.validateAnimation({ keyframes: [{ t: 0, boxes: {} }], soundtrack: 'sfx.mp3' }, 1);
+  assert.equal(ok.anim.soundtrack, 'sfx.mp3');
+  assert.match(Anim.validateAnimation({ keyframes: [{ t: 0, boxes: {} }], soundtrack: 5 }, 1).error, /soundtrack/);
+});

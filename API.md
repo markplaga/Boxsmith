@@ -243,6 +243,20 @@ The **📱 Remote** button in Arrange boxes links a second screen to the one sho
 
 **State** (`{"t":"state",…}`) includes `boxes` (label, position, rotation, colors, hidden), `sel`, `part`, `parts`, `unit`, `stereo`, `view` (`yaw`, `pitch` in degrees, `zoom`, `pan`, `projection`, `fov`), `camera` (what the camera shows, in mm: see below), `anim` (`playing`, `t`, `duration`, `loop`, or `null`) and `exporting`.
 
+### Soundtrack
+
+An animation can name a soundtrack, and the model screen plays it live, in step with the animation:
+
+```json
+{ "op": "animate", "args": { "soundtrack": "boxbot-reel-loop-sfx-v1.mp3", "loop": true, "keyframes": [ … ] } }
+```
+
+- `soundtrack` is the name of an audio file (mp3, wav, ogg, m4a, aac, flac, opus), an `https:` URL, or a `data:audio/…;base64,…` URL. A file name is found in the zip the animation came from, or among the files picked together with it in **▶ Import animation** (choose the `.json` and the `.mp3` at the same time), or in the zip library open on the model screen. In a zip, an animation without `soundtrack` uses the one audio file whose name starts with its own (`boxbot-reel-loop-anim.json` → `boxbot-reel-loop-sfx-v1.mp3`). A remote's *Import an animation from this device* also takes the audio file and sends it along as a data URL.
+- The sound starts when play is pressed, pauses and seeks with the animation, and loops when it loops. It is cut or padded with silence to exactly the animation's length, so each loop restarts it on the same sample.
+- **Sync.** While the sound plays, the animation takes its time from the audio clock, less the device's output latency, so it shows what you're hearing and the two can't drift apart over any number of loops. Each frame is drawn for the moment it will be on screen. If the audio clock stalls or the browser suspends audio, the animation carries on by the system clock and the sound restarts at the animation's time. Measured in Chrome over three loops of a 40.36 s reel, a sound at 2.93 s was heard within about one frame (33 ms at 30 fps) of the frame showing 2.93 s on every loop, with no drift.
+- Browsers only allow sound after a tap, click or key press on that page. The model screen's first tap enables it; if an animation started from a remote before then, its sound joins in, in step, at that first tap. While it waits, the state says `blocked`.
+- The state's `anim.soundtrack` is `{name, state, seconds}`, where `state` is `loading`, `ready`, `playing`, `blocked` or `error` (with `error` saying why, e.g. the file wasn't found), or `null`.
+
 ### Camera framing in the state
 
 `state.camera` says exactly what the view shows, so a shot can be framed by arithmetic instead of guesswork. Lengths are millimetres, whatever the display unit.

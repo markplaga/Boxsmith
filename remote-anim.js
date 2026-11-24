@@ -122,10 +122,11 @@
     }
     const cameraInterp=args.cameraInterp===undefined?'linear':args.cameraInterp;
     if(cameraInterp!=='linear'&&cameraInterp!=='catmullRom') return bad("cameraInterp must be 'linear' or 'catmullRom'.");
+    if(args.soundtrack!==undefined&&args.soundtrack!==null&&(typeof args.soundtrack!=='string'||!args.soundtrack||(args.soundtrack.length>2048&&!/^data:audio\//.test(args.soundtrack)))) return bad('soundtrack must be the name of an audio file (mp3, wav, …), a URL, or a data:audio URL.');
     const projection=args.projection===undefined?'ortho':args.projection;
     if(projection!=='ortho'&&projection!=='perspective') return bad("projection must be 'ortho' or 'perspective'.");
     for(const list of Object.values(tracks)) list.sort((a,b)=>a.t-b.t);
-    return {ok:true,anim:{tracks,camera,cameraInterp,projection,duration,fps,easing,loop:!!args.loop,unit}};
+    return {ok:true,anim:{tracks,camera,cameraInterp,projection,soundtrack:args.soundtrack||null,duration,fps,easing,loop:!!args.loop,unit}};
   }
 
   /* ---------- sampling ---------- */
@@ -446,10 +447,11 @@
   // designs (layout files). Names come from the file names, minus a prefix they all share.
   function buildLibrary(files,zipName){
     const dec=new TextDecoder(), base=n=>n.split('/').pop().replace(/\.[^.]+$/,'');
-    const animations=[], designs=[], videos={};
+    const animations=[], designs=[], videos={}, audios=[];
     for(const f of files){
       const ext=(f.name.split('.').pop()||'').toLowerCase();
       if(['mp4','webm','mov','m4v','gif'].includes(ext)){ videos[base(f.name).toLowerCase()]=f; continue; }
+      if(AUDIO_EXT.includes(ext)){ audios.push(f); continue; }
       if(ext!=='json') continue;
       const text=dec.decode(f.bytes), found=parseAnimationFile(text);
       if(found.args){
@@ -465,13 +467,37 @@
     const nice=k=>{ let s=k; if(prefix&&s.startsWith(prefix)&&s.length>prefix.length) s=s.slice(prefix.length); s=s.replace(/[-_ ]anim(ation)?$/i,'').replace(/[-_]+/g,' ').trim(); return s.charAt(0).toUpperCase()+s.slice(1); };
     for(const x of all){
       x.name=(x.args&&typeof x.args.name==='string'&&x.args.name)||nice(x.key);
-      if(x.kind==='animation'){ const v=videos[x.key.toLowerCase()]||videos[x.key.toLowerCase().replace(/[-_ ]anim(ation)?$/i,'')]; if(v) x.video=v; }
+      if(x.kind==='animation'){
+        const v=videos[x.key.toLowerCase()]||videos[x.key.toLowerCase().replace(/[-_ ]anim(ation)?$/i,'')]; if(v) x.video=v;
+        const au=findSoundtrack(x.args.soundtrack,audios,x.key); if(au) x.audio=au;
+      }
     }
     // title: the folder everything sits in, if there is one, else the zip's own name
     const tops=new Set(files.map(f=>f.name.includes('/')?f.name.split('/')[0]:''));
     const folder=tops.size===1?[...tops][0]:'';
     const title=(folder||(zipName||'').replace(/\.zip$/i,'')).replace(/[-_]+/g,' ').trim();
-    return {title:title?title.charAt(0).toUpperCase()+title.slice(1):'Animations',animations,designs};
+    return {title:title?title.charAt(0).toUpperCase()+title.slice(1):'Animations',animations,designs,audios};
+  }
+
+  /* ---------- soundtracks ---------- */
+  const AUDIO_EXT=['mp3','wav','ogg','oga','opus','m4a','aac','flac','weba'];
+  const isAudioName=n=>AUDIO_EXT.includes((String(n).split('.').pop()||'').toLowerCase());
+  // The audio file an animation's soundtrack names, among files [{name, bytes}]: the same file name
+  // (folders and case ignored). With no soundtrack named, the one audio file whose name starts with
+  // the animation's own (boxbot-reel-loop-anim.json → boxbot-reel-loop-sfx-v1.mp3), if there's just one.
+  function findSoundtrack(name,files,animKey){
+    const leaf=n=>String(n).split(/[\/\\]/).pop().toLowerCase();
+    if(typeof name==='string'&&name&&!/^(data:|https?:|blob:)/i.test(name)) return files.find(f=>leaf(f.name)===leaf(name))||null;
+    if(name||!animKey) return null;
+    const stem=String(animKey).toLowerCase().replace(/[-_ ]anim(ation)?$/i,'');
+    const hits=files.filter(f=>leaf(f.name).replace(/\.[^.]+$/,'').startsWith(stem));
+    return hits.length===1?hits[0]:null;
+  }
+  // A copy of decoded audio channels cut or padded with silence to exactly `seconds`, so a looping
+  // player restarts it in step with the animation. channels: Float32Array[]; returns Float32Array[].
+  function fitAudio(channels,sampleRate,seconds){
+    const n=Math.max(1,Math.round(seconds*sampleRate));
+    return channels.map(ch=>{ const out=new Float32Array(n); out.set(ch.length>n?ch.subarray(0,n):ch); return out; });
   }
 
   /* ---------- batches ---------- */
@@ -488,5 +514,5 @@
     return {ran,errors};
   }
 
-  return {makeWebM,opusHead,cfrTimes,readZip,buildLibrary,parseAnimationFile,runBatch,MAX_KEYS,MAX_DURATION,EASE,validateAnimation,sampleAt,evenTimes,rotationBetween,eulerToQuat,quatToEuler,slerp,splitMessage,joinParts,encodeGIF,LIMIT};
+  return {findSoundtrack,fitAudio,isAudioName,AUDIO_EXT,makeWebM,opusHead,cfrTimes,readZip,buildLibrary,parseAnimationFile,runBatch,MAX_KEYS,MAX_DURATION,EASE,validateAnimation,sampleAt,evenTimes,rotationBetween,eulerToQuat,quatToEuler,slerp,splitMessage,joinParts,encodeGIF,LIMIT};
 });

@@ -115,7 +115,7 @@ const Remote=(()=>{
       placing:placingBox,maximized:document.body.classList.contains('max3d'),stereo:stereo?stereo.value:view.stereo,boxCount:layoutBoxes.length,
       library:librarySummary(),
       recording:recording?{fps:recording.fps,width:recording.w,height:recording.h,seconds:recording.E?Math.round(recording.slot/recording.fps*10)/10:0}:null,
-      view:viewDeg(),camera:typeof cameraInfo==='function'?cameraInfo():null,anim:anim?{playing:anim.playing,t:Math.round(anim.t*1000)/1000,duration:anim.duration,loop:anim.loop}:null,exporting,
+      view:viewDeg(),camera:typeof cameraInfo==='function'?cameraInfo():null,anim:anim?{playing:anim.playing,t:Math.round(anim.t*1000)/1000,duration:anim.duration,loop:anim.loop,soundtrack:anim.sound?{name:anim.sound.name,state:anim.sound.state,seconds:anim.sound.seconds,error:anim.sound.error}:null}:null,exporting,
       boxes:layoutBoxes.map((b,i)=>({label:layoutBoxLabel(b,i),hidden:!!b.hidden,clash:clash.has(i),position:b.position,rotation:b.rotation,colors:b.settings.colors||{}})),
       parts:partNames(box),acrylic:!!box&&boxHasAcrylic(box),
       sides:[...$('#layoutSnapSide').options].map(o=>[o.value,o.textContent]),
@@ -302,6 +302,81 @@ const Remote=(()=>{
     m.elements[12]+=ox; m.elements[13]+=oy; m.elements[14]+=oz;
     if(box.bounds&&box.bounds.isBox3){ box.bounds.min.set(x0+ox,y0+oy,z0+oz); box.bounds.max.set(x1+ox,y1+oy,z1+oz); }
   }
+  /* ---------- soundtrack ----------
+     The animation's audio is decoded once, cut or padded to exactly the animation's length, and
+     played by one Web Audio source (looping with the animation when it loops, sample-accurately).
+     While it plays, the animation takes its time from the audio clock (less the output latency, so
+     what you see matches what you hear), so the two cannot drift apart however many loops go by.
+     If the audio clock stalls or the browser suspends audio, the animation carries on by the system
+     clock and the sound is started again in step. */
+  let actx=null, audioUnlocked=false;
+  const audioFor=new WeakMap();   // animate args -> {name, bytes} found in a library or picked with the file
+  function audioContext(){
+    if(!actx){ const C=window.AudioContext||window.webkitAudioContext; if(C){ try{ actx=new C({latencyHint:'playback'}); }catch(e){ actx=new C(); } } }
+    return actx;
+  }
+  // Browsers only let a page make sound after a tap or key press on it; the first one wakes audio up.
+  const unlockAudio=()=>{ if(audioUnlocked) return; const c=audioContext(); if(c&&c.state!=='running') c.resume().catch(()=>{}); if(c) audioUnlocked=true; };
+  addEventListener('pointerdown',unlockAudio,true); addEventListener('keydown',unlockAudio,true);
+  const latency=c=>(c.outputLatency||0)+(c.baseLatency||0);
+  async function soundBytes(name,given){
+    if(given&&given.bytes) return given.bytes;
+    if(/^(data:audio\/|https?:|blob:)/i.test(name)){ const r=await fetch(name); if(!r.ok) throw new Error('HTTP '+r.status); return new Uint8Array(await r.arrayBuffer()); }
+    const inLib=library&&Anim.findSoundtrack(name,library.audios||[]);
+    if(inLib) return inLib.bytes;
+    throw new Error('no audio file called '+name+' is loaded. Import it together with the animation (or in the same zip).');
+  }
+  function loadSound(a){
+    const given=audioFor.get(a), name=(a.soundtrack)||(given&&given.name);
+    if(!name) return;
+    const S0=anim.sound={name:/^data:/i.test(name)?'embedded audio':String(name).slice(0,200),state:'loading'}, me=anim;
+    const c=audioContext();
+    if(!c){ S0.state='error'; S0.error='this browser has no Web Audio'; return; }
+    soundBytes(name,given).then(bytes=>c.decodeAudioData(bytes.slice().buffer)).then(buf=>{
+      if(anim!==me) return;
+      const chans=[]; for(let i=0;i<buf.numberOfChannels;i++) chans.push(buf.getChannelData(i));
+      const fitted=Anim.fitAudio(chans,buf.sampleRate,me.duration);
+      const out=c.createBuffer(fitted.length,fitted[0].length,buf.sampleRate); fitted.forEach((ch,i)=>out.copyToChannel(ch,i));
+      Object.assign(S0,{state:'ready',buf:out,original:buf,seconds:Math.round(buf.duration*1000)/1000});
+      if(me.playing) startSound(me.t);
+      if(me.pendingPlay){ me.pendingPlay=false; playAnim(); }
+      sendState();
+    }).catch(err=>{
+      if(anim!==me) return;
+      S0.state='error'; S0.error=err.message||String(err); note('soundtrack: '+S0.error);
+      if(me.pendingPlay){ me.pendingPlay=false; playAnim(); }
+      sendState();
+    });
+  }
+  function startSound(t){
+    const S0=anim&&anim.sound; if(!S0) return;
+    stopSound();
+    if(S0.state!=='ready'&&S0.state!=='blocked'&&S0.state!=='playing') return;
+    const c=audioContext();
+    if(c.state!=='running'){ c.resume().catch(()=>{}); S0.state='blocked'; return; }   // needs a tap on this screen first
+    const src=c.createBufferSource(); src.buffer=S0.buf; src.loop=!!anim.loop; src.loopStart=0; src.loopEnd=S0.buf.duration;
+    if(!S0.gain){ S0.gain=c.createGain(); S0.gain.connect(c.destination); }
+    src.connect(S0.gain);
+    const when=c.currentTime+0.03, off=Math.max(0,Math.min(t,S0.buf.duration-1e-6));
+    src.start(when,off);
+    Object.assign(S0,{src,when,off,state:'playing',stalled:false,lastCtx:c.currentTime,lastPerf:performance.now()});
+  }
+  function stopSound(){
+    const S0=anim&&anim.sound; if(!S0||!S0.src) return;
+    try{ S0.src.stop(); }catch(e){} S0.src.disconnect(); S0.src=null;
+    if(S0.state==='playing') S0.state='ready';
+  }
+  // The animation time the listener is hearing now, or null when the sound isn't driving the clock.
+  function soundTime(now){
+    const S0=anim&&anim.sound; if(!S0||!S0.src||S0.stalled) return null;
+    const c=actx; if(!c||c.state!=='running'){ S0.stalled=true; return null; }
+    if(c.currentTime===S0.lastCtx){ if(now-S0.lastPerf>250){ S0.stalled=true; return null; } }
+    else { S0.lastCtx=c.currentTime; S0.lastPerf=now; }
+    const heard=c.currentTime-latency(c)-S0.when;
+    if(heard<0) return S0.off;
+    const t=S0.off+heard;
+    return anim.loop&&anim.duration>0?t%anim.duration:t;
+  }
   function relayoutNoFit(){
     boxLayoutScene.solids=layoutBoxes.flatMap(box=>{ transformLayoutBox(box); for(const solid of box.model.solids) solid.layoutBox=box; return box.model.solids; });
     if(layingOut()) buildGL(boxLayoutScene);
@@ -332,7 +407,8 @@ const Remote=(()=>{
     anim={spec,unit:spec.unit,start,duration:spec.duration,fps:spec.fps,loop:spec.loop,t:0,playing:false,raf:0,originals,variants,view0:viewDeg(),lastFrameT:-1};
     if(curView!=='layout') document.querySelector('#tabs [data-v="layout"]')?.click();
     applyFrame(0); syncProjectionControls();
-    if(a.autoplay!==false) playAnim();
+    loadSound(a);
+    if(a.autoplay!==false){ if(anim.sound&&anim.sound.state==='loading'){ anim.pendingPlay=true; setTimeout(()=>{ if(anim&&anim.pendingPlay){ anim.pendingPlay=false; playAnim(); } },5000); } else playAnim(); }
   }
   // Pose every animated box (and the camera) for time t, then draw. Transforms only: meshes are
   // rebuilt only when a key swaps in a different design.
@@ -371,11 +447,24 @@ const Remote=(()=>{
   function tick(now){
     if(!anim||!anim.playing) return;
     let t=anim.t0+(now-anim.wall0)/1000;
+    const st=soundTime(now);                    // while the soundtrack plays, its clock leads
+    if(st!==null){
+      if(Math.abs(st-t)>0.04&&!(anim.loop&&Math.abs(Math.abs(st-t)-anim.duration)<0.04)) anim.resyncs=(anim.resyncs||0)+1;
+      t=st; anim.t0=st; anim.wall0=now;          // keep the system clock in step, for when sound stops
+      if(!anim.loop&&t>=anim.duration){ applyFrame(anim.duration); anim.playing=false; stopSound(); finishAnim(); return; }
+    } else if(anim.sound&&anim.sound.state==='blocked'&&actx&&actx.state==='running'){
+      startSound(Math.min(t,anim.duration));     // a tap woke audio up: join in at the animation's time
+    } else if(anim.sound&&anim.sound.src&&anim.sound.stalled){
+      startSound(Math.min(t,anim.duration));     // the audio clock stalled: start it again at the animation's time
+    }
     if(t>=anim.duration){
       if(anim.loop&&anim.duration>0){ t%=anim.duration; anim.t0=t; anim.wall0=now; }
-      else { applyFrame(anim.duration); anim.playing=false; finishAnim(); return; }
+      else { applyFrame(anim.duration); anim.playing=false; stopSound(); finishAnim(); return; }
     }
-    // draw at the requested frame rate, timed by the real clock so slow devices stay on time
+    // draw at the requested frame rate, timed by the real clock so slow devices stay on time. With a
+    // soundtrack, each frame shows the moment it will be on screen (it is held for 1/fps and appears
+    // about one display refresh after it is drawn), so pictures and sound line up rather than trail.
+    if(st!==null){ const lead=0.5/anim.fps+1/60, d=anim.duration; t=anim.loop?(t+lead)%d:Math.min(d,t+lead); }
     if(t-anim.lastFrameT>=1/anim.fps-1e-4||t<anim.lastFrameT) applyFrame(t);
     anim.raf=requestAnimationFrame(tick);
   }
@@ -428,23 +517,24 @@ const Remote=(()=>{
     if(anim.t>=anim.duration) anim.t=0;
     cancelAnimationFrame(anim.raf);
     anim.playing=true; anim.t0=anim.t; anim.wall0=performance.now(); anim.lastFrameT=-1;
+    startSound(anim.t);
     applyFrame(anim.t);
     if(host) host.send({t:'anim',state:'playing',time:anim.t,unit:anim.unit});
     enterCinema();
     anim.raf=requestAnimationFrame(tick);
   }
-  function pauseAnim(){ if(!anim) return; anim.playing=false; cancelAnimationFrame(anim.raf); settle(); exitCinema(); syncBoxLayout(); renderAnimBar(); }
+  function pauseAnim(){ if(!anim) return; anim.playing=false; cancelAnimationFrame(anim.raf); stopSound(); settle(); exitCinema(); syncBoxLayout(); renderAnimBar(); }
   function seekAnim(t){
     t=Math.max(0,Math.min(anim.duration,t));
     applyFrame(t);
-    if(anim.playing){ anim.t0=t; anim.wall0=performance.now(); }
+    if(anim.playing){ anim.t0=t; anim.wall0=performance.now(); startSound(t); }
     else { settle(); syncBoxLayout(); }
   }
   // Stop: put every animated box (and the camera) back as it was before the animation.
   // forget=true also unloads the animation.
   function stopAnim(forget){
     if(!anim) return;
-    anim.playing=false; cancelAnimationFrame(anim.raf);
+    anim.playing=false; cancelAnimationFrame(anim.raf); stopSound();
     let swapped=false;
     for(const [i,o] of Object.entries(anim.originals)){
       if(layoutBoxes[i]!==o.box&&layoutBoxes[i]&&anim.variants[i]&&Object.values(anim.variants[i]).includes(layoutBoxes[i])){ layoutBoxes[i]=o.box; swapped=true; }
@@ -712,9 +802,14 @@ const Remote=(()=>{
   }
   // Import animation (host): read the file, warn before replacing the open layout, load with a
   // loading indicator (big files take a few seconds), then play.
-  function importAnimationFile(file){
-    if(!file) return;
+  // files: one File, or several picked together (an animation file and its soundtrack).
+  function importAnimationFile(files){
+    const list=files&&files.length!==undefined&&!(files instanceof Blob)?[...files]:[files].filter(Boolean);
+    if(!list.length) return;
+    const file=list.find(f=>/\.zip$/i.test(f.name)||/zip/.test(f.type))||list.find(f=>!Anim.isAudioName(f.name))||list[0];
+    const audios=list.filter(f=>f!==file&&Anim.isAudioName(f.name));
     if(/\.zip$/i.test(file.name)||/zip/.test(file.type)) return openLibrary(file);
+    if(Anim.isAudioName(file.name)) return toast('That is a sound file. Choose it together with the animation file it belongs to.');
     const busy=document.createElement('div'); busy.className='anim-loading'; busy.innerHTML='<span>Loading animation…</span>'; document.body.appendChild(busy);
     const done=msg=>{ busy.remove(); if(msg){ toast(msg); } };
     file.text().then(text=>{
@@ -723,12 +818,15 @@ const Remote=(()=>{
       const a=found.args;
       if(a.base&&layoutBoxes.length&&!confirm('This animation comes with its own layout ('+(a.base.boxes?a.base.boxes.length:'?')+' boxes), which will replace the '+layoutBoxes.length+' boxes open now. Save your layout first if you want to keep it.\n\nReplace it and play?')) return done();
       busy.firstChild.textContent='Building '+(a.base&&a.base.boxes?a.base.boxes.length+' boxes':'the animation')+'…';
-      setTimeout(()=>{   // let the indicator paint before the heavy work
+      const au=a.soundtrack?audios.find(f=>Anim.findSoundtrack(a.soundtrack,[{name:f.name}])):(audios.length===1?audios[0]:null);
+      const withAudio=au?au.arrayBuffer().then(b=>audioFor.set(a,{name:au.name,bytes:new Uint8Array(b)})):Promise.resolve();
+      if(a.soundtrack&&!au&&!/^(data:|https?:|blob:)/i.test(a.soundtrack)&&!(library&&Anim.findSoundtrack(a.soundtrack,library.audios||[]))) toast('This animation’s soundtrack is '+a.soundtrack+'. Choose that file together with the animation to hear it.');
+      withAudio.then(()=>setTimeout(()=>{   // let the indicator paint before the heavy work
         let err; try{ err=runCmd('animate',a); }catch(e){ err=e.message; }
         done(err?'Could not play '+file.name+': '+err:null);
         if(!err&&anim){ anim.name=file.name.replace(/\.json$/i,''); renderAnimBar(); }
         sendState(true);
-      },60);
+      },60));
     }).catch(err=>done('Could not read that file: '+err.message));
   }
   /* ---------- animation library (a zip of animations, designs and videos) ---------- */
@@ -740,6 +838,7 @@ const Remote=(()=>{
       busy.remove();
       if(!lib.animations.length&&!lib.designs.length){ toast('No animations or designs found in '+file.name+'.'); return; }
       lib.animations.sort((a,b)=>a.name.localeCompare(b.name)); lib.designs.sort((a,b)=>a.name.localeCompare(b.name));
+      for(const x of lib.animations) if(x.audio) audioFor.set(x.args,{name:x.audio.name,bytes:x.audio.bytes});
       for(const x of lib.animations) if(x.video) x.videoURL=URL.createObjectURL(new Blob([x.video.bytes],{type:/\.webm$/i.test(x.video.name)?'video/webm':/\.gif$/i.test(x.video.name)?'image/gif':'video/mp4'}));
       if(library) for(const x of library.animations) if(x.videoURL) URL.revokeObjectURL(x.videoURL);
       library=Object.assign(lib,{current:null,owns:false,hidden:false});
@@ -796,6 +895,7 @@ const Remote=(()=>{
       else {
         const args=Object.assign({},item.args,{autoplay:a.autoplay!==false});
         if(a.loop!==undefined) args.loop=a.loop;
+        if(audioFor.has(item.args)) audioFor.set(args,audioFor.get(item.args));
         err=runCmd('animate',args); if(!err&&anim) anim.name=item.name;
       }
     }catch(e){ err=e.message; }
@@ -991,7 +1091,7 @@ const Remote=(()=>{
         '<label>Units <select data-rm="units"><option value="mm"'+(u==='mm'?' selected':'')+'>mm</option><option value="in"'+(u==='in'?' selected':'')+'>in</option></select></label></div></section>'+
         '<section><h4>Layout file</h4><div class="rm-row"><button type="button" class="btn" data-rm="save">Save layout (downloads on the model screen)</button>'+
         '<button type="button" class="btn" data-rm="openfile">Open a layout file from this device</button><input type="file" id="rmFile" accept=".json,application/json" hidden>'+
-        '<button type="button" class="btn" data-rm="animfile">Import an animation from this device</button><input type="file" id="rmAnimFile" accept=".json,application/json" hidden></div>'+
+        '<button type="button" class="btn" data-rm="animfile">Import an animation from this device</button><input type="file" id="rmAnimFile" multiple accept=".json,application/json,.mp3,.wav,.ogg,.m4a,.aac,.flac,.opus,audio/*" hidden></div>'+
         '<div class="rm-row"><button type="button" class="btn rm-danger" data-rm="clear"'+(st.boxCount?'':' disabled')+'>'+(clearArmed>Date.now()?'Tap again to clear every box':'Clear all boxes')+'</button></div></section>'+
         (st.library?'<section><h4>Library · '+esc(st.library.title)+'</h4>'+
           st.library.animations.map((x,i)=>'<div class="rm-row"><span class="rm-grow"><b>'+esc(x.name)+'</b> <small class="rm-small">'+x.duration.toFixed(1)+' s'+(x.boxes?' · '+x.boxes+' boxes':'')+'</small></span><button type="button" class="btn'+(st.library.current==='animation:'+i?' on':'')+'" data-rm-lib="animation:'+i+'">▶ Play</button></div>').join('')+
@@ -1069,7 +1169,17 @@ const Remote=(()=>{
       if(t.dataset.rm==='color') return cmd('color',{hex:t.value,final:true});
       if(t.dataset.rm==='units') return cmd('units',{unit:t.value});
       if(t.dataset.rm==='stereo') return cmd('stereo',{mode:t.value});
-      if(t.id==='rmAnimFile'&&t.files[0]){ const f=t.files[0]; t.value=''; f.text().then(text=>{ const found=animationFromFile(text); if(found.error) return setRemoteStatus(found.error); setRemoteStatus('Sending '+f.name+' to the model screen…'); cmd('animate',found.args); }); return; }
+      if(t.id==='rmAnimFile'&&t.files[0]){
+        const all=[...t.files]; t.value='';
+        const f=all.find(x=>!Anim.isAudioName(x.name)), au=all.filter(x=>Anim.isAudioName(x.name));
+        if(!f) return setRemoteStatus('Choose the animation file too (with its sound file, if it has one).');
+        f.text().then(async text=>{
+          const found=animationFromFile(text); if(found.error) return setRemoteStatus(found.error);
+          const a=found.args, pick=a.soundtrack?au.find(x=>Anim.findSoundtrack(a.soundtrack,[{name:x.name}])):(au.length===1?au[0]:null);
+          if(pick) a.soundtrack=await new Promise(res=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).replace(/^data:(?!audio\/)[^;,]*/,'data:audio/'+(pick.name.split('.').pop()||'mpeg').toLowerCase())); r.readAsDataURL(pick); });   // the sound travels with it
+          setRemoteStatus('Sending '+f.name+(pick?' and '+pick.name:'')+' to the model screen…'); cmd('animate',a);
+        }); return;
+      }
       if(t.id==='rmFile'&&t.files[0]){ const f=t.files[0]; f.text().then(json=>{ cmd('open',{json}); setRemoteStatus('Sent '+f.name+' to the model screen.'); }); t.value=''; return; }
       if(t.dataset.rmSet!==undefined&&t.value!=='') return cmd('set',{k:+t.dataset.rmSet,value:+t.value});
       if(t.dataset.rmRot!==undefined&&t.value!=='') return cmd('set',{rot:true,k:+t.dataset.rmRot,value:+t.value});
@@ -1105,7 +1215,7 @@ const Remote=(()=>{
     window.addEventListener('keydown',e=>{ if(cinema&&(e.key==='Escape'||e.key===' '||e.key==='Spacebar')) stopFromCinema(e); },true);
     for(const type of ['fullscreenchange','webkitfullscreenchange']) document.addEventListener(type,()=>{ if(cinema&&fsByUs&&!fsElement()){ fsByUs=false; stopFromCinema(); } });
     $('#animLibBtn').addEventListener('click',()=>{ if(library){ library.hidden=!library.hidden; renderLibrary(); } });
-    $('#animFile').addEventListener('change',e=>{ const f=e.target.files[0]; e.target.value=''; importAnimationFile(f); });
+    $('#animFile').addEventListener('change',e=>{ const f=[...e.target.files]; e.target.value=''; importAnimationFile(f); });
     // design edits on a remote's sidebar go to the model screen
     const upd=update;
     update=function(){ const out=upd.apply(this,arguments); if(document.body.classList.contains('remote-mode')) designChanged(); return out; };
@@ -1116,6 +1226,6 @@ const Remote=(()=>{
     if(q.has('remote')) remoteMode(q.get('remote'));
     window.addEventListener('pagehide',()=>{ if(host) host.send({t:'bye'}); });
   }
-  return {record:a=>startRecording(a||{}),recordStop:()=>stopRecording(),get recording(){ return !!recording; },init,hostStart,hostStop,remoteMode,animationFromFile,importAnimationFile,playLibrary,get library(){ return library&&{title:library.title,current:library.current,animations:library.animations.map(x=>x.name),designs:library.designs.map(x=>x.name)}; },run:(op,args)=>{ let e; try{ e=op==='batch'?Anim.runBatch(args&&args.cmds,runCmd).errors.join(' '):runCmd(op,args||{}); }catch(err){ e=err.message; } sendState(true); return e||null; },get anim(){ return anim&&{playing:anim.playing,t:anim.t,duration:anim.duration}; },get code(){ return hostCode; }};
+  return {record:a=>startRecording(a||{}),recordStop:()=>stopRecording(),get recording(){ return !!recording; },init,hostStart,hostStop,remoteMode,animationFromFile,importAnimationFile,playLibrary,get library(){ return library&&{title:library.title,current:library.current,animations:library.animations.map(x=>x.name),designs:library.designs.map(x=>x.name)}; },run:(op,args)=>{ let e; try{ e=op==='batch'?Anim.runBatch(args&&args.cmds,runCmd).errors.join(' '):runCmd(op,args||{}); }catch(err){ e=err.message; } sendState(true); return e||null; },get anim(){ return anim&&{playing:anim.playing,t:anim.t,duration:anim.duration,soundtrack:anim.sound?{name:anim.sound.name,state:anim.sound.state,error:anim.sound.error,clock:anim.sound.src&&!anim.sound.stalled?'audio':'system'}:null}; },get code(){ return hostCode; }};
 })();
 Remote.init();
