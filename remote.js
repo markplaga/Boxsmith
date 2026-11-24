@@ -39,6 +39,7 @@ const Remote=(()=>{
         let msg; try{ msg=JSON.parse(e.data); }catch(err){ return; }
         if(msg.t==='joined'){ status('relay'); if(role==='host') onMessage({t:'peers',remotes:msg.remotes}); return; }
         if(msg.t==='nohost'){ status('nohost'); return; }
+        if(msg.t==='error'&&msg.code){ onMessage({t:'relayError',code:msg.code,text:msg.msg||msg.code}); return; }   // a message was refused; the link is fine
         if(msg.t==='error'){ status('error:'+msg.msg); closed=role==='host'; return; }
         if(msg.t==='hostgone'||msg.t==='hostback'||msg.t==='peers'){ onMessage(msg); return; }
         deliver(msg);
@@ -124,6 +125,7 @@ const Remote=(()=>{
   const press=sel=>{ const el=$(sel); if(el&&!el.disabled&&!el.hidden) el.click(); };
   function hostMessage(msg){
     if(msg.t==='peers'){ remotes=msg.remotes; renderHostStatus(); return; }
+    if(msg.t==='relayError'){ console.warn('Relay:',msg.text); return; }
     if(msg.t==='hello'){ forceDesign=true; localPeer=true; renderHostStatus(); if(curView!=='layout') document.querySelector('#tabs [data-v="layout"]')?.click(); sendState(true); return; }
     if(msg.t!=='cmd') return;
     const args=msg.args&&typeof msg.args==='object'?msg.args:{};
@@ -817,7 +819,7 @@ const Remote=(()=>{
       if(prev&&prev.boxCount!==msg.boxCount) clearArmed=0;
       renderRemote(); return;
     }
-    if(msg.t==='note'){ setRemoteStatus(msg.text); return; }
+    if(msg.t==='note'||msg.t==='relayError'){ setRemoteStatus(msg.text); return; }
     if(msg.t==='anim'){ setRemoteStatus(msg.state==='playing'?'Animation playing…':'Animation finished.'); return; }
     if(msg.t==='capture'){ shots.unshift(...msg.images.map((src,k)=>({src,label:(msg.mode==='sheet'?'Contact sheet':msg.mode==='still'?'View':'t = '+(+msg.times[k]).toFixed(2)+' s')+(msg.of>1?' ('+msg.part+'/'+msg.of+')':''),name:'boxsmith-'+msg.mode+'-'+(k+1)+(src.startsWith('data:image/jpeg')?'.jpg':'.png')}))); shots=shots.slice(0,24); renderRemote(); setRemoteStatus('Capture received.'); return; }
     if(msg.t==='export'){ shots.unshift({src:msg.data,label:'Recording ('+msg.format.toUpperCase()+', '+(msg.bytes/1048576).toFixed(1)+' MB)',name:'boxsmith-animation.'+msg.format,video:msg.format==='webm'}); renderRemote(); setRemoteStatus('Recording received.'); return; }

@@ -7,7 +7,10 @@ const { WebSocketServer } = require('ws');
 
 const PORT = +process.env.PORT || 7860;
 const ALLOWED = (process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
-const MAX_ROOMS = 1000, MAX_REMOTES = 8, MAX_BYTES = 8 * 1024 * 1024, MSGS_PER_SEC = 60;
+// MAX_BYTES: the biggest message passed on. A bigger one is not passed on, and its sender gets
+// {t:'error', code:'too_large', limit, size} back. FRAME_BYTES is the hard cap for one WebSocket
+// frame; past it the socket is closed with code 1009 (the reply can't be sent without reading it).
+const MAX_ROOMS = 1000, MAX_REMOTES = 8, MAX_BYTES = 32 * 1024 * 1024, FRAME_BYTES = 96 * 1024 * 1024, MSGS_PER_SEC = 60;
 
 const rooms = new Map();   // code -> { host, remotes:Set }
 
@@ -16,7 +19,7 @@ const server = http.createServer((req, res) => {
   res.end('Boxsmith relay OK\n');
 });
 
-const wss = new WebSocketServer({ server, path: '/ws', maxPayload: MAX_BYTES,
+const wss = new WebSocketServer({ server, path: '/ws', maxPayload: FRAME_BYTES,
   verifyClient: ({ origin }) => !ALLOWED.length || ALLOWED.includes(origin) });
 
 const send = (ws, obj) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); };
@@ -41,8 +44,16 @@ wss.on('connection', ws => {
     if (isBinary) return;
     const now = Date.now();
     ws.tokens = Math.min(MSGS_PER_SEC, ws.tokens + (now - ws.last) / 1000 * MSGS_PER_SEC); ws.last = now;
-    if (ws.tokens < 1) return;            // too fast: drop
+    if (ws.tokens < 1) {                  // too fast: not passed on, and the sender is told (once a second at most)
+      if (now - (ws.toldFast || 0) > 1000) { ws.toldFast = now; send(ws, { t: 'error', code: 'rate_limited', limit: MSGS_PER_SEC, msg: 'Messages are coming faster than ' + MSGS_PER_SEC + ' a second, so some were not passed on. Use batch, or slow down.' }); }
+      return;
+    }
     ws.tokens -= 1;
+    const bytes = data.length;
+    if (bytes > MAX_BYTES) {
+      let id; try { id = JSON.parse(data.toString()).id; } catch { }
+      return send(ws, { t: 'error', code: 'too_large', limit: MAX_BYTES, size: bytes, id, msg: 'That message is ' + bytes + ' bytes; the relay passes on messages up to ' + MAX_BYTES + ' bytes. Send it in chunks (see the relay README).' });
+    }
     const text = data.toString();
     if (!ws.room) {
       let msg; try { msg = JSON.parse(text); } catch { return ws.close(1003, 'bad message'); }
