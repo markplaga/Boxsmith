@@ -377,3 +377,33 @@ test('a zip of animations, designs and videos becomes a named library', async ()
   assert.deepEqual(lib.designs.map(d => [d.name, d.boxes]), [['Tower', 2]]);
   await assert.rejects(Anim.readZip(Buffer.from('not a zip at all, just some text that is long enough')), /not a zip/);
 });
+
+test('camera keys: per-key ease, falling back to the animation easing; yaw is never wrapped', () => {
+  const keys = [{ t: 0, boxes: { 0: { position: [0, 0, 0] } } }];
+  const E = Anim.EASE;
+  const mk = (camera, easing) => Anim.validateAnimation({ keyframes: keys, camera, easing }, 1).anim;
+  const yawAt = (a, t) => Anim.sampleAt(a, t, {}, { yaw: 0, pitch: 30, zoom: 1, pan: [0, 0, 0] }).camera.yaw;
+  // the issue's example: easeInOut from 0 to 2 s, then linear from 2 to 6 s
+  const a = mk([{ t: 0, yaw: -35, ease: 'easeInOut' }, { t: 2, yaw: 0, ease: 'linear' }, { t: 6, yaw: 120 }]);
+  for (const t of [0.25, 0.5, 1, 1.5, 1.9]) assert.ok(Math.abs(yawAt(a, t) - (-35 + 35 * E.easeInOut(t / 2))) < 1e-9);
+  for (const t of [2.5, 3, 4, 5.5]) assert.ok(Math.abs(yawAt(a, t) - 120 * (t - 2) / 4) < 1e-9);   // constant speed
+  assert.equal(yawAt(a, 0), -35); assert.equal(yawAt(a, 2), 0); assert.equal(yawAt(a, 6), 120);
+  // every ease name works, and a key without ease uses the animation's easing
+  for (const name of ['linear', 'easeIn', 'easeOut', 'easeInOut', 'smoothstep']) {
+    const b = mk([{ t: 0, yaw: 0, ease: name }, { t: 1, yaw: 100 }]);
+    assert.ok(Math.abs(yawAt(b, 0.3) - 100 * E[name](0.3)) < 1e-9, name);
+    const g = mk([{ t: 0, yaw: 0 }, { t: 1, yaw: 100 }], name);
+    assert.ok(Math.abs(yawAt(g, 0.3) - 100 * E[name](0.3)) < 1e-9, 'global ' + name);
+  }
+  // existing animations (no ease anywhere) play exactly as before: the global easeInOut on every span
+  const old = mk([{ t: 0, yaw: 10, zoom: 1 }, { t: 1, yaw: 50 }, { t: 3, yaw: 20, zoom: 2 }]);
+  assert.ok(Math.abs(yawAt(old, 2) - (50 - 30 * E.easeInOut(0.5))) < 1e-9);
+  // yaw is unwrapped: 350 -> 10 goes back through 180, 0 -> 720 is two whole orbits
+  const w = mk([{ t: 0, yaw: 350, ease: 'linear' }, { t: 1, yaw: 10 }]);
+  assert.equal(yawAt(w, 0.5), 180);
+  const two = mk([{ t: 0, yaw: 0, ease: 'linear' }, { t: 4, yaw: 720 }]);
+  assert.equal(yawAt(two, 2), 360);
+  // a bad ease is refused with a message
+  const bad = Anim.validateAnimation({ keyframes: keys, camera: [{ t: 0, yaw: 0, ease: 'bouncy' }] }, 1);
+  assert.equal(bad.ok, false); assert.match(bad.error, /camera\[0\]\.ease/);
+});

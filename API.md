@@ -263,13 +263,27 @@ That makes box 0 hop 60 mm three times while turning a full circle, tints box 1'
 **Units.** Positions are in the display unit, the same as `set`. That's the `unit` in the state (`'mm'` or `'in'`), unless `"unit": "mm"` or `"unit": "in"` in the `animate` args overrides it. Camera `pan` uses the same unit. The `playing` message echoes the unit used: `{"t":"anim","state":"playing","time":0,"unit":"mm"}`. One difference to watch: the positions in the state's `boxes` are always in millimetres. Divide them by the state's `scale` (25.4 when the unit is inches, otherwise 1) to get display units.
 
 - Each box key may hold `position`, `rotation`, `colors`, `hidden` and `settings`. Only the boxes you list move; the rest hold still. A box whose first key comes after 0 eases in from where it stood.
-- Positions and the camera ease between keys (`easing` is `'easeInOut'`, the default, or `'linear'`).
+- Positions and the camera ease between keys. `easing` is `'easeInOut'` (the default), `'linear'`, `'easeIn'`, `'easeOut'` or `'smoothstep'`. Camera keys can also carry their own `ease` (see Camera keys below).
 - **Turns.** Each axis is compared separately between two keys. If every axis changes by 180° or less, the box takes the shortest path: 0 → 90 turns 90°. If any axis changes by more than 180°, the angles are kept exactly as written and eased one by one. So 0 → 360 spins a full circle, and 350 → 10 is a −340° turn that goes back the long way, through 180°. To cross 0 the short way, write 350 → 370 (a 20° turn). The keys' angles are taken literally, not reduced to 0–360 first.
 - `colors`, `hidden` and `settings` switch at their key's time and hold until the next. A `settings` key rebuilds that box; each design is built once when the animation loads, and playback otherwise only moves boxes.
 - Playback follows the real clock at up to `fps` frames a second, so it stays on time on a slow device. Optional `base` is a layout (object or JSON text) to open first.
 - Limits: 2000 keyframes, 120 seconds, `fps` 1–60.
 - While an animation plays, the model screen hides its whole interface and fills the screen (cinema mode). It comes back when playback ends, pauses or stops. A tap, click, Esc or Space on the model screen pauses it. Exports play without cinema mode.
 - The host sends `{"t":"anim","state":"playing","time":0}` when playback starts and `{"t":"anim","state":"done","time":3}` at the end.
+
+### Camera keys
+
+Each camera key has a time `t` and any of `yaw`, `pitch` (degrees), `zoom` and `pan` (`[x, y, z]` in the display unit, relative to the layout's centre). A field that a key leaves out is carried by the keys that do set it, so `yaw` and `zoom` can be keyed at different times.
+
+- **Per-key ease.** A key may carry `ease`: `'linear'`, `'easeIn'`, `'easeOut'`, `'easeInOut'` or `'smoothstep'`. It shapes the span from that key to the next one, for every field that changes across that span. A key without `ease` uses the animation's `easing`. So holds, eased moves and constant-speed orbits can sit in one animation without dense keys:
+
+  ```json
+  "camera": [ { "t": 0, "yaw": -35, "ease": "easeInOut" }, { "t": 2, "yaw": 0, "ease": "linear" }, { "t": 6, "yaw": 120 } ]
+  ```
+
+  That eases from −35° to 0° over 2 seconds, then orbits at a steady 30° a second.
+- **Yaw is never wrapped.** Camera angles are plain numbers and go straight from one key's value to the next, never the shortest way round. 350 → 10 swings back 340° through 180°; write 350 → 370 to cross 0 the short way. 0 → 720 makes two whole orbits. (Box turns follow the different rule under Turns, above.)
+- Before a field's first key, the view the animation started from holds and eases in, using the animation's `easing`.
 
 ### Capture
 

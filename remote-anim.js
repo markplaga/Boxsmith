@@ -18,8 +18,12 @@
   /* ---------- easing ---------- */
   const EASE={
     linear:u=>u,
-    easeInOut:u=>u<0.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2
+    easeIn:u=>u*u*u,
+    easeOut:u=>1-Math.pow(1-u,3),
+    easeInOut:u=>u<0.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2,
+    smoothstep:u=>u*u*(3-2*u)
   };
+  const EASE_NAMES="'linear', 'easeIn', 'easeOut', 'easeInOut' or 'smoothstep'";
 
   /* ---------- rotations: Euler (degrees, Z·Y·X) <-> quaternion ---------- */
   function qmul(a,b){ return [a[3]*b[0]+a[0]*b[3]+a[1]*b[2]-a[2]*b[1], a[3]*b[1]-a[0]*b[2]+a[1]*b[3]+a[2]*b[0], a[3]*b[2]+a[0]*b[1]-a[1]*b[0]+a[2]*b[3], a[3]*b[3]-a[0]*b[0]-a[1]*b[1]-a[2]*b[2]]; }
@@ -64,7 +68,7 @@
     if(!Array.isArray(keys)||!keys.length) return bad('keyframes must be a non-empty list.');
     if(keys.length>MAX_KEYS) return bad('Too many keyframes: '+keys.length+' (the limit is '+MAX_KEYS+').');
     const easing=args.easing===undefined?'easeInOut':args.easing;
-    if(!EASE[easing]) return bad("easing must be 'linear' or 'easeInOut'.");
+    if(!EASE[easing]) return bad('easing must be '+EASE_NAMES+'.');
     const unit=args.unit===undefined?displayUnit:args.unit;
     if(unit!=='mm'&&unit!=='in') return bad("unit must be 'mm' or 'in'.");
     const mm=unit==='in'?25.4:1, toMM=p=>p.map(v=>v*mm);
@@ -108,6 +112,7 @@
         if(c.pitch!==undefined&&Math.abs(c.pitch)>90) return bad(where+'.pitch must be between -90 and 90.');
         if(c.zoom!==undefined&&(c.zoom<0.05||c.zoom>20)) return bad(where+'.zoom must be between 0.05 and 20.');
         if(c.pan!==undefined&&!isTriple(c.pan)) return bad(where+'.pan must be three finite numbers.');
+        if(c.ease!==undefined&&!EASE[c.ease]) return bad(where+'.ease must be '+EASE_NAMES+'.');
         const cam=Object.assign({},c); if(c.pan!==undefined) cam.pan=toMM(c.pan);
         camera.push(cam);
       }
@@ -154,18 +159,37 @@
         settings:propAt(list,'settings',t,s.settings,ease,null,'settings' in s)
       };
     }
-    let camera=null;
-    if(anim.camera&&anim.camera.length){
-      const v=view||{};
-      const num=(a,b,u)=>a+(b-a)*u;
-      camera={
-        yaw:propAt(anim.camera,'yaw',t,v.yaw,ease,num),
-        pitch:propAt(anim.camera,'pitch',t,v.pitch,ease,num),
-        zoom:propAt(anim.camera,'zoom',t,v.zoom,ease,num),
-        pan:propAt(anim.camera,'pan',t,v.pan,ease,lerp3)
-      };
-    }
+    const camera=anim.camera&&anim.camera.length?cameraAt(anim,t,view||{}):null;
     return {boxes,camera};
+  }
+  /* ---------- camera ---------- */
+  // Each camera field (yaw, pitch, zoom, pan) runs through the keys that set it. The span from one
+  // key to the next uses that first key's own ease, else the animation's easing. Before the first
+  // key, the view the animation started from holds (and eases in with the animation's easing).
+  // Angles are plain numbers: yaw is never wrapped to the shortest way round, so 350 -> 10 turns
+  // back through 180 and 0 -> 720 makes two full orbits.
+  const CAM_FIELDS=['yaw','pitch','zoom','pan'];
+  function camKeys(cam,field,startVal){
+    const cache=cam._by||(Object.defineProperty(cam,'_by',{value:{},enumerable:false}),cam._by);
+    const keys=cache[field]||(cache[field]=cam.filter(k=>k[field]!==undefined).map(k=>({t:k.t,v:k[field],ease:k.ease})));
+    if(!keys.length) return keys;
+    return keys[0].t>0&&startVal!==undefined?[{t:0,v:startVal,implicit:true}].concat(keys):keys;
+  }
+  function cameraAt(anim,t,view){
+    const global=EASE[anim.easing]||EASE.easeInOut, out={};
+    for(const f of CAM_FIELDS){
+      const pts=camKeys(anim.camera,f,view[f]);
+      if(!pts.length){ out[f]=view[f]; continue; }
+      if(t<=pts[0].t){ out[f]=pts[0].v; continue; }
+      const last=pts[pts.length-1];
+      if(t>=last.t){ out[f]=last.v; continue; }
+      let lo=1, hi=pts.length-1;
+      while(lo<hi){ const mid=(lo+hi)>>1; if(t<=pts[mid].t) hi=mid; else lo=mid+1; }
+      const a=pts[lo-1], b=pts[lo], span=b.t-a.t;
+      const u=span>0?(EASE[a.ease]||global)((t-a.t)/span):1;
+      out[f]=Array.isArray(a.v)?lerp3(a.v,b.v,u):a.v+(b.v-a.v)*u;
+    }
+    return out;
   }
   // Frame times for N evenly spaced frames across the animation (first and last included).
   function evenTimes(duration,count){
