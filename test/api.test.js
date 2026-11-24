@@ -494,3 +494,30 @@ test('WebM writer: an Opus track, with the last packet trimmed to the video leng
   assert.ok(hex.includes('75a2'));                                     // DiscardPadding on the last audio block
   assert.equal(Buffer.from(Anim.opusHead(2, 48000)).toString('hex').slice(16, 20), '0102');   // version 1, 2 channels
 });
+
+test('groups: layout files, group keys and camera targets', () => {
+  const s = B.boxes.create('closed');
+  const f = B.assemblies.create({ boxes: [{ settings: s }, { settings: s }, { settings: s, group: 'hand' }],
+    groups: [{ id: 'bot', boxes: [0, 1], origin: [1, 2, 3] }, { id: 'hand', parent: 'bot' }] });
+  assert.deepEqual(f.groups, [{ id: 'bot', origin: [1, 2, 3], boxes: [0, 1] }, { id: 'hand', origin: [0, 0, 0], parent: 'bot', boxes: [2] }]);
+  assert.ok(!('groups' in B.assemblies.create({ boxes: [{ settings: s }] })));             // files without groups are unchanged
+  assert.deepEqual(B.assemblies.parse(B.assemblies.serialize(f)).groups, f.groups);
+  assert.throws(() => B.assemblies.create({ boxes: [{ settings: s }], groups: [{ id: 'a', parent: 'b' }, { id: 'b', parent: 'a' }] }), /own parents/);
+  assert.throws(() => B.assemblies.create({ boxes: [{ settings: s }], groups: [{ id: 'a', boxes: [0] }, { id: 'b', boxes: [0] }] }), /two groups/);
+  // group keys: per-key ease, the box turn rule, scale, step fields
+  const a = Anim.validateAnimation({ easing: 'linear', keyframes: [
+    { t: 0, groups: { bot: { position: [0, 0, 0], rotation: [0, 0, 0] } } },
+    { t: 2, groups: { bot: { position: [100, 0, 0], rotation: [0, 0, 180], scale: 2, colors: { '*': '#ff0000' } } } }] }, 3, 'mm', ['bot', 'hand']).anim;
+  const g = t => Anim.groupsAt(a, t, { bot: { position: [0, 0, 0], rotation: [0, 0, 0], scale: 1 } }).bot;
+  assert.deepEqual(g(1).position, [50, 0, 0]); assert.ok(Math.abs(g(1).rotation[2] - 90) < 1e-9); assert.equal(g(1).scale, 1.5);
+  assert.equal(g(1).colors, undefined); assert.deepEqual(g(2).colors, { '*': '#ff0000' });
+  assert.match(Anim.validateAnimation({ keyframes: [{ t: 0, groups: { nope: {} } }] }, 1, 'mm', ['bot']).error, /no group nope/);
+  assert.match(Anim.validateAnimation({ keyframes: [{ t: 0, groups: { bot: { scale: 0 } } }] }, 1, 'mm', ['bot']).error, /scale/);
+  // camera target: resolved through view.resolveTarget, blended with pan keys
+  const c = Anim.validateAnimation({ keyframes: [{ t: 0, boxes: {} }], camera: [{ t: 0, pan: [0, 0, 0], ease: 'linear' }, { t: 2, target: { group: 'bot', offset: [0, 0, 10], lag: 0.5 } }] }, 1, 'mm', ['bot']).anim;
+  assert.deepEqual(c.camera[1].target, { group: 'bot', offset: [0, 0, 10], lag: 0.5 });
+  const view = { yaw: 0, pitch: 0, zoom: 1, pan: [0, 0, 0], fov: 30, resolveTarget: (T, t) => [t * 100, 0, T.offset[2]] };
+  assert.deepEqual(Anim.sampleAt(c, 1, {}, view).camera.pan, [50, 0, 5]);   // halfway from [0,0,0] to the target at t=1 ([100,0,10])
+  assert.deepEqual(Anim.sampleAt(c, 3, {}, view).camera.pan, [300, 0, 10]); // past the last key it keeps following
+  assert.match(Anim.validateAnimation({ keyframes: [{ t: 0, boxes: {} }], camera: [{ t: 0, pan: [0, 0, 0], target: { group: 'bot' } }] }, 1, 'mm', ['bot']).error, /both pan and target/);
+});

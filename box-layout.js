@@ -1,6 +1,48 @@
 'use strict';
 
 const BOX_LAYOUT_KEY='boxsmith-box-layout-v1';
+/* Groups: boxes that move together in animations, nesting through parent. layoutGroups holds
+   {id, origin (mm, the pivot), parent?, noFrame?}; a box names its group in box.group. Box positions
+   are where the box sits at rest. While an animation moves a group, layoutGroupPose holds its pose
+   {position (where the origin is), rotation (degrees, ZYX), scale}; each member is drawn at
+   groupWorld(id) × its own pose, chained through the parents, so the pieces move as one rigid unit. */
+let layoutGroups=[];
+const layoutGroupPose=new Map();
+let groupWorldCache=new Map();
+const groupById=id=>layoutGroups.find(g=>g.id===id);
+function setGroupPoses(poses){ layoutGroupPose.clear(); for(const [id,p] of Object.entries(poses||{})) layoutGroupPose.set(id,p); groupWorldCache=new Map(); }
+// This group's transform from its rest place to where it is now (chained through its parents), or null at rest.
+function groupWorld(id){
+  if(!layoutGroupPose.size||!id) return null;
+  if(groupWorldCache.has(id)) return groupWorldCache.get(id);
+  const g=groupById(id); let m=null;
+  if(g){
+    const p=layoutGroupPose.get(id);
+    if(p){
+      const o=g.origin, r=p.rotation||[0,0,0], s=p.scale===undefined?1:p.scale, pos=p.position||o;
+      m=new THREE.Matrix4().makeTranslation(pos[0],pos[1],pos[2])
+        .multiply(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(r[0]*PI/180,r[1]*PI/180,r[2]*PI/180,'ZYX')))
+        .multiply(new THREE.Matrix4().makeScale(s,s,s))
+        .multiply(new THREE.Matrix4().makeTranslation(-o[0],-o[1],-o[2]));
+    }
+    const up=g.parent?groupWorld(g.parent):null;
+    if(up) m=m?up.clone().multiply(m):up;
+  }
+  groupWorldCache.set(id,m);
+  return m;
+}
+// Carry a box along with its group (after its own pose is worked out). Nothing happens at rest.
+function applyGroupTransform(box){
+  const W=box.group&&groupWorld(box.group); if(!W) return;
+  box.pose.premultiply(W);
+  if(box.bounds&&box.bounds.isBox3) box.bounds.applyMatrix4(W);
+  if(box.partBounds) for(const pieces of box.partBounds) for(const b of pieces) if(b&&b.isBox3) b.applyMatrix4(W);
+  if(box.opening) box.opening.applyMatrix4(W);
+}
+// The group a box is in, and every group around that one.
+function groupChain(id){ const out=[]; for(let g=groupById(id);g&&!out.includes(g);g=g.parent?groupById(g.parent):null) out.push(g); return out; }
+// Every box in this group or in a group inside it.
+const groupMembers=id=>layoutBoxes.filter(b=>b.group&&groupChain(b.group).some(g=>g.id===id));
 let layoutBoxes=[], layoutSelection=-1, placingBox=false, layoutPart=null;   // layoutPart: name of one part picked inside the selected box
 let boxLayoutScene={solids:[],ctr:[0,0,0],R:100};
 const layingOut=()=>curView==='layout';
@@ -67,6 +109,7 @@ function transformLayoutBox(box){
   // opening through a Frame (horizontal plates only), used for snapping boxes inside it
   const open=parts.find(pieces=>pieces.hole&&pieces.hole.getSize(new THREE.Vector3()).z<0.01);
   box.opening=open?open.hole.clone().translate(offset):null;
+  applyGroupTransform(box);
 }
 
 // A flat plate with a big opening (a Frame's top and bottom) is represented by
@@ -163,7 +206,7 @@ function snapLayoutBox(targetIndex,side,gap){
 // The camera's framing (centre and radius) comes from every box except those marked
 // settings.noFrame (a big ground slab, a backdrop): they still draw, but don't move or shrink the shot.
 // If every box is marked, all of them count.
-const framesCamera=box=>!box.settings.noFrame;
+const framesCamera=box=>!box.settings.noFrame&&!(box.group&&groupChain(box.group).some(g=>g.noFrame));
 // Mark a box as ground/backdrop (true) or part of the subject (false). Re-frames the layout.
 function setLayoutNoFrame(index,on){
   const box=layoutBoxes[index]; if(!box) return false;
@@ -197,28 +240,41 @@ function restoreLayoutBox(entry,cache){
 }
 
 function loadBoxLayout(){
-  const stored=lsGet(BOX_LAYOUT_KEY,[]);
-  if(!Array.isArray(stored)) return;
+  const raw=lsGet(BOX_LAYOUT_KEY,[]), stored=Array.isArray(raw)?raw:raw&&Array.isArray(raw.boxes)?raw.boxes:null;
+  if(!stored) return;
   for(const entry of stored){
     try{
       if(entry?.settings&&!MATS[entry.settings.look]) entry.settings.look=view.mat;
-      layoutBoxes.push(restoreLayoutBox(entry));
+      const box=restoreLayoutBox(entry); if(typeof entry.group==='string') box.group=entry.group;
+      layoutBoxes.push(box);
     }
     catch(error){ console.warn('Could not load a box in the layout',error); }
+  }
+  if(raw&&!Array.isArray(raw)&&Array.isArray(raw.groups)){
+    try{ const file=Boxsmith.assemblies.create({boxes:boxLayoutRecords(),groups:raw.groups}); for(const b of layoutBoxes) delete b.group; adoptGroups(file.groups,layoutBoxes); }
+    catch(error){ console.warn('Could not load the layout groups',error); for(const b of layoutBoxes) delete b.group; }
   }
   rebuildBoxLayout();
 }
 
 function boxLayoutRecords(){
-  return layoutBoxes.map(({settings,position,rotation,hidden})=>({settings,position,rotation,hidden}));
+  return layoutBoxes.map(({settings,position,rotation,hidden,group})=>group?{settings,position,rotation,hidden,group}:{settings,position,rotation,hidden});
 }
+const groupRecords=()=>layoutGroups.map(g=>Object.assign({id:g.id,origin:g.origin.slice()},g.parent?{parent:g.parent}:{},g.noFrame?{noFrame:true}:{}));
 
 function saveBoxLayout(){
-  if(!window.BOX?.noSave) lsSet(BOX_LAYOUT_KEY,boxLayoutRecords());
+  // without groups, stored exactly as before (a list of boxes)
+  if(!window.BOX?.noSave) lsSet(BOX_LAYOUT_KEY,layoutGroups.length?{boxes:boxLayoutRecords(),groups:groupRecords()}:boxLayoutRecords());
 }
 
 function currentBoxLayout(){
-  return Boxsmith.assemblies.create({unit:S.unit,boxes:boxLayoutRecords()});
+  return Boxsmith.assemblies.create({unit:S.unit,boxes:boxLayoutRecords(),groups:groupRecords()});
+}
+// Take the groups from a layout file ({groups:[{id, boxes, origin, parent, noFrame}]}) onto these boxes.
+function adoptGroups(groups,boxes){
+  layoutGroups=(groups||[]).map(g=>Object.assign({id:g.id,origin:g.origin.slice()},g.parent?{parent:g.parent}:{},g.noFrame?{noFrame:true}:{}));
+  for(const g of groups||[]) for(const i of g.boxes||[]) if(boxes[i]) boxes[i].group=g.id;
+  setGroupPoses(null);
 }
 
 function downloadBoxLayout(assembly=currentBoxLayout(),filename='boxsmith-layout.json'){
@@ -229,6 +285,7 @@ function openBoxLayout(input){
   if(!GL) throw new Error('Opening a box layout requires WebGL');
   const file=Boxsmith.assemblies.parse(input);
   const boxes=file.boxes.map(entry=>{ if(!MATS[entry.settings.look]) entry.settings.look=view.mat; return restoreLayoutBox(entry); });
+  adoptGroups(file.groups,boxes);
   layoutBoxes=boxes;
   layoutSelection=-1;
   placingBox=false;
@@ -498,7 +555,7 @@ function initBoxLayout(){
       return;
     }
     disarmClear();
-    layoutBoxes=[];
+    layoutBoxes=[]; layoutGroups=[]; setGroupPoses(null);
     rebuildBoxLayout();
     saveBoxLayout();
     selectLayoutBox(-1);

@@ -61,7 +61,8 @@
   // displayUnit: the page's display unit ('mm' or 'in'). Positions (and camera pan) in the keyframes are
   // in that unit, the same as the set command, unless args.unit overrides it. They are converted to
   // millimetres here, so tracks and samples are always in mm.
-  function validateAnimation(args,boxCount,displayUnit='mm'){
+  // groupIds: the ids of the layout's groups (when known), so keys can be checked against them.
+  function validateAnimation(args,boxCount,displayUnit='mm',groupIds){
     const bad=error=>({ok:false,error});
     if(!args||typeof args!=='object') return bad('animate needs an object of arguments.');
     const keys=args.keyframes;
@@ -74,14 +75,34 @@
     const mm=unit==='in'?25.4:1, toMM=p=>p.map(v=>v*mm);
     const fps=args.fps===undefined?30:args.fps;
     if(!isNum(fps)||fps<1||fps>MAX_FPS) return bad('fps must be a number from 1 to '+MAX_FPS+'.');
-    const tracks={}, out=[];
+    const tracks={}, groupTracks={}, out=[];
+    const knownGroup=id=>!groupIds||groupIds.includes(id);
     for(let k=0;k<keys.length;k++){
       const key=keys[k], where='keyframes['+k+']';
       if(!key||typeof key!=='object') return bad(where+' must be an object.');
       if(!isNum(key.t)||key.t<0) return bad(where+'.t must be a number of seconds, 0 or more.');
       if(key.t>MAX_DURATION) return bad(where+'.t is past the '+MAX_DURATION+' s limit.');
-      if(!key.boxes||typeof key.boxes!=='object') return bad(where+'.boxes must be an object keyed by box index.');
-      for(const [name,pose] of Object.entries(key.boxes)){
+      if(key.boxes===undefined&&key.groups===undefined) return bad(where+' needs boxes (keyed by box index) or groups (keyed by group id).');
+      if(key.boxes!==undefined&&(!key.boxes||typeof key.boxes!=='object')) return bad(where+'.boxes must be an object keyed by box index.');
+      if(key.groups!==undefined&&(!key.groups||typeof key.groups!=='object'||Array.isArray(key.groups))) return bad(where+'.groups must be an object keyed by group id.');
+      for(const [id,pose] of Object.entries(key.groups||{})){
+        const w=where+'.groups['+id+']';
+        if(!knownGroup(id)) return bad(where+': there is no group '+id+'.');
+        if(!pose||typeof pose!=='object') return bad(w+' must be an object.');
+        if(pose.position!==undefined&&!isTriple(pose.position)) return bad(w+'.position must be three finite numbers.');
+        if(pose.rotation!==undefined&&!isTriple(pose.rotation)) return bad(w+'.rotation must be three finite numbers.');
+        if(pose.scale!==undefined&&(!isNum(pose.scale)||pose.scale<=0||pose.scale>100)) return bad(w+'.scale must be a number above 0 (up to 100).');
+        if(pose.hidden!==undefined&&typeof pose.hidden!=='boolean') return bad(w+'.hidden must be true or false.');
+        if(pose.ease!==undefined&&!EASE[pose.ease]) return bad(w+'.ease must be '+EASE_NAMES+'.');
+        if(pose.colors!==undefined){
+          if(pose.colors===null||typeof pose.colors!=='object') return bad(w+'.colors must be an object.');
+          for(const [part,hex] of Object.entries(pose.colors)) if(!HEX.test(hex)) return bad(w+'.colors.'+part+" must be '#rrggbb'.");
+        }
+        const entry=Object.assign({t:key.t},pose);
+        if(pose.position!==undefined) entry.position=toMM(pose.position);
+        (groupTracks[id]=groupTracks[id]||[]).push(entry);
+      }
+      for(const [name,pose] of Object.entries(key.boxes||{})){
         const i=Number(name);
         if(!Number.isInteger(i)||i<0||(boxCount!==undefined&&i>=boxCount)) return bad(where+': there is no box '+name+'.');
         if(!pose||typeof pose!=='object') return bad(where+'.boxes['+name+'] must be an object.');
@@ -114,7 +135,16 @@
         if(c.fov!==undefined&&(!isNum(c.fov)||c.fov<5||c.fov>120)) return bad(where+'.fov must be from 5 to 120 degrees.');
         if(c.pan!==undefined&&!isTriple(c.pan)) return bad(where+'.pan must be three finite numbers.');
         if(c.ease!==undefined&&!EASE[c.ease]) return bad(where+'.ease must be '+EASE_NAMES+'.');
+        if(c.target!==undefined){
+          const T=c.target;
+          if(!T||typeof T!=='object'||typeof T.group!=='string') return bad(where+'.target must be {group, offset?, lag?}.');
+          if(!knownGroup(T.group)) return bad(where+'.target: there is no group '+T.group+'.');
+          if(T.offset!==undefined&&!isTriple(T.offset)) return bad(where+'.target.offset must be three finite numbers.');
+          if(T.lag!==undefined&&(!isNum(T.lag)||T.lag<0||T.lag>10)) return bad(where+'.target.lag must be seconds from 0 to 10.');
+          if(c.pan!==undefined) return bad(where+' has both pan and target; use one.');
+        }
         const cam=Object.assign({},c); if(c.pan!==undefined) cam.pan=toMM(c.pan);
+        if(c.target!==undefined) cam.target={group:c.target.group,offset:toMM(c.target.offset||[0,0,0]),lag:c.target.lag||0};
         camera.push(cam);
       }
       camera.sort((a,b)=>a.t-b.t);
@@ -125,8 +155,11 @@
     if(args.soundtrack!==undefined&&args.soundtrack!==null&&(typeof args.soundtrack!=='string'||!args.soundtrack||(args.soundtrack.length>2048&&!/^data:audio\//.test(args.soundtrack)))) return bad('soundtrack must be the name of an audio file (mp3, wav, …), a URL, or a data:audio URL.');
     const projection=args.projection===undefined?'ortho':args.projection;
     if(projection!=='ortho'&&projection!=='perspective') return bad("projection must be 'ortho' or 'perspective'.");
+    const groupInterp=args.groupInterp===undefined?'linear':args.groupInterp;
+    if(groupInterp!=='linear'&&groupInterp!=='catmullRom') return bad("groupInterp must be 'linear' or 'catmullRom'.");
     for(const list of Object.values(tracks)) list.sort((a,b)=>a.t-b.t);
-    return {ok:true,anim:{tracks,camera,cameraInterp,projection,soundtrack:args.soundtrack||null,duration,fps,easing,loop:!!args.loop,unit}};
+    for(const list of Object.values(groupTracks)) list.sort((a,b)=>a.t-b.t);
+    return {ok:true,anim:{tracks,groupTracks,groupInterp,camera,cameraInterp,projection,soundtrack:args.soundtrack||null,duration,fps,easing,loop:!!args.loop,unit}};
   }
 
   /* ---------- sampling ---------- */
@@ -165,8 +198,43 @@
         settings:propAt(list,'settings',t,s.settings,ease,null,'settings' in s)
       };
     }
+    const groups=anim.groupTracks?groupsAt(anim,t,(view&&view.groupRest)||{}):{};
     const camera=anim.camera&&anim.camera.length?cameraAt(anim,t,view||{}):null;
-    return {boxes,camera};
+    return {boxes,groups,camera};
+  }
+  /* ---------- groups ----------
+     Each group field runs through the keys that set it, with each key's own ease (else the animation's
+     easing) and, with groupInterp 'catmullRom', a smooth spline for position and scale. Rotation uses
+     the same rule as box turns (slerp when every axis moves 180° or less, else each angle as written).
+     colors and hidden hold until the next key's time. rest[id] = {position:origin, rotation, scale}. */
+  function keyedValue(pts,t,global,spline,kind){
+    if(t<=pts[0].t) return pts[0].v;
+    const last=pts[pts.length-1];
+    if(t>=last.t) return last.v;
+    let lo=1, hi=pts.length-1;
+    if(kind==='step'){ while(lo<hi){ const mid=(lo+hi)>>1; if(t<pts[mid].t) hi=mid; else lo=mid+1; } return pts[lo-1].v; }
+    while(lo<hi){ const mid=(lo+hi)>>1; if(t<=pts[mid].t) hi=mid; else lo=mid+1; }
+    const a=pts[lo-1], b=pts[lo], span=b.t-a.t;
+    if(!(span>0)) return b.v;
+    if(kind==='rot') return rotationBetween(a.v,b.v,(EASE[a.ease]||global)((t-a.t)/span));
+    if(spline){ const m=slopes(pts), u=(EASE[a.ease]||EASE.linear)((t-a.t)/span); return hermite(a.v,b.v,m[lo-1],m[lo],span,u); }
+    const u=(EASE[a.ease]||global)((t-a.t)/span);
+    return Array.isArray(a.v)?lerp3(a.v,b.v,u):a.v+(b.v-a.v)*u;
+  }
+  const GROUP_FIELDS=[['position','num'],['rotation','rot'],['scale','num'],['colors','step'],['hidden','step']];
+  function groupsAt(anim,t,rest,only){
+    const global=EASE[anim.easing]||EASE.easeInOut, spline=anim.groupInterp==='catmullRom', out={};
+    for(const [id,list] of Object.entries(anim.groupTracks||{})){
+      if(only&&!only.has(id)) continue;
+      const r=rest[id]||{}, o={};
+      for(const [f,kind] of GROUP_FIELDS){
+        const startVal=f==='rotation'?(r.rotation||[0,0,0]):f==='scale'?(r.scale===undefined?1:r.scale):r[f];
+        const pts=camKeys(list,f,kind==='step'?undefined:startVal);
+        o[f]=!pts.length||(kind==='step'&&t<pts[0].t)?startVal:keyedValue(pts,t,global,spline,kind);
+      }
+      out[id]=o;
+    }
+    return out;
   }
   /* ---------- camera ---------- */
   // Each camera field (yaw, pitch, zoom, pan) runs through the keys that set it. The span from one
@@ -208,10 +276,20 @@
     if(Array.isArray(a)) return a.map((v,i)=>h00*v+h10*span*ma[i]+h01*b[i]+h11*span*mb[i]);
     return h00*a+h10*span*ma+h01*b+h11*span*mb;
   }
+  // A key's look-at can follow a group: target {group, offset, lag}. view.resolveTarget(target, t)
+  // turns it into the pan that puts the look-at point there at time t; keys with pan and keys with
+  // target blend into each other like any two keys.
+  function panKeys(cam,startVal,t,resolve){
+    const cache=cam._by||(Object.defineProperty(cam,'_by',{value:{},enumerable:false}),cam._by);
+    const keys=cache.panT||(cache.panT=cam.filter(k=>k.pan!==undefined||k.target!==undefined).map(k=>({t:k.t,v:k.pan,target:k.target,ease:k.ease})));
+    const pts=keys.map(k=>k.target?{t:k.t,ease:k.ease,v:resolve?resolve(k.target,t):(startVal||[0,0,0])}:k);
+    return pts.length&&pts[0].t>0&&startVal!==undefined?[{t:0,v:startVal.slice()}].concat(pts):pts;
+  }
   function cameraAt(anim,t,view){
     const global=EASE[anim.easing]||EASE.easeInOut, spline=anim.cameraInterp==='catmullRom', out={};
+    const following=anim.camera.some(k=>k.target);
     for(const f of CAM_FIELDS){
-      const pts=camKeys(anim.camera,f,view[f]);
+      const pts=f==='pan'&&following?panKeys(anim.camera,view.pan,t,view.resolveTarget):camKeys(anim.camera,f,view[f]);
       if(!pts.length){ out[f]=view[f]; continue; }
       if(t<=pts[0].t){ out[f]=pts[0].v; continue; }
       const last=pts[pts.length-1];
@@ -518,5 +596,5 @@
     return {ran,errors};
   }
 
-  return {findSoundtrack,fitAudio,isAudioName,AUDIO_EXT,makeWebM,opusHead,cfrTimes,readZip,buildLibrary,parseAnimationFile,runBatch,MAX_KEYS,MAX_DURATION,EASE,validateAnimation,sampleAt,evenTimes,rotationBetween,eulerToQuat,quatToEuler,slerp,splitMessage,joinParts,encodeGIF,LIMIT};
+  return {groupsAt,findSoundtrack,fitAudio,isAudioName,AUDIO_EXT,makeWebM,opusHead,cfrTimes,readZip,buildLibrary,parseAnimationFile,runBatch,MAX_KEYS,MAX_DURATION,EASE,validateAnimation,sampleAt,evenTimes,rotationBetween,eulerToQuat,quatToEuler,slerp,splitMessage,joinParts,encodeGIF,LIMIT};
 });

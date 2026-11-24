@@ -90,7 +90,40 @@
     return {settings:clone(settings),position:triple(position,'position'),rotation:triple(rotation,'rotation'),hidden};
   }
 
-  function createAssembly({boxes=[],unit='mm'}={}){
+  /* Groups: boxes that move as one unit in animations. [{id, boxes:[index,…], origin:[x,y,z] (mm, the
+     pivot), parent?:id, noFrame?:true}]. A box belongs to at most one group (its innermost); groups
+     nest through parent. Membership can also be given as box.group = id. Returned with each group's
+     direct members in boxes, sorted; files without groups have no groups key. */
+  function normalizeGroups(groups,boxes){
+    if(groups===undefined||groups===null) groups=[];
+    if(!Array.isArray(groups)) throw new TypeError('groups must be an array');
+    const byId=new Map(), owner=new Array(boxes.length).fill(null);
+    for(const g of groups){
+      if(!isRecord(g)) throw new TypeError('Each group must be an object');
+      if(typeof g.id!=='string'||!/^[\w.:-]{1,64}$/.test(g.id)) throw new TypeError('group id must be 1-64 letters, digits, _ . : or -');
+      if(byId.has(g.id)) throw new RangeError('Two groups are called '+g.id);
+      if(g.parent!==undefined&&g.parent!==null&&typeof g.parent!=='string') throw new TypeError('group '+g.id+': parent must be a group id');
+      if(g.noFrame!==undefined&&typeof g.noFrame!=='boolean') throw new TypeError('group '+g.id+': noFrame must be true or false');
+      byId.set(g.id,{id:g.id,origin:triple(g.origin??[0,0,0],'group '+g.id+' origin'),...(g.parent?{parent:g.parent}:{}),...(g.noFrame?{noFrame:true}:{}),boxes:[]});
+      for(const i of g.boxes??[]){
+        if(!Number.isInteger(i)||i<0||i>=boxes.length) throw new RangeError('group '+g.id+': there is no box '+i);
+        if(owner[i]!==null&&owner[i]!==g.id) throw new RangeError('box '+i+' is in two groups ('+owner[i]+' and '+g.id+')');
+        owner[i]=g.id;
+      }
+    }
+    boxes.forEach((b,i)=>{ if(b&&typeof b.group==='string'){
+      if(!byId.has(b.group)) throw new RangeError('box '+i+': there is no group '+b.group);
+      if(owner[i]!==null&&owner[i]!==b.group) throw new RangeError('box '+i+' is in two groups ('+owner[i]+' and '+b.group+')');
+      owner[i]=b.group; } });
+    for(const g of byId.values()){
+      if(g.parent!==undefined&&!byId.has(g.parent)) throw new RangeError('group '+g.id+': there is no parent group '+g.parent);
+      const seen=new Set([g.id]); for(let p=g.parent;p!==undefined;p=byId.get(p).parent){ if(seen.has(p)) throw new RangeError('groups '+[...seen].join(', ')+' are their own parents'); seen.add(p); }
+    }
+    owner.forEach((id,i)=>{ if(id!==null) byId.get(id).boxes.push(i); });
+    return [...byId.values()];
+  }
+
+  function createAssembly({boxes=[],unit='mm',groups}={}){
     if(!Array.isArray(boxes)) throw new TypeError('boxes must be an array');
     if(unit!=='mm'&&unit!=='in') throw new RangeError('unit must be mm or in');
     const placed=boxes.map(box=>{
@@ -98,7 +131,10 @@
       const rotation=box.rotation??[0,0,box.angle??0];
       return placeBox(box.settings,{...box,rotation});
     });
-    return {format:FORMAT,version:VERSION,unit,boxes:placed};
+    const grouped=normalizeGroups(groups,boxes);
+    const file={format:FORMAT,version:VERSION,unit,boxes:placed};
+    if(grouped.length) file.groups=grouped;
+    return file;
   }
 
   const asFile=input=>createAssembly(typeof input==='string'?JSON.parse(input):input);
@@ -114,12 +150,14 @@
   function removeFromAssembly(assembly,index){
     const file=asFile(assembly); needIndex(file,index);
     file.boxes.splice(index,1);
+    for(const g of file.groups||[]) g.boxes=g.boxes.filter(i=>i!==index).map(i=>i>index?i-1:i);
     return file;
   }
   function duplicateInAssembly(assembly,index,{offset=[0,0,0]}={}){
     const file=asFile(assembly); needIndex(file,index);
     const source=file.boxes[index], shift=triple(offset,'offset');
     file.boxes.splice(index+1,0,placeBox(source.settings,{...source,position:source.position.map((v,i)=>v+shift[i])}));
+    for(const g of file.groups||[]) g.boxes=g.boxes.map(i=>i>index?i+1:i);   // the copy is in no group
     return file;
   }
   /** Colour one part of a box (by its part name), or the whole box with part '*' (the default). color null removes it. */

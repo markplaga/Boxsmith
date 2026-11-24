@@ -155,11 +155,82 @@ const Remote=(()=>{
       placing:placingBox,maximized:document.body.classList.contains('max3d'),stereo:stereo?stereo.value:view.stereo,boxCount:layoutBoxes.length,
       library:librarySummary(),
       recording:recording?{fps:recording.fps,width:recording.w,height:recording.h,seconds:recording.E?Math.round(recording.slot/recording.fps*10)/10:0}:null,
+      groups:groupStates(),
       view:viewDeg(),camera:typeof cameraInfo==='function'?cameraInfo():null,anim:anim?{playing:anim.playing,t:Math.round(anim.t*1000)/1000,duration:anim.duration,loop:anim.loop,soundtrack:anim.sound?{name:anim.sound.name,state:anim.sound.state,seconds:anim.sound.seconds,error:anim.sound.error}:null}:null,exporting,
-      boxes:layoutBoxes.map((b,i)=>({label:layoutBoxLabel(b,i),hidden:!!b.hidden,noFrame:!!b.settings.noFrame,clash:clash.has(i),position:b.position,rotation:b.rotation,colors:b.settings.colors||{}})),
+      boxes:layoutBoxes.map((b,i)=>({label:layoutBoxLabel(b,i),hidden:!!b.hidden,noFrame:!!b.settings.noFrame,group:b.group||null,clash:clash.has(i),position:b.position,rotation:b.rotation,colors:b.settings.colors||{}})),
       parts:partNames(box),acrylic:!!box&&boxHasAcrylic(box),
       sides:[...$('#layoutSnapSide').options].map(o=>[o.value,o.textContent]),
       status:$('#layoutStatus').textContent};
+  }
+  // Each group where it is right now: its own boxes, and the bounds and centre of everything in it (mm).
+  function groupStates(){
+    if(!layoutGroups.length) return [];
+    const r=v=>Math.round(v*10)/10;
+    return layoutGroups.map(g=>{
+      const members=groupMembers(g.id), B=new THREE.Box3();
+      for(const b of members) if(b.bounds&&b.bounds.isBox3) B.union(b.bounds);
+      const out={id:g.id,parent:g.parent||null,origin:g.origin.map(r),noFrame:!!g.noFrame,boxes:layoutBoxes.map((b,i)=>b.group===g.id?i:-1).filter(i=>i>=0)};
+      if(!B.isEmpty()){ out.bounds={min:B.min.toArray().map(r),max:B.max.toArray().map(r)}; out.center=B.getCenter(new THREE.Vector3()).toArray().map(r); }
+      const p=layoutGroupPose.get(g.id); if(p) out.pose={position:p.position.map(r),rotation:p.rotation.map(r),scale:p.scale};
+      return out;
+    });
+  }
+  // Group editing: make, remove, move, duplicate (all lengths in the display unit, like set).
+  function groupOp(op,a){
+    const k=layoutCoordinateScale(), mm=v=>v.map(x=>x*k), triple=v=>Array.isArray(v)&&v.length===3&&v.every(finite);
+    const g=a.id!==undefined?groupById(a.id):null;
+    const idOk=id=>typeof id==='string'&&/^[\w.:-]{1,64}$/.test(id);
+    if(op!=='groupCreate'&&!g) return 'There is no group '+a.id+'.'+(layoutGroups.length?' The groups are: '+layoutGroups.map(x=>x.id).join(', ')+'.':' There are no groups yet.');
+    stopAnim(true);
+    switch(op){
+      case 'groupCreate': {
+        if(!idOk(a.id)) return 'id must be 1-64 letters, digits, _ . : or -.';
+        if(groupById(a.id)) return 'There is already a group called '+a.id+'.';
+        if(!Array.isArray(a.boxes)||!a.boxes.every(i=>Number.isInteger(i)&&layoutBoxes[i])) return 'boxes must be a list of box indexes.';
+        if(a.parent!==undefined&&!groupById(a.parent)) return 'There is no parent group '+a.parent+'.';
+        if(a.origin!==undefined&&!triple(a.origin)) return 'origin must be three finite numbers.';
+        let origin=a.origin?mm(a.origin):null;
+        if(!origin){ const B=new THREE.Box3(); for(const i of a.boxes) B.union(layoutBoxes[i].bounds); origin=B.isEmpty()?[0,0,0]:[(B.min.x+B.max.x)/2,(B.min.y+B.max.y)/2,B.min.z]; }   // default pivot: centre of the base
+        layoutGroups.push(Object.assign({id:a.id,origin},a.parent?{parent:a.parent}:{}));
+        for(const i of a.boxes) layoutBoxes[i].group=a.id;
+        break;
+      }
+      case 'groupRemove': {   // ungroup: its boxes and groups move up to its parent
+        for(const b of layoutBoxes) if(b.group===g.id){ if(g.parent) b.group=g.parent; else delete b.group; }
+        for(const c of layoutGroups) if(c.parent===g.id){ if(g.parent) c.parent=g.parent; else delete c.parent; }
+        layoutGroups=layoutGroups.filter(x=>x!==g); break;
+      }
+      case 'groupMove': {
+        if((a.by===undefined)===(a.to===undefined)) return 'Give by (a move) or to (where the origin goes), not both.';
+        const v=a.by!==undefined?a.by:a.to; if(!triple(v)) return (a.by!==undefined?'by':'to')+' must be three finite numbers.';
+        const d=a.by!==undefined?mm(v):mm(v).map((x,i)=>x-g.origin[i]);
+        for(const b of groupMembers(g.id)){ b.position=b.position.map((x,i)=>Math.round((x+d[i])*1000)/1000); transformLayoutBox(b); }
+        for(const c of layoutGroups) if(c===g||groupChain(c.id).includes(g)) c.origin=c.origin.map((x,i)=>x+d[i]);
+        break;
+      }
+      case 'groupDuplicate': {   // the boxes and the groups inside, with new ids; in place unless offset
+        if(a.offset!==undefined&&!triple(a.offset)) return 'offset must be three finite numbers.';
+        if(a.newId!==undefined&&!idOk(a.newId)) return 'newId must be 1-64 letters, digits, _ . : or -.';
+        const d=a.offset?mm(a.offset):[0,0,0], inside=layoutGroups.filter(c=>groupChain(c.id).includes(g)), map={};
+        let n=2; const fresh=id=>{ let x; do{ x=id+'-'+n++; }while(groupById(x)||Object.values(map).includes(x)); return x; };
+        map[g.id]=a.newId||fresh(g.id); if(groupById(map[g.id])) return 'There is already a group called '+map[g.id]+'.';
+        for(const c of inside) if(c!==g) map[c.id]=fresh(c.id);
+        for(const c of inside) layoutGroups.push(Object.assign({id:map[c.id],origin:c.origin.map((x,i)=>x+d[i])},c===g?(g.parent?{parent:g.parent}:{}):{parent:map[c.parent]},c.noFrame?{noFrame:true}:{}));
+        for(const b of groupMembers(g.id)){
+          const copy=makeLayoutBox(JSON.parse(JSON.stringify(b.settings)),b.position.map((x,i)=>x+d[i]),b.rotation.slice(),b.hidden);
+          copy.group=map[b.group]; layoutBoxes.push(copy);
+        }
+        rebuildBoxLayout(); saveBoxLayout(); syncBoxLayout(); render();
+        if(host) host.send({t:'group',op:'duplicated',from:g.id,id:map[g.id]});
+        return;
+      }
+      case 'groupSelect': {
+        const i=layoutBoxes.findIndex(b=>groupMembers(g.id).includes(b));
+        if(i<0) return 'Group '+g.id+' has no boxes.';
+        selectLayoutBox(i); return;
+      }
+    }
+    fitBoxLayout(); saveBoxLayout(); syncBoxLayout(); render();
   }
   const librarySummary=()=>library?{title:library.title,current:library.current,animations:library.animations.map((x,index)=>({index,name:x.name,duration:x.duration,boxes:x.boxes})),designs:library.designs.map((x,index)=>({index,name:x.name,boxes:x.boxes}))}:null;
   function sendState(now){ clearTimeout(stateTimer); if(now===true){ if(host) host.send(state()); return; } stateTimer=setTimeout(()=>{ if(host) host.send(state()); },40); }
@@ -267,7 +338,14 @@ const Remote=(()=>{
         if(a.pan!==undefined) view.pan=a.pan.slice();
         render(); return;
       }
-      case 'noFrame': {   // {value: true|false, index?}: ground/backdrop boxes don't count for camera framing
+      case 'groupCreate': case 'groupRemove': case 'groupMove': case 'groupDuplicate': case 'groupSelect': return groupOp(op,a);
+      case 'noFrame': {   // {value: true|false, index? | group?}: ground/backdrop boxes don't count for camera framing
+        if(a.group!==undefined){
+          const g=groupById(a.group); if(!g) return 'There is no group '+a.group+'.';
+          if(typeof a.value!=='boolean') return 'value must be true or false.';
+          if(a.value) g.noFrame=true; else delete g.noFrame;
+          fitBoxLayout(); saveBoxLayout(); render(); return;
+        }
         const i=a.index===undefined?layoutSelection:a.index;
         if(!Number.isInteger(i)||!layoutBoxes[i]) return 'Select a box first, or give index.';
         if(typeof a.value!=='boolean') return 'value must be true or false.';
@@ -275,7 +353,11 @@ const Remote=(()=>{
       }
       case 'frame': {
         let list;
-        if(a.boxes===undefined||a.boxes==='all') list=layoutBoxes.filter(b=>!b.hidden&&!b.settings.noFrame);
+        if(a.groups!==undefined){
+          if(!Array.isArray(a.groups)||!a.groups.length||!a.groups.every(id=>groupById(id))) return 'groups must be a list of group ids'+(layoutGroups.length?' ('+layoutGroups.map(g=>g.id).join(', ')+').':'; there are no groups.');
+          list=[...new Set(a.groups.flatMap(groupMembers))];
+        }
+        else if(a.boxes===undefined||a.boxes==='all') list=layoutBoxes.filter(b=>!b.hidden&&framesCamera(b));
         else if(Array.isArray(a.boxes)&&a.boxes.length&&a.boxes.every(i=>Number.isInteger(i)&&layoutBoxes[i])) list=a.boxes.map(i=>layoutBoxes[i]);
         else return "boxes must be 'all' or a list of box indexes from 0 to "+(layoutBoxes.length-1)+'.';
         for(const f of ['margin','yaw','pitch']) if(a[f]!==undefined&&!finite(a[f])) return f+' must be a finite number.';
@@ -285,7 +367,7 @@ const Remote=(()=>{
       }
       case 'save': press('#layoutSave'); return;
       case 'open': try{ stopAnim(true); openBoxLayout(a.json); }catch(err){ toast('That layout file could not be opened.'); return 'That layout file could not be opened: '+err.message; } return;
-      case 'clear': stopAnim(true); if(layoutBoxes.length){ layoutBoxes=[]; rebuildBoxLayout(); saveBoxLayout(); selectLayoutBox(-1); toast('Layout cleared'); } return;
+      case 'clear': stopAnim(true); if(layoutBoxes.length){ layoutBoxes=[]; layoutGroups=[]; setGroupPoses(null); rebuildBoxLayout(); saveBoxLayout(); selectLayoutBox(-1); toast('Layout cleared'); } return;
       case 'state': case 'hello': return;   // nothing to do: every command is answered with a fresh state
       case 'animate': return loadAnim(a);
       case 'play': return playAnim();
@@ -355,6 +437,7 @@ const Remote=(()=>{
     const ox=box.position[0], oy=box.position[1], oz=box.position[2]-z0;
     m.elements[12]+=ox; m.elements[13]+=oy; m.elements[14]+=oz;
     if(box.bounds&&box.bounds.isBox3){ box.bounds.min.set(x0+ox,y0+oy,z0+oz); box.bounds.max.set(x1+ox,y1+oy,z1+oz); }
+    applyGroupTransform(box);
   }
   /* ---------- soundtrack ----------
      The animation's audio is decoded once, cut or padded to exactly the animation's length, and
@@ -440,7 +523,7 @@ const Remote=(()=>{
       try{ stopAnim(true); openBoxLayout(a.base); }catch(err){ return 'The base layout could not be opened: '+err.message; }
     }
     if(!layoutBoxes.length) return 'There are no boxes to animate. Add boxes or send a base layout.';
-    const v=Anim.validateAnimation(a,layoutBoxes.length,S.unit==='in'?'in':'mm');   // positions in the display unit, like set
+    const v=Anim.validateAnimation(a,layoutBoxes.length,S.unit==='in'?'in':'mm',layoutGroups.map(g=>g.id));   // positions in the display unit, like set
     if(!v.ok) return v.error;
     stopAnim(true);
     const spec=v.anim, originals={}, variants={};
@@ -458,7 +541,12 @@ const Remote=(()=>{
       }
     }
     const start={}; for(const i of Object.keys(originals)) start[i]=originals[i].pose;
-    anim={spec,unit:spec.unit,start,duration:spec.duration,fps:spec.fps,loop:spec.loop,t:0,playing:false,raf:0,originals,variants,view0:viewDeg(),lastFrameT:-1};
+    // boxes that ride on animated groups (directly or through a group inside one)
+    const groupRest={}; for(const g of layoutGroups) groupRest[g.id]={position:g.origin.slice(),rotation:[0,0,0],scale:1};
+    const moving=Object.keys(spec.groupTracks||{}), riders=[];
+    layoutBoxes.forEach((b,i)=>{ if(b.group&&groupChain(b.group).some(g=>moving.includes(g.id))){ riders.push(i); if(!originals[i]){ b._animColors=undefined; originals[i]={box:b,pose:poseOf(b),rider:true}; } } });
+    anim={spec,unit:spec.unit,start,duration:spec.duration,fps:spec.fps,loop:spec.loop,t:0,playing:false,raf:0,originals,variants,view0:viewDeg(),lastFrameT:-1,groupRest,riders};
+    anim.sampleView=Object.assign({},anim.view0,{groupRest,resolveTarget:(target,t)=>targetPan(target,t)});
     if(curView!=='layout') document.querySelector('#tabs [data-v="layout"]')?.click();
     if(typeof a.name==='string') anim.name=a.name.slice(0,200);
     applyFrame(0); syncProjectionControls();
@@ -471,8 +559,12 @@ const Remote=(()=>{
   // rebuilt only when a key swaps in a different design.
   function applyFrame(t,draw=true){
     if(!anim) return;
-    const s=Anim.sampleAt(anim.spec,t,anim.start,anim.view0);
+    const s=Anim.sampleAt(anim.spec,t,anim.start,anim.sampleView);
     let swapped=false;
+    setGroupPoses(s.groups);
+    const gp=s.groups, groupHidden=box=>box.group&&groupChain(box.group).some(g=>gp[g.id]&&gp[g.id].hidden);
+    const groupColors=box=>{ if(!box.group) return undefined; for(const g of groupChain(box.group)) if(gp[g.id]&&gp[g.id].colors) return gp[g.id].colors; };
+    const setColors=(box,c)=>{ if(c!==box._animColors){ box._animColors=c; if(c) box.settings.colors=JSON.parse(JSON.stringify(c)); else delete box.settings.colors; } };
     for(const [i,p] of Object.entries(s.boxes)){
       let box=layoutBoxes[i]; if(!box) continue;
       const want=p.settings||anim.originals[i].pose.settings;
@@ -480,11 +572,16 @@ const Remote=(()=>{
         const next=want===anim.originals[i].pose.settings?anim.originals[i].box:Object.values(anim.variants[i]||{}).find(b=>b.settings===want);
         if(next&&next!==box){ layoutBoxes[i]=next; box=next; swapped=true; }
       }
-      box.position=p.position.slice(); box.rotation=p.rotation.slice(); box.hidden=!!p.hidden;
-      if(p.colors!==box._animColors){   // colors only change at their keys, so most frames skip this
-        box._animColors=p.colors;
-        if(p.colors) box.settings.colors=JSON.parse(JSON.stringify(p.colors)); else delete box.settings.colors;
-      }
+      box.position=p.position.slice(); box.rotation=p.rotation.slice(); box.hidden=!!p.hidden||!!groupHidden(box);
+      setColors(box,groupColors(box)||p.colors);   // colors only change at their keys, so most frames skip the copy
+      if(!swapped) fastTransform(box);
+    }
+    // boxes with no keys of their own that ride on a moving group
+    for(const i of anim.riders){
+      if(s.boxes[i]) continue;
+      const box=layoutBoxes[i], o=anim.originals[i]; if(!box||!o) continue;
+      box.hidden=o.pose.hidden||!!groupHidden(box);
+      setColors(box,groupColors(box)||o.pose.colors);
       if(!swapped) fastTransform(box);
     }
     if(swapped) relayoutNoFit();
@@ -526,6 +623,29 @@ const Remote=(()=>{
     // playback doesn't draw a second time in between
     if(!(recording&&recording.E)&&(t-anim.lastFrameT>=1/anim.fps-1e-4||t<anim.lastFrameT)) applyFrame(t);
     anim.raf=requestAnimationFrame(tick);
+  }
+  /* Camera target (#23): where a group's pivot (its origin, carried by the group and the groups around
+     it) is at time t, averaged over the last `lag` seconds so the camera trails smoothly, plus the
+     offset; returned as the pan that puts the look-at point there. Pure function of t (deterministic). */
+  function groupPivotAt(id,t){
+    const chain=groupChain(id); if(!chain.length) return null;
+    const poses=Anim.groupsAt(anim.spec,t,anim.groupRest,new Set(chain.map(g=>g.id)));
+    const save=new Map(layoutGroupPose), saveCache=groupWorldCache;
+    setGroupPoses(poses);
+    const W=groupWorld(id), o=chain[0].origin, p=new THREE.Vector3(o[0],o[1],o[2]);
+    if(W) p.applyMatrix4(W);
+    layoutGroupPose.clear(); for(const [k,v] of save) layoutGroupPose.set(k,v); groupWorldCache=saveCache;
+    return [p.x,p.y,p.z];
+  }
+  function targetPan(target,t){
+    const n=target.lag>0?12:1, sum=[0,0,0]; let got=0;
+    for(let j=0;j<n;j++){
+      const p=groupPivotAt(target.group,Math.max(0,t-(n>1?target.lag*j/(n-1):0)));
+      if(p){ sum[0]+=p[0]; sum[1]+=p[1]; sum[2]+=p[2]; got++; }
+    }
+    if(!got) return view.pan.slice();
+    const c=boxLayoutScene.ctr;
+    return sum.map((v,i)=>v/got+target.offset[i]-c[i]);
   }
   // The animation's time right now, by the same clock tick() uses (no display lead).
   function animClock(now){
@@ -600,6 +720,7 @@ const Remote=(()=>{
     if(!anim) return;
     anim.playing=false; cancelAnimationFrame(anim.raf); stopSound();
     let swapped=false;
+    setGroupPoses(null);   // groups back where they rest
     for(const [i,o] of Object.entries(anim.originals)){
       if(layoutBoxes[i]!==o.box&&layoutBoxes[i]&&anim.variants[i]&&Object.values(anim.variants[i]).includes(layoutBoxes[i])){ layoutBoxes[i]=o.box; swapped=true; }
       const box=o.box, p=o.pose; box._animColors=undefined;
@@ -1342,6 +1463,6 @@ const Remote=(()=>{
     if(q.has('remote')) remoteMode(q.get('remote'));
     window.addEventListener('pagehide',()=>{ if(host) host.send({t:'bye'}); });
   }
-  return {get sending(){ return host&&host.sending; },get relayState(){ return host&&host.relay; },record:a=>startRecording(a||{}),recordStop:()=>stopRecording(),get recording(){ return !!recording; },init,hostStart,hostStop,remoteMode,animationFromFile,importAnimationFile,playLibrary,get library(){ return library&&{title:library.title,current:library.current,animations:library.animations.map(x=>x.name),designs:library.designs.map(x=>x.name)}; },run:(op,args)=>{ let e; try{ e=op==='batch'?Anim.runBatch(args&&args.cmds,runCmd).errors.join(' '):runCmd(op,args||{}); }catch(err){ e=err.message; } sendState(true); return e||null; },get anim(){ return anim&&{playing:anim.playing,t:anim.t,duration:anim.duration,soundtrack:anim.sound?{name:anim.sound.name,state:anim.sound.state,error:anim.sound.error,clock:anim.sound.src&&!anim.sound.stalled?'audio':'system'}:null}; },get code(){ return hostCode; }};
+  return {get groups(){ return groupStates(); },get sending(){ return host&&host.sending; },get relayState(){ return host&&host.relay; },record:a=>startRecording(a||{}),recordStop:()=>stopRecording(),get recording(){ return !!recording; },init,hostStart,hostStop,remoteMode,animationFromFile,importAnimationFile,playLibrary,get library(){ return library&&{title:library.title,current:library.current,animations:library.animations.map(x=>x.name),designs:library.designs.map(x=>x.name)}; },run:(op,args)=>{ let e; try{ e=op==='batch'?Anim.runBatch(args&&args.cmds,runCmd).errors.join(' '):runCmd(op,args||{}); }catch(err){ e=err.message; } sendState(true); return e||null; },get anim(){ return anim&&{playing:anim.playing,t:anim.t,duration:anim.duration,soundtrack:anim.sound?{name:anim.sound.name,state:anim.sound.state,error:anim.sound.error,clock:anim.sound.src&&!anim.sound.stalled?'audio':'system'}:null}; },get code(){ return hostCode; }};
 })();
 Remote.init();

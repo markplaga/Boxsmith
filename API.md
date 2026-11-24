@@ -229,8 +229,13 @@ The **📱 Remote** button in Arrange boxes links a second screen to the one sho
 | `color`, `nocolor` | `{ hex: '#rrggbb' }` | Colors the selected box or part. |
 | `design`, `add` | `{ index, settings }` / `{ settings }` | Replaces a box's design in place, or adds a new box. |
 | `view` | `{ yaw?, pitch?, zoom?, pan?, projection?, fov? }` | Sets the camera (degrees). `projection` is `'ortho'` or `'perspective'`; `fov` is the perspective lens, 5–120° vertical. |
-| `noFrame` | `{ value: true \| false, index? }` | Marks a box (default: the selected one) as ground or backdrop: it still draws, but the camera's framing ignores it. See *Ground and backdrop boxes*. |
-| `frame` | `{ boxes?: [i, …] \| 'all', margin?, yaw?, pitch? }` | Zooms and pans so those boxes (default: every box not hidden and not marked `noFrame`) fill the view, leaving `margin` (default 0.1, a fraction of their size) free on each side. `yaw` and `pitch` (degrees) turn the view first. Works in either projection. |
+| `groupCreate` | `{ id, boxes: [i, …], origin?, parent? }` | Makes a group of those boxes. `origin` (the pivot, display unit) defaults to the centre of their base. See *Groups*. |
+| `groupRemove` | `{ id }` | Ungroups: its boxes and groups move up to its parent (or out of any group). |
+| `groupMove` | `{ id, by: [dx, dy, dz] }` or `{ id, to: [x, y, z] }` | Moves every box in the group (and the groups inside it), and its origin, by an amount or so the origin lands at `to`. Display unit. |
+| `groupDuplicate` | `{ id, newId?, offset? }` | Copies the group's boxes and the groups inside it, with their structure and origins, as new groups (`newId`, else `id-2`, `id-3`, …). In place unless `offset`. Replies `{"t":"group","op":"duplicated","from":"bot17","id":"bot17-2"}`. |
+| `groupSelect` | `{ id }` | Selects the group's first box. |
+| `noFrame` | `{ value: true \| false, index? }` or `{ value, group }` | Marks a box (default: the selected one) as ground or backdrop: it still draws, but the camera's framing ignores it. See *Ground and backdrop boxes*. |
+| `frame` | `{ boxes?: [i, …] \| 'all', groups?: [id, …], margin?, yaw?, pitch? }` | Zooms and pans so those boxes (or everything in those groups, where they are right now) (default: every box not hidden and not marked `noFrame`) fill the view, leaving `margin` (default 0.1, a fraction of their size) free on each side. `yaw` and `pitch` (degrees) turn the view first. Works in either projection. |
 | `fit`, `top`, `place`, `maximize`, `stereo`, `units`, `save`, `open`, `clear` | `{ mode }` for `stereo`, `{ unit }` for `units`, `{ json }` for `open` | The Layout & view controls. |
 | `state` | none | Does nothing but answer with a fresh `state` (as every command does), with no note. `{"t":"hello"}` does the same. |
 | `batch` | `{ cmds: [{ op, args }, …] }` (up to 500) | Runs them all, then sends one state. No need to pace commands for the relay's 60 messages a second. |
@@ -258,6 +263,29 @@ An animation can name a soundtrack, and the model screen plays it live, in step 
 - **Sync.** While the sound plays, the animation takes its time from the audio clock, less the device's output latency, so it shows what you're hearing and the two can't drift apart over any number of loops. Each frame is drawn for the moment it will be on screen. If the audio clock stalls or the browser suspends audio, the animation carries on by the system clock and the sound restarts at the animation's time. Measured in Chrome over three loops of a 40.36 s reel, a sound at 2.93 s was heard within about one frame (33 ms at 30 fps) of the frame showing 2.93 s on every loop, with no drift.
 - Browsers only allow sound after a tap, click or key press on that page. The model screen's first tap enables it; if an animation started from a remote before then, its sound joins in, in step, at that first tap. While it waits, the state says `blocked`.
 - The state's `anim.soundtrack` is `{name, state, seconds}`, where `state` is `loading`, `ready`, `playing`, `blocked` or `error` (with `error` saying why, e.g. the file wasn't found), or `null`.
+
+### Groups
+
+A group is several boxes that move as one unit, such as a character made of a body and two pieces. Groups can sit inside other groups. A layout file lists them:
+
+```json
+"groups": [ { "id": "bot17", "boxes": [49, 50, 51], "origin": [1200, 300, 0] },
+            { "id": "bot17-arm", "boxes": [52], "origin": [1260, 300, 90], "parent": "bot17" } ]
+```
+
+- `boxes` are the box indexes directly in the group (a box is in at most one group, its innermost). A box can name its group instead (`"group": "bot17"` on the box). `origin` is the group's pivot in mm. `parent` puts a group inside another. `noFrame: true` keeps the whole group out of camera framing (see *Ground and backdrop boxes*).
+- Box positions are still where each box sits at rest, so a layout with groups looks and edits exactly like one without. Groups are kept when layouts and animations are saved and opened, and `state.boxes[i].group` names each box's group.
+- **Group keys.** Keyframes can move groups, by id, as well as (or instead of) boxes. Every box in the group, and in the groups inside it, moves rigidly with it, so a turn carries the pieces along a true arc and they never drift apart:
+
+  ```json
+  { "t": 2, "groups": { "bot17": { "position": [1800, 300, 0], "rotation": [0, 0, 180], "scale": 1, "ease": "linear" } } }
+  ```
+
+  `position` is where the group's origin is (display unit), `rotation` turns it about its origin (degrees, the same order as box rotations), and `scale` sizes it about its origin. Each key's `ease` shapes the span to its next key (else the animation's `easing`). `"groupInterp": "catmullRom"` in the animate args gives position and scale a smooth spline, like `cameraInterp`. Rotation follows the box turn rule (see *Turns*). `colors` (applied to every box in the group, over their own colours) and `hidden` switch at their key's time. Unkeyed, a group stays where it rests.
+- A box's own keys inside a group are in the group's frame: they say where it sits relative to the group at rest, and the group's motion carries that along. So a piece can wave while its group walks.
+- **Framing doesn't move.** The layout's framing (`layoutCenter`, `visible`, the camera keys' meaning) comes from where boxes rest, and moving groups never changes it during an animation.
+- Poses depend only on the time, so `seek(t)` always gives exactly the same picture (frame-by-frame exports are repeatable).
+- `state.groups` lists each group: `{id, parent, origin, noFrame, boxes, center, bounds: {min, max}, pose}`, with `center` and `bounds` (mm) where the group is right now, and `pose` while an animation moves it.
 
 ### Ground and backdrop boxes
 
@@ -330,6 +358,7 @@ Each camera key has a time `t` and any of `yaw`, `pitch` (degrees), `zoom`, `fov
 
   That eases from −35° to 0° over 2 seconds, then orbits at a steady 30° a second.
 - **Perspective.** `"projection": "perspective"` in the `animate` args draws the animation through a lens instead of orthographically, so near things look bigger and the scene has depth and parallax. The default is `"ortho"`, and an animation without `projection` always plays orthographic, whatever the view was set to, so existing files look exactly as before. Camera keys may then carry `fov`, the vertical field of view in degrees (5–120; the view starts at 30), which eases like the other fields. The camera keeps the same orbit, and `zoom` keeps its meaning: at the look-at point, perspective shows exactly what orthographic shows at the same zoom. To do that the camera stands at distance = visible height ÷ (2·tan(fov/2)), which is a base distance divided by `zoom`. So `fov` sets how strong the perspective is (about 25–40° looks like a normal camera lens; wider is more dramatic), and animating `fov` while `zoom` holds is a dolly zoom: the subject stays the same size while the background stretches or flattens. To push in, animate `zoom`. The near and far planes follow the camera, so the stage, the floor and tall layouts (a 6.7 m tower) never clip. Stop puts the view's own projection back.
+- **Following a group.** Instead of `pan`, a key can carry `"target": {"group": "bot17", "offset": [0, 0, 75], "lag": 0.3}`. Its look-at point is then the group's origin (carried by the group and any groups around it, but not by the motion of the pieces inside it) plus `offset` (display unit). `lag` (seconds, 0–10, default 0) makes the camera trail smoothly: it looks at where the target was on average over the last `lag` seconds. This is worked out from the time alone, so `seek` and frame-by-frame exports are exact. A key with `target` and a key with `pan` blend into each other like any two keys, so the camera can glide onto a character and off again. Past the last target key, the camera keeps following. In a test of a character walking 1700 mm a second: with lag 0 it stayed exactly centred; with lag 0.5 s it trailed by up to about 0.25 s of its motion just after a sharp turn, then recentred. Keys without `target` behave exactly as before.
 - **Yaw is never wrapped.** Camera angles are plain numbers and go straight from one key's value to the next, never the shortest way round. 350 → 10 swings back 340° through 180°; write 350 → 370 to cross 0 the short way. 0 → 720 makes two whole orbits. (Box turns follow the different rule under Turns, above.)
 - Before a field's first key, the view the animation started from holds and eases in, using the animation's `easing`.
 - **Smooth paths: `"cameraInterp": "catmullRom"`** (in the `animate` args; the default is `"linear"`). Yaw, pitch, zoom and pan then follow a Catmull-Rom spline through the keys, so the camera's speed carries smoothly through every key instead of changing abruptly there. Every key is still reached exactly at its time, endpoints included. The spline's knots are the key times (so a key's timing is never moved), and the slope at each key is the time-weighted average of the slopes on either side. Two neighbouring keys with the same value make a true hold: the camera stays still between them, with no overshoot, and slows into and out of it smoothly. With `catmullRom` the animation's `easing` is not applied to the camera, because the spline sets the speed; a key's own `ease` still reshapes its span (an `easeInOut` key brings the camera to rest at both ends of that span). Yaw is not wrapped here either.
