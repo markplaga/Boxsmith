@@ -451,3 +451,15 @@ test('camera keys: projection defaults to ortho, and fov keys ease like the othe
   assert.match(Anim.validateAnimation({ keyframes: keys, projection: 'fisheye' }, 1).error, /projection/);
   assert.match(Anim.validateAnimation({ keyframes: keys, camera: [{ t: 0, fov: 200 }] }, 1).error, /fov/);
 });
+
+test('constant-rate video: frame times and the WebM writer', () => {
+  const t = Anim.cfrTimes(8, 30);
+  assert.equal(t.length, 240); assert.equal(t[1], 1 / 30); assert.ok(Math.abs(t[239] - 239 / 30) < 1e-12);
+  assert.equal(Anim.cfrTimes(40.36, 30).length, 1211);            // round(duration × 30)
+  const w = Anim.makeWebM({ width: 64, height: 48, fps: 30, videoCodec: 'V_VP8', durationMs: 100,
+    chunks: [0, 1, 2].map(k => ({ track: 1, us: k * 1e6 / 30, data: new Uint8Array([k]), key: k === 0 })) });
+  const hex = Buffer.from(w).toString('hex');
+  assert.ok(hex.startsWith('1a45dfa3'));                              // EBML
+  assert.ok(hex.includes('23e383' + '84' + (Math.round(1e9 / 30)).toString(16).padStart(8, '0')));   // DefaultDuration = 1/30 s
+  assert.ok(hex.includes('1c53bb6b'));                                // Cues, so players can seek
+});

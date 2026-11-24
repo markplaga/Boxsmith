@@ -238,7 +238,7 @@ The **📱 Remote** button in Arrange boxes links a second screen to the one sho
 | `libraryLoadDesign` | `{ index \| name }` | Opens a design from the library. |
 | `play`, `pause`, `stop`, `seek` | `{ t }` for `seek` | Playback. `stop` puts every animated box and the camera back where they were. |
 | `capture` | see below | Pictures of the view or the animation. |
-| `export` | `{ format: 'webm' \| 'gif', fps?, width?, height? }` | Records the animation from start to finish. The host also shows a Download button. |
+| `export` | `{ format: 'webm' \| 'gif', fps?, width?, height? }` | Records the animation from start to finish. The host also shows a Download button. WebM is a true constant frame rate (default 30 fps): see Export below. |
 
 **State** (`{"t":"state",…}`) includes `boxes` (label, position, rotation, colors, hidden), `sel`, `part`, `parts`, `unit`, `stereo`, `view` (`yaw`, `pitch` in degrees, `zoom`, `pan`, `projection`, `fov`), `camera` (what the camera shows, in mm: see below), `anim` (`playing`, `t`, `duration`, `loop`, or `null`) and `exporting`.
 
@@ -308,6 +308,10 @@ Each camera key has a time `t` and any of `yaw`, `pitch` (degrees), `zoom`, `fov
 - **Yaw is never wrapped.** Camera angles are plain numbers and go straight from one key's value to the next, never the shortest way round. 350 → 10 swings back 340° through 180°; write 350 → 370 to cross 0 the short way. 0 → 720 makes two whole orbits. (Box turns follow the different rule under Turns, above.)
 - Before a field's first key, the view the animation started from holds and eases in, using the animation's `easing`.
 - **Smooth paths: `"cameraInterp": "catmullRom"`** (in the `animate` args; the default is `"linear"`). Yaw, pitch, zoom and pan then follow a Catmull-Rom spline through the keys, so the camera's speed carries smoothly through every key instead of changing abruptly there. Every key is still reached exactly at its time, endpoints included. The spline's knots are the key times (so a key's timing is never moved), and the slope at each key is the time-weighted average of the slopes on either side. Two neighbouring keys with the same value make a true hold: the camera stays still between them, with no overshoot, and slows into and out of it smoothly. With `catmullRom` the animation's `easing` is not applied to the camera, because the spline sets the speed; a key's own `ease` still reshapes its span (an `easeInOut` key brings the camera to rest at both ends of that span). Yaw is not wrapped here either.
+
+### Export
+
+`export` with `format: 'webm'` renders the animation frame by frame rather than recording it as it plays, so the video has a **true constant frame rate**: frame *k* shows the animation at exactly *k*/fps seconds, there are round(duration × fps) frames (240 for 8 s at 30 fps), and the WebM says so (`ffprobe` reports `r_frame_rate` and `avg_frame_rate` 30/1). That keeps sound sync and editing frame-accurate however slow the model screen is; a slow device just takes longer to finish, with a "Recording video… n%" indicator, and the model screen doesn't play the animation while it records. Video is VP9 (VP8 where VP9 can't be encoded), with a key frame every 2 seconds and seek points. The reply adds `frames`, `cfr: true` and `codec`. Browsers without WebCodecs (very old ones) fall back to recording playback in real time, and the reply then says `cfr: false`. Matroska stores times in whole milliseconds, so at 30 fps successive frames are 33 or 34 ms apart while staying exactly on the 1/30 s grid overall.
 
 ### Capture
 

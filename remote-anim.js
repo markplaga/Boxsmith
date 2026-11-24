@@ -271,6 +271,79 @@
     try{ return JSON.parse(slot.parts.join('')); }catch(e){ return null; }
   }
 
+
+  /* ---------- a WebM writer (EBML), for constant-frame-rate video from WebCodecs ---------- */
+  // makeWebM({width, height, fps, videoCodec:'V_VP9'|'V_VP8', audio?:{codec:'A_OPUS', sampleRate,
+  //   channels, codecPrivate:Uint8Array, codecDelayNs}, chunks:[{track:1|2, us, data:Uint8Array, key}],
+  //   durationMs}) -> Uint8Array. Track 1 is video, track 2 audio. Every video frame lands on its exact
+  //   timestamp and the track says DefaultDuration = 1/fps, so players and ffprobe see a constant rate.
+  //   Clusters start on video key frames; Cues let players seek.
+  function ebmlId(id){ const b=[]; while(id>0){ b.unshift(id&255); id=Math.floor(id/256); } return b; }
+  function vint(n,len){
+    if(!len){ len=1; while(n>=Math.pow(2,7*len)-1) len++; }
+    const b=new Array(len); let v=n;
+    for(let i=len-1;i>=0;i--){ b[i]=v%256; v=Math.floor(v/256); }
+    b[0]|=(0x80>>(len-1)); return b;
+  }
+  const uintBytes=(n,len)=>{ if(!len){ len=1; while(n>=Math.pow(256,len)) len++; } const b=new Array(len); for(let i=len-1;i>=0;i--){ b[i]=n%256; n=Math.floor(n/256); } return b; };
+  const strBytes=s=>Array.from(s,c=>c.charCodeAt(0)&255);
+  const floatBytes=f=>{ const d=new DataView(new ArrayBuffer(8)); d.setFloat64(0,f); return Array.from(new Uint8Array(d.buffer)); };
+  // An element is [id, payload], where payload is a byte array, a Uint8Array or a list of elements.
+  function ebmlLen(el){ const p=el[1]; const n=Array.isArray(p)&&p.length&&Array.isArray(p[0])?p.reduce((a,c)=>a+ebmlLen(c),0):p.length; el._n=n; return ebmlId(el[0]).length+(el[2]||vint(n).length)+n; }
+  function ebmlWrite(el,out,pos){
+    const id=ebmlId(el[0]); out.set(id,pos); pos+=id.length;
+    const sz=vint(el._n,el[2]); out.set(sz,pos); pos+=sz.length;
+    const p=el[1];
+    if(Array.isArray(p)&&p.length&&Array.isArray(p[0])){ for(const c of p) pos=ebmlWrite(c,out,pos); }
+    else { out.set(p,pos); pos+=p.length; }
+    return pos;
+  }
+  const U=(id,n,len)=>[id,uintBytes(n,len)], F=(id,f)=>[id,floatBytes(f)], S=(id,s)=>[id,strBytes(s)];
+  function makeWebM(o){
+    const vTrack=[0xAE,[U(0xD7,1),U(0x73C5,1),U(0x83,1),S(0x86,o.videoCodec||'V_VP9'),U(0x23E383,Math.round(1e9/o.fps)),[0xE0,[U(0xB0,o.width),U(0xBA,o.height)]]]];
+    const tracks=[vTrack];
+    if(o.audio){
+      const a=o.audio, at=[U(0xD7,2),U(0x73C5,2),U(0x83,2),S(0x86,a.codec||'A_OPUS')];
+      if(a.codecPrivate) at.push([0x63A2,Array.from(a.codecPrivate)]);
+      if(a.codecDelayNs) at.push(U(0x56AA,a.codecDelayNs));
+      at.push(U(0x56BB,80000000),[0xE1,[F(0xB5,a.sampleRate),U(0x9F,a.channels)]]);
+      tracks.push([0xAE,at]);
+    }
+    const chunks=o.chunks.slice().sort((x,y)=>x.us-y.us||x.track-y.track);
+    // clusters: a new one at each video key frame (and at least every 30 s)
+    const clusters=[]; let cur=null;
+    for(const c of chunks){
+      const ms=Math.round(c.us/1000);
+      if(!cur||(c.track===1&&c.key&&ms>cur.t)||ms-cur.t>30000){ cur={t:ms,blocks:[]}; clusters.push(cur); }
+      const head=[...vint(c.track),((ms-cur.t)>>8)&255,(ms-cur.t)&255,c.key?0x80:0];
+      const blk=new Uint8Array(head.length+c.data.length); blk.set(head,0); blk.set(c.data,head.length);
+      cur.blocks.push([0xA3,blk]);
+    }
+    const clusterEls=clusters.map(c=>[0x1F43B675,[U(0xE7,c.t)].concat(c.blocks)]);
+    const info=[0x1549A966,[U(0x2AD7B1,1000000),S(0x4D80,'Boxsmith'),S(0x5741,'Boxsmith'),F(0x4489,o.durationMs)]];
+    const tracksEl=[0x1654AE6B,tracks];
+    // positions inside the segment; SeekHead and cue positions use fixed 8-byte numbers so sizes don't shift
+    const seek=(id,pos)=>[0x4DBB,[[0x53AB,ebmlId(id)],U(0x53AC,pos,8)]];
+    const seekHead=[0x114D9B74,[seek(0x1549A966,0),seek(0x1654AE6B,0),seek(0x1C53BB6B,0)]];
+    const shLen=ebmlLen(seekHead), infoLen=ebmlLen(info), trLen=ebmlLen(tracksEl);
+    let pos=shLen+infoLen+trLen; const cuePts=[];
+    for(let k=0;k<clusterEls.length;k++){ cuePts.push([0xBB,[U(0xB3,clusters[k].t),[0xB7,[U(0xF7,1),U(0xF1,pos,8)]]]]); pos+=ebmlLen(clusterEls[k]); }
+    const cues=[0x1C53BB6B,cuePts.length?cuePts:[]];
+    seekHead[1]=[seek(0x1549A966,shLen),seek(0x1654AE6B,shLen+infoLen),seek(0x1C53BB6B,pos)];
+    const segment=[0x18538067,[seekHead,info,tracksEl].concat(clusterEls,cuePts.length?[cues]:[])];
+    const header=[0x1A45DFA3,[U(0x4286,1),U(0x42F7,1),U(0x42F2,4),U(0x42F3,8),S(0x4282,'webm'),U(0x4287,4),U(0x4285,2)]];
+    const total=ebmlLen(header)+ebmlLen(segment), out=new Uint8Array(total);
+    ebmlWrite(segment,out,ebmlWrite(header,out,0));
+    return out;
+  }
+  // OpusHead, the CodecPrivate an Opus track needs (RFC 7845).
+  function opusHead(channels,sampleRate,preSkip=312){
+    const b=new Uint8Array(19), d=new DataView(b.buffer);
+    b.set(strBytes('OpusHead'),0); b[8]=1; b[9]=channels; d.setUint16(10,preSkip,true); d.setUint32(12,sampleRate,true); d.setInt16(16,0,true); b[18]=0;
+    return b;
+  }
+  // Frame times for a constant-rate video: frame k at k/fps, n = round(duration·fps) frames (at least 1).
+  function cfrTimes(duration,fps){ const n=Math.max(1,Math.round(duration*fps)); return Array.from({length:n},(_,k)=>Math.min(duration,k/fps)); }
   /* ---------- a small GIF encoder (fixed 6×6×6 colour cube plus greys, LZW) ---------- */
   function palette(){
     const p=[];
@@ -415,5 +488,5 @@
     return {ran,errors};
   }
 
-  return {readZip,buildLibrary,parseAnimationFile,runBatch,MAX_KEYS,MAX_DURATION,EASE,validateAnimation,sampleAt,evenTimes,rotationBetween,eulerToQuat,quatToEuler,slerp,splitMessage,joinParts,encodeGIF,LIMIT};
+  return {makeWebM,opusHead,cfrTimes,readZip,buildLibrary,parseAnimationFile,runBatch,MAX_KEYS,MAX_DURATION,EASE,validateAnimation,sampleAt,evenTimes,rotationBetween,eulerToQuat,quatToEuler,slerp,splitMessage,joinParts,encodeGIF,LIMIT};
 });

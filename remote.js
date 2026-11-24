@@ -553,10 +553,10 @@ const Remote=(()=>{
     const w=Math.round(w0)&~1, h=Math.round(h0)&~1, id=typeof a.id==='string'?a.id.slice(0,80):'exp'+Date.now().toString(36);
     const c=document.createElement('canvas'); c.width=w; c.height=h; const ctx=c.getContext('2d',{willReadFrequently:a.format==='gif'});
     exporting=true;
-    const finish=(blob,ext)=>{
+    const finish=(blob,ext,extra)=>{
       exporting=false;
       const r=new FileReader();
-      r.onload=()=>{ sendBig({t:'export',id,format:ext,data:r.result,bytes:blob.size,width:w,height:h,fps,duration:anim?anim.duration:0}); };
+      r.onload=()=>{ sendBig(Object.assign({t:'export',id,format:ext,data:r.result,bytes:blob.size,width:w,height:h,fps,duration:anim?anim.duration:0},extra||{cfr:ext==='gif'})); };
       r.readAsDataURL(blob);
       showDownload(blob,'boxsmith-animation.'+ext);
     };
@@ -573,6 +573,8 @@ const Remote=(()=>{
       setTimeout(step,0);
       return;
     }
+    if(typeof VideoEncoder!=='undefined'&&typeof VideoFrame!=='undefined'){ exportCFR(a,c,ctx,w,h,fps,finish); return; }
+    // no WebCodecs (older browsers): record playback in real time; the frame rate then follows the device
     if(typeof MediaRecorder==='undefined'||!c.captureStream){ exporting=false; return 'This browser cannot record video. Try format "gif".'; }
     const type=['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'].find(t=>MediaRecorder.isTypeSupported(t));
     if(!type){ exporting=false; return 'This browser cannot record WebM. Try format "gif".'; }
@@ -583,6 +585,58 @@ const Remote=(()=>{
     anim.onFrame=()=>drawInto(ctx,0,0,w,h);       // every played frame is copied into the recording
     anim.onDone=()=>{ anim.loop=keepLoop; setTimeout(()=>rec.stop(),Math.max(120,2000/fps)); };
     anim.t=0; rec.start(250); playAnim();
+  }
+  /* Constant frame rate: render frame k at exactly k/fps, offline (not in real time), and encode it
+     with WebCodecs at timestamp k/fps, so the file has n = round(duration·fps) frames, evenly spaced,
+     however slow the device is. The live view is posed and put back within each task, so the screen
+     doesn't jump. */
+  async function pickVideoCodec(w,h,fps){
+    for(const [codec,id] of [['vp09.00.10.08','V_VP9'],['vp8','V_VP8']]){
+      const cfg={codec,width:w,height:h,framerate:fps,bitrate:Math.round(Math.min(8e6,w*h*fps*0.12)),latencyMode:'quality'};
+      try{ const r=await VideoEncoder.isConfigSupported(cfg); if(r&&r.supported) return {cfg,id}; }catch(e){}
+    }
+    return null;
+  }
+  // Encodes frames into WebM. addFrame(canvas, k) for frame k; done() resolves to the WebM bytes.
+  async function cfrEncoder(w,h,fps,extraChunks){
+    const pick=await pickVideoCodec(w,h,fps);
+    if(!pick) throw new Error('this browser cannot encode VP9 or VP8 video');
+    const chunks=[]; let failed=null;
+    const enc=new VideoEncoder({output:ch=>{ const d=new Uint8Array(ch.byteLength); ch.copyTo(d); chunks.push({track:1,us:ch.timestamp,data:d,key:ch.type==='key'}); },error:e=>{ failed=e; }});
+    enc.configure(pick.cfg);
+    const keyEvery=Math.max(1,Math.round(fps*2));
+    return {
+      codec:pick.id,
+      addFrame(canvas,k){
+        if(failed) throw failed;
+        const f=new VideoFrame(canvas,{timestamp:Math.round(k*1e6/fps),duration:Math.round(1e6/fps)});
+        enc.encode(f,{keyFrame:k%keyEvery===0}); f.close();
+      },
+      backlog:()=>enc.encodeQueueSize,
+      async done(frames,audio){
+        await enc.flush(); enc.close(); if(failed) throw failed;
+        const all=chunks.concat(audio?audio.chunks:[]);
+        return Anim.makeWebM({width:w,height:h,fps,videoCodec:pick.id,audio:audio&&audio.track,chunks:all,durationMs:frames*1000/fps});
+      }
+    };
+  }
+  function exportCFR(a,c,ctx,w,h,fps,finish){
+    const times=Anim.cfrTimes(anim.duration,fps), id0=anim;
+    const busy=document.createElement('div'); busy.className='anim-loading'; busy.innerHTML='<span>Recording video… 0%</span>'; document.body.appendChild(busy);
+    const fail=err=>{ busy.remove(); exporting=false; note('export: the video could not be made: '+(err&&err.message||err)); };
+    cfrEncoder(w,h,fps).then(E=>{
+      let k=0;
+      const step=()=>{
+        if(anim!==id0) return fail('the animation was changed while recording');
+        if(E.backlog()>6) return setTimeout(step,5);              // let the encoder catch up
+        const batch=times.slice(k,k+4), k0=k; k+=batch.length;
+        try{ atTimes(batch,(j)=>{ drawInto(ctx,0,0,w,h); E.addFrame(c,k0+j); }); }catch(err){ return fail(err); }
+        busy.firstChild.textContent='Recording video… '+Math.round(k/times.length*100)+'%';
+        if(k<times.length) return setTimeout(step,0);
+        E.done(times.length).then(bytes=>{ busy.remove(); finish(new Blob([bytes],{type:'video/webm'}),'webm',{frames:times.length,cfr:true,codec:E.codec}); }).catch(fail);
+      };
+      step();
+    }).catch(fail);
   }
   // Import animation (host): read the file, warn before replacing the open layout, load with a
   // loading indicator (big files take a few seconds), then play.
