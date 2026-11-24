@@ -638,6 +638,7 @@ const Remote=(()=>{
     if(recording) return 'A live recording is running. Send recordStop first.';
     if(!glCanvas()) return 'Exporting needs WebGL on the model screen.';
     if(a.format!=='webm'&&a.format!=='gif') return "format must be 'webm' or 'gif'.";
+    if(a.audio!==undefined&&typeof a.audio!=='boolean') return 'audio must be true or false.';
     const src=glCanvas(), aspect=src.width/src.height;
     const defW=a.format==='gif'?480:Math.min(1280,src.width), w0=a.width===undefined?defW:a.width;
     const h0=a.height===undefined?Math.round(w0/aspect):a.height;
@@ -714,6 +715,36 @@ const Remote=(()=>{
       }
     };
   }
+  // The soundtrack as an Opus track for the exported WebM, exactly `seconds` long (the video's length).
+  async function encodeSoundtrack(seconds){
+    const S0=anim&&anim.sound;
+    if(!S0||!S0.buf) return null;
+    if(typeof AudioEncoder==='undefined'||typeof AudioData==='undefined') throw new Error('this browser cannot encode audio');
+    const ch=Math.min(2,S0.buf.numberOfChannels), sr=48000, frames=Math.round(seconds*sr);
+    const cfg={codec:'opus',sampleRate:sr,numberOfChannels:ch,bitrate:160000};
+    const ok=await AudioEncoder.isConfigSupported(cfg).catch(()=>null);
+    if(!ok||!ok.supported) throw new Error('this browser cannot encode Opus audio');
+    // resample to 48 kHz (Opus's rate) and cut or pad to the video's length
+    const off=new OfflineAudioContext(ch,frames,sr), src=off.createBufferSource(); src.buffer=S0.buf; src.connect(off.destination); src.start(0);
+    const pcm=await off.startRendering();
+    const chunks=[]; let desc=null, failed=null;
+    const enc=new AudioEncoder({output:(c,meta)=>{ const d=new Uint8Array(c.byteLength); c.copyTo(d); chunks.push({track:2,us:c.timestamp,dur:c.duration,data:d,key:true}); if(meta&&meta.decoderConfig&&meta.decoderConfig.description&&!desc) desc=new Uint8Array(meta.decoderConfig.description.buffer||meta.decoderConfig.description); },error:e=>{ failed=e; }});
+    enc.configure(cfg);
+    const step=sr/50;   // 20 ms blocks
+    for(let i=0;i<frames;i+=step){
+      const n=Math.min(step,frames-i), data=new Float32Array(n*ch);
+      for(let k=0;k<ch;k++) data.set(pcm.getChannelData(k).subarray(i,i+n),k*n);
+      const ad=new AudioData({format:'f32-planar',sampleRate:sr,numberOfFrames:n,numberOfChannels:ch,timestamp:Math.round(i*1e6/sr),data});
+      enc.encode(ad); ad.close();
+    }
+    await enc.flush(); enc.close(); if(failed) throw failed;
+    const head=desc&&desc.length>=19&&String.fromCharCode(...desc.subarray(0,8))==='OpusHead'?desc:Anim.opusHead(ch,sr);
+    const preSkip=head[10]|(head[11]<<8);
+    // Opus comes in 20 ms packets: drop what the last one carries past the video's end
+    const coded=chunks.reduce((n,c)=>n+Math.round((c.dur||20000)*sr/1e6),0), extra=coded-preSkip-frames;
+    if(extra>0&&chunks.length) chunks[chunks.length-1].discardNs=Math.round(extra/sr*1e9);
+    return {chunks,track:{codec:'A_OPUS',sampleRate:sr,channels:ch,codecPrivate:head,codecDelayNs:Math.round(preSkip/sr*1e9)}};
+  }
   function exportCFR(a,c,ctx,w,h,fps,finish){
     const times=Anim.cfrTimes(anim.duration,fps), id0=anim;
     const busy=document.createElement('div'); busy.className='anim-loading'; busy.innerHTML='<span>Recording video… 0%</span>'; document.body.appendChild(busy);
@@ -727,7 +758,11 @@ const Remote=(()=>{
         try{ atTimes(batch,(j)=>{ drawInto(ctx,0,0,w,h); E.addFrame(c,k0+j); }); }catch(err){ return fail(err); }
         busy.firstChild.textContent='Recording video… '+Math.round(k/times.length*100)+'%';
         if(k<times.length) return setTimeout(step,0);
-        E.done(times.length).then(bytes=>{ busy.remove(); finish(new Blob([bytes],{type:'video/webm'}),'webm',{frames:times.length,cfr:true,codec:E.codec}); }).catch(fail);
+        // the soundtrack goes in too, unless audio:false, cut to exactly the video's length
+        const want=a.audio!==false&&anim.sound&&anim.sound.buf, seconds=times.length/fps;
+        (want?encodeSoundtrack(seconds).catch(err=>{ note('export: the video has no sound: '+(err&&err.message||err)); return null; }):Promise.resolve(null))
+          .then(audio=>E.done(times.length,audio).then(bytes=>{ busy.remove(); finish(new Blob([bytes],{type:'video/webm'}),'webm',{frames:times.length,cfr:true,codec:E.codec,audio:audio?{codec:'opus',seconds,sampleRate:48000,channels:audio.track.channels}:null}); }))
+          .catch(fail);
       };
       step();
     }).catch(fail);

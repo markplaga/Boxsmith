@@ -477,3 +477,14 @@ test('soundtracks: named in the animation, matched in a zip, fitted to the anima
   assert.equal(ok.anim.soundtrack, 'sfx.mp3');
   assert.match(Anim.validateAnimation({ keyframes: [{ t: 0, boxes: {} }], soundtrack: 5 }, 1).error, /soundtrack/);
 });
+
+test('WebM writer: an Opus track, with the last packet trimmed to the video length', () => {
+  const w = Anim.makeWebM({ width: 64, height: 48, fps: 30, videoCodec: 'V_VP8', durationMs: 100,
+    audio: { codec: 'A_OPUS', sampleRate: 48000, channels: 2, codecPrivate: Anim.opusHead(2, 48000), codecDelayNs: 6500000 },
+    chunks: [{ track: 1, us: 0, data: new Uint8Array([1]), key: true }, { track: 2, us: 0, data: new Uint8Array([2]), key: true },
+      { track: 2, us: 20000, data: new Uint8Array([3]), key: true, discardNs: 6833333 }] });
+  const hex = Buffer.from(w).toString('hex');
+  assert.ok(hex.includes(Buffer.from('A_OPUS').toString('hex')) && hex.includes(Buffer.from('OpusHead').toString('hex')));
+  assert.ok(hex.includes('75a2'));                                     // DiscardPadding on the last audio block
+  assert.equal(Buffer.from(Anim.opusHead(2, 48000)).toString('hex').slice(16, 20), '0102');   // version 1, 2 channels
+});

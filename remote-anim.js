@@ -316,9 +316,11 @@
     for(const c of chunks){
       const ms=Math.round(c.us/1000);
       if(!cur||(c.track===1&&c.key&&ms>cur.t)||ms-cur.t>30000){ cur={t:ms,blocks:[]}; clusters.push(cur); }
-      const head=[...vint(c.track),((ms-cur.t)>>8)&255,(ms-cur.t)&255,c.key?0x80:0];
+      const head=[...vint(c.track),((ms-cur.t)>>8)&255,(ms-cur.t)&255,c.key&&!c.discardNs?0x80:0];
       const blk=new Uint8Array(head.length+c.data.length); blk.set(head,0); blk.set(c.data,head.length);
-      cur.blocks.push([0xA3,blk]);
+      // a block with samples to drop at its end (audio padding past the video's length) goes in a BlockGroup
+      if(c.discardNs) cur.blocks.push([0xA0,[[0xA1,blk],U(0x75A2,c.discardNs)]]);
+      else cur.blocks.push([0xA3,blk]);
     }
     const clusterEls=clusters.map(c=>[0x1F43B675,[U(0xE7,c.t)].concat(c.blocks)]);
     const info=[0x1549A966,[U(0x2AD7B1,1000000),S(0x4D80,'Boxsmith'),S(0x5741,'Boxsmith'),F(0x4489,o.durationMs)]];
