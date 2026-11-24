@@ -77,7 +77,7 @@ function syncTypeParams(){
 }
 
 /* ---------- the Type lab panel ---------- */
-const LAB_EXAMPLES=[['closed-box','Closed box'],['open-tray','Open tray'],['cube-frame','Cube frame']];
+const LAB_EXAMPLES=[['closed-box','Closed box'],['open-tray','Open tray'],['cube-frame','Cube frame'],['box-with-shelf','Box with a shelf']];
 const LAB_STARTER={format:'boxsmith-type',version:1,id:'my-box',name:'My box',description:'',
   inside:{W:'2*t',D:'2*t',H:'2*t'},
   params:[],
@@ -92,6 +92,10 @@ function labEl(){
    +'<p class="hint">A box type file describes a new box style in JSON: its parts, their sizes and where they go, with formulas but no code. Paste one, open a file, or start from an example. <a href="https://github.com/markplaga/Boxsmith/blob/main/BOX-TYPES.md" target="_blank" rel="noopener">The format</a></p>'
    +'<div class="labRow"><label class="btn sm">Open file…<input type="file" class="hidden" id="labFile" accept=".json,application/json"></label>'
    +'<select id="labExample" aria-label="Start from"><option value="">Start from…</option><option value="starter">A plain box</option>'+LAB_EXAMPLES.map(([f,n])=>'<option value="'+f+'">'+n+'</option>').join('')+'</select></div>'
+   +'<details class="labAi" id="labAi"><summary>Have an AI write one</summary>'
+   +'<p class="hint">Describe the box. Boxsmith copies a prompt with the whole format, an example and your description; paste it into any chat AI (Claude, ChatGPT, Gemini…), then paste its answer below.</p>'
+   +'<textarea id="labAsk" rows="3" placeholder="A tray with a sloped front and three compartments, and a lid that slides in from the back"></textarea>'
+   +'<div class="labRow"><button class="btn sm primary" id="labPrompt" type="button">Copy AI prompt</button><label class="chk" style="font-size:12px"><input type="checkbox" id="labAskEdit"> Change the file below instead</label></div></details>'
    +'<textarea id="labText" spellcheck="false" aria-label="Type file"></textarea>'
    +'<div class="labRow"><button class="btn sm" id="labCheck" type="button">Check</button><button class="btn sm" id="labTry" type="button">Try it</button><button class="btn sm primary" id="labSave" type="button">Save to My types</button></div>'
    +'<div id="labReport" aria-live="polite"></div>'
@@ -108,18 +112,21 @@ function labEl(){
       def.id='my-'+def.id; def.name=def.name.replace(/ \(type file\)$/,'')+' copy'; def.author=''; }
     $('#labText').value=JSON.stringify(def,null,2); labCheck();
   });
+  $('#labPrompt').addEventListener('click',async()=>{
+    const ask=$('#labAsk').value.trim(); if(!ask){ toast('Describe the box first'); $('#labAsk').focus(); return; }
+    let text; try{ text=await typePrompt(ask,$('#labAskEdit').checked?$('#labText').value:''); }catch(e){ toast('Couldn\'t read the format reference — are you offline?'); return; }
+    try{ await navigator.clipboard.writeText(text); toast('Prompt copied ('+Math.round(text.length/1000)+'k characters) — paste it into a chat AI'); }
+    catch(e){ $('#labText').value=text; toast('Clipboard blocked: the prompt is in the box below; copy it from there'); } });
   $('#labText').addEventListener('keydown',e=>{ if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){ e.preventDefault(); labCheck(); } });
   $('#labCheck').addEventListener('click',()=>labCheck());
-  $('#labTry').addEventListener('click',()=>{ const def=labCheck(); if(!def) return; Boxsmith.types.register(def); renderTypeList(); S.type=def.id; update(true); toast('Showing '+def.name+' (not saved yet)'); });
+  $('#labTry').addEventListener('click',()=>{ const def=labCheck(); if(!def) return; Boxsmith.types.register(def); renderTypeList(); renderLabMine(); S.type=def.id; update(true); toast('Showing '+def.name+' (not saved yet)'); });
   $('#labSave').addEventListener('click',()=>{ const def=labCheck(); if(!def) return;
     if(!labLast||labLast.stage==='format'){ toast('Fix the problems in the file first'); return; }
-    Boxsmith.types.register(def);
-    const list=myTypes().filter(d=>d.id!==def.id); list.push(def);
-    if(!saveMyTypes(list)){ toast('This browser won\'t let the page save — download the file instead'); return; }
-    renderTypeList(); renderLabMine(); S.type=def.id; update(true);
+    if(!keepType(def)){ toast('This browser won\'t let the page save — download the file instead'); return; }
+    S.type=def.id; update(true);
     toast(labLast.ok?'Saved '+def.name+' to My types':'Saved '+def.name+', but its parts don\'t fit together yet'); });
   $('#labCopy').addEventListener('click',async()=>{ if(!labLast) return;
-    const txt='Boxsmith found these problems in the type file (path: problem):\n'+Boxsmith.types.explain(labLast.errors.concat(labLast.warnings||[]));
+    const txt='Boxsmith found these problems in the type file (each line starts with its place in the file). Fix them and send the whole file again.\n\n'+Boxsmith.types.explain(labLast.errors.concat(labLast.warnings||[]));
     try{ await navigator.clipboard.writeText(txt); toast('Copied — paste it to the AI that wrote the file'); }catch(e){ toast('Clipboard blocked by the browser'); } });
   $('#labDownload').addEventListener('click',async()=>{ const def=labParse(); if(!def) return; await saveFile((def.id||'box-type')+'.json',JSON.stringify(def,null,2)); });
   $('#labMine').addEventListener('click',e=>{
@@ -130,12 +137,61 @@ function labEl(){
     if(b.dataset.act==='rm'){
       const used=(typeof layoutBoxes!=='undefined'?layoutBoxes:[]).filter(x=>x.settings.type===id).length;
       confirmTwice(b,used?'Used by '+used+' box'+(used>1?'es':'')+' in Arrange — click again':'Click again to remove',()=>{
-        saveMyTypes(myTypes().filter(d=>d.id!==id)); Boxsmith.types.unregister(id);
-        if(S.type===id) S.type='closed';
-        renderTypeList(); renderLabMine(); update(true); toast('Removed '+def.name); });
+        forgetType(id); toast('Removed '+def.name); });
     }
   });
   return el;
+}
+// a prompt any chat AI can answer with a type file: the format, one worked example, the user's words
+let typeRefText='';
+async function typePrompt(ask,current){
+  if(!typeRefText) typeRefText=await (await fetch('BOX-TYPES.md')).text();
+  const [example,example2]=await Promise.all(['types/open-tray.json','types/box-with-shelf.json'].map(async u=>(await fetch(u)).text()));
+  const std=Object.keys(DEFAULTS).filter(k=>!['type','typeParams','assembly'].includes(k));
+  const size=fmt(S.W)+' × '+fmt(S.D)+' × '+fmt(S.H)+(S.dimMode==='inside'?' inside':' outside')+', '+fmt(S.t)+' material';
+  return [
+    'You are writing a box type file for Boxsmith, a laser-cut box generator. The format is described below in full. A type file is JSON only: no code, no comments.',
+    '',
+    current?'Change this type file as I describe. Keep its "id" unless I ask otherwise.\n\n```json\n'+current.trim()+'\n```':'Write a new type file for this box:',
+    '',
+    ask,
+    '',
+    'Rules:',
+    '- Reply with the complete JSON file in one ```json block, then at most three short sentences about what you assumed.',
+    '- Use "box" parts where the shape allows (Boxsmith then handles fingers, corners and screws), and "panel" parts with "f"/"F" edges for anything else. Panels that join must overlap by one thickness t along the joint, one edge "f" and the other "F".',
+    '- Every size should follow from W, D, H, t and your params, so the box works at any size, not just one.',
+    '- Give the user settings (params) for what they would want to change. Reuse a standard setting key when it means the same thing.',
+    '- Pick a new lower-case "id" with dashes. Don\'t use a built-in style id ('+TYPES.map(t=>t.id).join(', ')+').',
+    '- Boxsmith will check the file and build it in 3D. If I paste back problems, each starts with its place in the file (like parts[2].panel.edges[1]); fix them and send the whole file again.',
+    '',
+    'The user is currently working at '+size+'.',
+    'Standard setting keys a param can reuse: '+std.join(', ')+'.',
+    '',
+    'Two example type files. The built-in Open tray, re-expressed (params, a shaped edge, dividers):',
+    '',
+    '```json',example.trim(),'```',
+    '',
+    'A box with a shelf: a "panel" whose finger tabs go through slots ("fingers" holes) in the side walls:',
+    '',
+    '```json',example2.trim(),'```',
+    '',
+    '=== The Boxsmith box type format (BOX-TYPES.md) ===',
+    '',
+    typeRefText.trim()
+  ].join('\n');
+}
+// register a type and keep it in My types; false if the browser won't store it (it stays loaded anyway)
+function keepType(def){
+  Boxsmith.types.register(def);
+  const list=myTypes().filter(d=>d.id!==def.id); list.push(def);
+  const ok=saveMyTypes(list);
+  renderTypeList(); if($('#labMine')) renderLabMine();
+  return ok;
+}
+function forgetType(id){
+  saveMyTypes(myTypes().filter(d=>d.id!==id)); Boxsmith.types.unregister(id);
+  if(S.type===id) S.type='closed';
+  renderTypeList(); if($('#labMine')) renderLabMine(); update(true);
 }
 function renderLabMine(){
   const list=Boxsmith.types.list(), saved=new Set(myTypes().map(d=>d.id));

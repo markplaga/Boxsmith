@@ -152,6 +152,8 @@ const Remote=(()=>{
     const stereo=$('#layoutCtl [data-stereo-mode]');
     return {t:'state',unit:S.unit,scale:layoutCoordinateScale(),sel:box?layoutSelection:-1,part:layoutPart,
       design:withDesign?box.settings:undefined,designKey:design.length+':'+hash(design),
+      designTypes:withDesign&&customTypeDef(box.settings.type)?Boxsmith.types.used(box.settings):undefined,
+      customTypes:Boxsmith.types.list().map(t=>t.id),
       placing:placingBox,maximized:document.body.classList.contains('max3d'),stereo:stereo?stereo.value:view.stereo,boxCount:layoutBoxes.length,
       library:librarySummary(),
       recording:recording?{fps:recording.fps,width:recording.w,height:recording.h,seconds:recording.E?Math.round(recording.slot/recording.fps*10)/10:0}:null,
@@ -260,6 +262,30 @@ const Remote=(()=>{
   };
   const progress=(id,of,phase,done,total)=>{ if(host) host.send({t:'progress',id,of,phase,percent:Math.floor(done/total*100),done,total}); };
   const finite=v=>typeof v==='number'&&Number.isFinite(v);
+  // design/add can bring the type files they use ({types: {id: type}}); they are checked and kept
+  function adoptCmdTypes(a){
+    if(a.types===undefined) return;
+    try{ const added=Boxsmith.types.adopt(a.types); for(const id of added) keepType(Boxsmith.types.get(id)); }
+    catch(e){ return e.message; }
+  }
+  function typeSummaries(){
+    const saved=new Set(myTypes().map(d=>d.id));
+    return Boxsmith.types.list().map(t=>{ const d=Boxsmith.types.get(t.id);
+      return {id:t.id,name:t.name,description:t.d,saved:saved.has(t.id),typeVersion:d.typeVersion,
+        params:(d.params||[]).map(p=>Object.assign({key:p.key,label:p.label,kind:p.kind,default:p.default},p.min!==undefined?{min:p.min}:{},p.max!==undefined?{max:p.max}:{},p.choices?{choices:p.choices}:{},Object.prototype.hasOwnProperty.call(DEFAULTS,p.key)?{standard:true}:{}))}; });
+  }
+  // the format, for an AI that is about to write a type: the schema always, the reference and examples on request
+  async function typeFormat(a){
+    const get=async(url,json)=>{ const r=await fetch(url); if(!r.ok) throw new Error(url+': '+r.status); return json?r.json():r.text(); };
+    try{
+      const reply={t:'typeFormat',format:Boxsmith.types.format,version:1,schema:await get('boxsmith-type.schema.json',true),
+        standardKeys:Object.keys(DEFAULTS).filter(k=>!['type','typeParams','assembly'].includes(k)),
+        builtInStyles:TYPES.map(t=>t.id)};
+      if(a.reference!==false) reply.reference=await get('BOX-TYPES.md');
+      if(a.examples) reply.examples=await Promise.all(['closed-box','open-tray','cube-frame','box-with-shelf'].map(f=>get('types/'+f+'.json',true)));
+      sendBig(reply);
+    }catch(e){ note('typeFormat: couldn\'t read the format files ('+e.message+').'); }
+  }
   const needBox=()=>layoutBoxes[layoutSelection]?'':'Select a box first.';
   // Runs one command. Returns an error message, or nothing when it worked. Never throws on bad input.
   function runCmd(op,a){
@@ -310,9 +336,12 @@ const Remote=(()=>{
       case 'design':
         if(!Number.isInteger(a.index)||!layoutBoxes[a.index]) return 'There is no box '+a.index+'.';
         if(!a.settings||typeof a.settings!=='object') return 'settings must be an object.';
+        { const e=adoptCmdTypes(a); if(e) return e; }
         applyDesign(a.index,a.settings); return;
       case 'add':
         if(!a.settings||typeof a.settings!=='object') return 'settings must be an object.';
+        { const e=adoptCmdTypes(a); if(e) return e; }
+        if(!knownType(a.settings.type||'closed')) return 'There is no box style "'+a.settings.type+'" here. Send its type file with typeAdd first, or in this command as types: {"'+a.settings.type+'": {…}}.';
         addLayoutBox({settings:a.settings,rotation:[0,0,0],position:[0,0,0],hidden:false}); return;
       case 'units': {
         if(a.unit!=='mm'&&a.unit!=='in') return "unit must be 'mm' or 'in'.";
@@ -379,6 +408,26 @@ const Remote=(()=>{
         seekAnim(a.t); return;
       case 'libraryPlay': return libraryOp('animation',a);
       case 'libraryLoadDesign': return libraryOp('design',a);
+      case 'typeFormat': typeFormat(a); return;   // replies when the files are read
+      case 'typeList':
+        if(host) host.send({t:'types',types:typeSummaries()}); return;
+      case 'typeCheck': case 'typeAdd': {
+        if(!a.type||typeof a.type!=='object'||Array.isArray(a.type)) return 'type must be a box type file (a JSON object).';
+        if(a.settings!==undefined&&(!a.settings||typeof a.settings!=='object')) return 'settings must be an object of box settings.';
+        const settings=Object.assign({},a.settings||{}); delete settings.type;
+        let r; try{ r=Boxsmith.types.check(a.type,settings); }catch(e){ r={ok:false,stage:'build',errors:[{path:'',message:e.message}],warnings:[]}; }
+        const reply={t:'typeCheck',op,id:a.type.id,ok:r.ok,stage:r.stage,errors:r.errors,warnings:r.warnings,parts:r.parts,size:r.size,text:Boxsmith.types.explain((r.errors||[]).concat(r.warnings||[]))};
+        if(op==='typeAdd'){
+          if(r.stage==='format') reply.added=false;
+          else if(!r.ok&&!a.force) { reply.added=false; reply.text=(reply.text?reply.text+'\n':'')+'Not added because the parts don\'t fit together. Fix the problems, or send force: true to add it anyway.'; }
+          else { reply.added=true; reply.saved=keepType(a.type); if(a.use){ S.type=a.type.id; update(true); } }
+        }
+        if(host) host.send(reply);
+        return;
+      }
+      case 'typeRemove':
+        if(typeof a.id!=='string'||!Boxsmith.types.get(a.id)) return 'There is no custom box style "'+a.id+'". typeList lists them.';
+        forgetType(a.id); return;
       case 'library':
         if(a.kind===undefined&&a.index===undefined){   // no arguments: just list what's in it
           if(host) host.send({t:'library',library:librarySummary()});
@@ -1270,6 +1319,7 @@ const Remote=(()=>{
   function remoteMessage(msg){
     if(msg.t==='state'){
       const prev=st; st=msg;
+      if(msg.designTypes){ try{ const added=Boxsmith.types.adopt(msg.designTypes); if(added.length) renderTypeList(); }catch(e){ console.warn('Remote: a box style from the model screen has problems',e); } }
       if(msg.design&&(msg.sel!==designFor||msg.designKey!==designKey)){ designFor=msg.sel; designKey=msg.designKey; if(full(msg.design)!==lastSent) loadDesign(msg.design); }
       else if(msg.sel!==designFor&&msg.sel>=0&&!msg.design&&link){ link.send({t:'hello'}); }   // ask again for this box's design
       if(msg.sel<0) designFor=-1;

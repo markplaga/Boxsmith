@@ -59,6 +59,10 @@ aside{border-right:1px solid var(--line);background:var(--panel);overflow-y:auto
 .labStatus.ok{background:#e6f2ea;color:var(--ok)}.labStatus.bad{background:var(--warn-soft);color:var(--warn)}
 .labErr,.labWarn{margin:6px 0 0;padding-left:18px;font-size:12px;line-height:1.4}.labWarn{color:var(--muted)}
 .labErr code,.labWarn code{font-family:var(--mono);font-size:11px;background:#efe9df;padding:0 3px;border-radius:3px}
+.labAi{border:1px solid var(--line2);border-radius:8px;padding:6px 9px;background:#fff}
+.labAi summary{cursor:pointer;font-weight:600;font-size:13px}
+.labAi[open]{display:flex;flex-direction:column;gap:6px}
+.typeLab .labAi textarea{flex:none;min-height:0;height:auto;width:100%;box-sizing:border-box;border:1px solid var(--line2);border-radius:6px;padding:7px 8px;font-family:var(--sans);font-size:13px;resize:vertical}
 .labMine{display:flex;gap:5px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
 .labMine>div{flex:1;min-width:0}.labMine b{display:block;font-size:13px}.labMine span{font-size:11px;color:var(--muted)}
 @media (min-width:900px){ body.lab-open main{margin-right:460px} }
@@ -934,7 +938,7 @@ Boxsmith.browser.showBox(tray);</code></pre>
 <li><b>Try it</b> shows the style in the preview and cut sheets without keeping it. <b>Save to My types</b> keeps it in this browser and adds it to the style list. Its own settings appear under <b>Style settings</b>.</li>
 </ol>
 <p>Settings files and layouts that use one of your types carry the type file with them, so they open on any computer; opening one adds the type to My types. <b>Download file</b> saves the type itself, to share or back up. Remove a type from the list in the Type lab.</p>
-<p>To have an AI write one, give it the format reference and describe your box, then paste its answer into the Type lab. If Boxsmith finds problems, <b>Copy problems for an AI</b> and paste them back. <a href="https://github.com/markplaga/Boxsmith/blob/main/BOX-TYPES.md">Box type format</a> · <a href="https://github.com/markplaga/Boxsmith/tree/main/types">Example types</a> · <a href="https://github.com/markplaga/markplaga-boxsmith-type">Shared types</a></p>
+<p>To have an AI write one, open <b>Have an AI write one</b> in the Type lab, describe the box and click <b>Copy AI prompt</b>: it copies the whole format, an example and your description. Paste that into any chat AI (Claude, ChatGPT, Gemini…), then paste its answer into the Type lab. If Boxsmith finds problems, <b>Copy problems for an AI</b> and paste them back. <a href="https://github.com/markplaga/Boxsmith/blob/main/BOX-TYPES.md">Box type format</a> · <a href="https://github.com/markplaga/Boxsmith/tree/main/types">Example types</a> · <a href="https://github.com/markplaga/markplaga-boxsmith-type">Shared types</a></p>
 
 <h2 id="h-kerftest">16. Dialing in fit with the kerf test</h2>
 <ol>

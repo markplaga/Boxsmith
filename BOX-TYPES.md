@@ -7,7 +7,7 @@ Boxsmith checks a type file in three steps. It reads the format, builds the part
 This page is the whole format. It is written so that it can be given to an AI as is, together with a description of the box you want.
 
 - JSON Schema: [`boxsmith-type.schema.json`](boxsmith-type.schema.json)
-- Examples: [`types/`](types/) has the built-in Closed box, Open tray and Cube frame written as type files. They make exactly the same cut sheets as the built-in styles (a test checks this).
+- Examples: [`types/`](types/) has the built-in Closed box, Open tray and Cube frame written as type files. They make exactly the same cut sheets as the built-in styles (a test checks this). [`box-with-shelf.json`](types/box-with-shelf.json) is a new style: an open cubby whose shelf is a `panel` with finger tabs that pass through `fingers` slots in the side walls.
 - Shared types: [markplaga/markplaga-boxsmith-type](https://github.com/markplaga/markplaga-boxsmith-type)
 
 ## A first example
@@ -177,6 +177,8 @@ Slotted dividers that fit inside a space, the same as the built-in Dividers opti
 | `height` | Divider height as a percentage of `h` (default 100). |
 | `prefix` | Text before each divider name. |
 
+**Slots for a panel's tabs.** A `fingers` hole that is one thickness tall with one `"f"` edge, like `{"fingers": {"size": [L, "t"], "edges": ["f", "e", "e", "e"], "at": [x, y]}}`, is exactly the row of finger tabs of an `"f"` edge of length `L`. So it is the slot row for a panel whose `"f"` edge of the same length passes through the wall there. [`box-with-shelf.json`](types/box-with-shelf.json) does this.
+
 ## Edges
 
 | Edge | What it is |
@@ -216,7 +218,11 @@ Try a type with a few different settings (small and large, inside measurements, 
 
 ## Writing a type with an AI
 
-Give the AI this page and describe the box. Paste its JSON into the **Type lab** (at the end of the Box style list) and click **Check**; if there are problems, **Copy problems for an AI** and paste them back. From code:
+In the **Type lab** (at the end of the Box style list), open **Have an AI write one**, describe the box and click **Copy AI prompt**. That copies this whole page, an example and your description, with rules for the reply; tick *Change the file below instead* to have the AI edit the type that's open. Paste the prompt into any chat AI, paste its JSON back into the Type lab and click **Check**. If there are problems, **Copy problems for an AI** and paste them back.
+
+An AI connected through **📱 Remote** (like Box Bot) can do the same itself: `typeFormat` gives it this page and the schema, `typeCheck` and `typeAdd` check and add its file, and `add` puts boxes of the new style in the layout. See *Remote control* in [API.md](API.md).
+
+From code:
 
 ```js
 const result = Boxsmith.types.check(JSON.parse(text), { W: 160, D: 100, H: 60 });

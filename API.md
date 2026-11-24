@@ -262,7 +262,12 @@ The **📱 Remote** button in Arrange boxes links a second screen to the one sho
 | `snap` | `{ to, side, gap? }` | Snaps against box `to` (sides as in `assemblies.snap`). |
 | `dup`, `hide`, `remove` | `{ inPlace? }` for `dup` | The Boxes buttons. |
 | `color`, `nocolor` | `{ hex: '#rrggbb' }` | Colors the selected box or part. |
-| `design`, `add` | `{ index, settings }` / `{ settings }` | Replaces a box's design in place, or adds a new box. |
+| `design`, `add` | `{ index, settings, types? }` / `{ settings, types? }` | Replaces a box's design in place, or adds a new box. `types` can carry the type files a custom style needs (`{ id: type }`); they are checked and kept in My types. |
+| `typeFormat` | `{ reference?: true, examples?: false }` | Replies `{"t":"typeFormat", format, version, schema, standardKeys, builtInStyles, reference, examples?}`: the JSON Schema, the setting keys a param can reuse, and the full format reference (BOX-TYPES.md) unless `reference: false`. `examples: true` adds the four example type files. Everything an AI needs to write a type. |
+| `typeCheck` | `{ type, settings? }` | Checks a type file and builds it in 3D at those settings (default: the model screen's current ones) without keeping it. Replies `{"t":"typeCheck", ok, stage, errors, warnings, parts, size, text}`; `text` is the problems as plain lines. |
+| `typeAdd` | `{ type, settings?, use?, force? }` | Checks the type, then adds it to My types on the model screen (`added: true`, `saved`). A type whose parts don't fit together is only added with `force: true`. `use: true` also switches the sidebar to it. Replies like `typeCheck`. Then `add` boxes with `settings: { type: id, … }`. |
+| `typeList` | none | Replies `{"t":"types","types":[{ id, name, description, saved, typeVersion, params }]}`. |
+| `typeRemove` | `{ id }` | Removes a custom style from My types. |
 | `view` | `{ yaw?, pitch?, zoom?, pan?, projection?, fov? }` | Sets the camera (degrees). `projection` is `'ortho'` or `'perspective'`; `fov` is the perspective lens, 5–120° vertical. |
 | `groupCreate` | `{ id, boxes: [i, …], origin?, parent? }` | Makes a group of those boxes. `origin` (the pivot, display unit) defaults to the centre of their base. See *Groups*. |
 | `groupRemove` | `{ id }` | Ungroups: its boxes and groups move up to its parent (or out of any group). |
@@ -283,7 +288,7 @@ The **📱 Remote** button in Arrange boxes links a second screen to the one sho
 | `export` | `{ format: 'webm' \| 'gif', fps?, width?, height?, audio? }` | Records the animation from start to finish. The host also shows a Download button. WebM is a true constant frame rate (default 30 fps): see Export below. |
 | `record`, `recordStop` | `{ fps?, width?, height?, id? }` for `record` | Live recording: captures whatever the view shows in real time (manual orbiting and zooming, edits, animations started mid-take) until `recordStop`, then replies `{"t":"export","live":true,"format":"webm","data":"data:video/webm;base64,…",…}`, split into chunks when big. Default 30 fps, 1280 × 800. See Export below. |
 
-**State** (`{"t":"state",…}`) includes `boxes` (label, position, rotation, colors, hidden), `sel`, `part`, `parts`, `unit`, `stereo`, `view` (`yaw`, `pitch` in degrees, `zoom`, `pan`, `projection`, `fov`), `camera` (what the camera shows, in mm: see below), `anim` (`playing`, `t`, `duration`, `loop`, or `null`) and `exporting`.
+**State** (`{"t":"state",…}`) lists `customTypes` (the ids of the custom styles loaded on the model screen; the selected box's type file comes along as `designTypes` with its `design`) and includes `boxes` (label, position, rotation, colors, hidden), `sel`, `part`, `parts`, `unit`, `stereo`, `view` (`yaw`, `pitch` in degrees, `zoom`, `pan`, `projection`, `fov`), `camera` (what the camera shows, in mm: see below), `anim` (`playing`, `t`, `duration`, `loop`, or `null`) and `exporting`.
 
 ### Soundtrack
 

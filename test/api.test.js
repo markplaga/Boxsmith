@@ -594,7 +594,7 @@ test('box types: a registered type works like a built-in, with its own parameter
 test('box types: the JSON Schema accepts the example type files', () => {
   const Ajv = require('ajv/dist/2020');
   const validate = new Ajv({ allErrors: true, strict: false }).compile(require('../boxsmith-type.schema.json'));
-  for (const f of ['closed-box', 'open-tray', 'cube-frame']) assert.equal(validate(typeFile(f)), true, f + ': ' + JSON.stringify(validate.errors));
+  for (const f of ['closed-box', 'open-tray', 'cube-frame', 'box-with-shelf']) assert.equal(validate(typeFile(f)), true, f + ': ' + JSON.stringify(validate.errors));
   assert.equal(validate({ format: 'boxsmith-type', version: 1, id: 'x', name: 'X', parts: [] }), false);
 });
 
@@ -617,4 +617,13 @@ test('box types: layouts carry the type files they use, so they open anywhere', 
   const bad = JSON.parse(text); bad.types['carried-tray'].parts = [];
   assert.throws(() => B.assemblies.parse(bad), e => /has problems/.test(e.message) && e.errors.length > 0);
   assert.equal(B.types.get('carried-tray'), null);
+});
+
+test('box types: a new style with a panel through slotted walls fits, and a misplaced slot is caught', () => {
+  const def = typeFile('box-with-shelf');
+  for (const s of [{}, { W: 300, D: 200, H: 250, t: 6 }, { typeParams: { 'box-with-shelf': { shelfAt: 20 } } }, { dimMode: 'inside', corners: 'pinwheel' }])
+    assert.equal(B.types.check(def, s).ok, true, JSON.stringify(s));
+  def.parts[0].box.holes.right[0].fingers.at = ['t', 'H - h'];   // one thickness too high
+  const r = B.types.check(def);
+  assert.equal(r.ok, false); assert.ok(r.errors.some(e => /Right side/.test(e.message) && /Shelf/.test(e.message)));
 });
