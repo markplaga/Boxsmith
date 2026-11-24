@@ -114,6 +114,7 @@ const Remote=(()=>{
       design:withDesign?box.settings:undefined,designKey:design.length+':'+hash(design),
       placing:placingBox,maximized:document.body.classList.contains('max3d'),stereo:stereo?stereo.value:view.stereo,boxCount:layoutBoxes.length,
       library:librarySummary(),
+      recording:recording?{fps:recording.fps,width:recording.w,height:recording.h,seconds:recording.E?Math.round(recording.slot/recording.fps*10)/10:0}:null,
       view:viewDeg(),camera:typeof cameraInfo==='function'?cameraInfo():null,anim:anim?{playing:anim.playing,t:Math.round(anim.t*1000)/1000,duration:anim.duration,loop:anim.loop}:null,exporting,
       boxes:layoutBoxes.map((b,i)=>({label:layoutBoxLabel(b,i),hidden:!!b.hidden,clash:clash.has(i),position:b.position,rotation:b.rotation,colors:b.settings.colors||{}})),
       parts:partNames(box),acrylic:!!box&&boxHasAcrylic(box),
@@ -252,6 +253,8 @@ const Remote=(()=>{
         { const r=playLibrary(a.kind,a.index,true); return typeof r==='string'?r:undefined; }
       case 'capture': return capture(a);
       case 'export': return exportAnim(a);
+      case 'record': return startRecording(a);
+      case 'recordStop': return stopRecording();
       default: return 'Unknown command.';
     }
   }
@@ -542,6 +545,7 @@ const Remote=(()=>{
   function exportAnim(a){
     if(!anim) return 'Exporting needs an animation. Send animate first.';
     if(exporting) return 'An export is already running.';
+    if(recording) return 'A live recording is running. Send recordStop first.';
     if(!glCanvas()) return 'Exporting needs WebGL on the model screen.';
     if(a.format!=='webm'&&a.format!=='gif') return "format must be 'webm' or 'gif'.";
     const src=glCanvas(), aspect=src.width/src.height;
@@ -637,6 +641,74 @@ const Remote=(()=>{
       };
       step();
     }).catch(fail);
+  }
+  /* ---------- live recording: whatever the view shows, in real time, at a constant frame rate ----------
+     Time is cut into slots of 1/fps on the real clock. Each tick draws the view and encodes it into
+     every slot that has started since the last tick, with timestamp slot/fps. A slow device repeats the
+     picture rather than dropping slots, so the file's frames are always exactly 1/fps apart and the
+     count is elapsed seconds × fps. Manual orbiting, edits and animations started mid-take all land in it. */
+  let recording=null;
+  const RECORD_MAX_S=600;
+  function startRecording(a){
+    if(recording) return 'Already recording. Send recordStop to finish.';
+    if(exporting) return 'An export is running; record when it has finished.';
+    if(!glCanvas()) return 'Recording needs WebGL on the model screen.';
+    if(typeof VideoEncoder==='undefined'||typeof VideoFrame==='undefined') return 'This browser cannot record video at a constant frame rate (it needs WebCodecs; try Chrome, Edge or Safari 17+).';
+    const fps=a.fps===undefined?30:a.fps, w0=a.width===undefined?1280:a.width, h0=a.height===undefined?800:a.height;
+    if(!finite(fps)||fps<1||fps>60) return 'fps must be from 1 to 60.';
+    if(!finite(w0)||!finite(h0)||w0<16||h0<16||w0>1920||h0>1920) return 'width and height must be from 16 to 1920 pixels.';
+    const w=Math.round(w0)&~1, h=Math.round(h0)&~1, id=typeof a.id==='string'?a.id.slice(0,80):'rec'+Date.now().toString(36);
+    const c=document.createElement('canvas'); c.width=w; c.height=h; const ctx=c.getContext('2d');
+    const rec=recording={id,fps,w,h,c,ctx,E:null,slot:0,t0:0,timer:0,stopping:false,failed:null};
+    renderRecIndicator();
+    cfrEncoder(w,h,fps).then(E=>{
+      if(recording!==rec) return;
+      rec.E=E; rec.t0=performance.now();
+      const tick=()=>{
+        if(recording!==rec||rec.stopping) return;
+        const due=Math.floor((performance.now()-rec.t0)*fps/1000)+1;   // slots started so far
+        try{
+          if(due>rec.slot&&rec.E.backlog()<30){
+            render(); drawInto(ctx,0,0,w,h);                             // the view as it is right now
+            while(rec.slot<due){ rec.E.addFrame(c,rec.slot); rec.slot++; }
+          }
+        }catch(err){ rec.failed=err; return stopRecording(); }
+        if(rec.slot/fps>=RECORD_MAX_S){ note('record: stopped at the '+RECORD_MAX_S/60+'-minute limit.'); return stopRecording(); }
+        renderRecIndicator();
+        rec.timer=setTimeout(tick,Math.max(1,(rec.slot*1000/fps)-(performance.now()-rec.t0)));
+      };
+      tick();
+      sendState(true);
+    }).catch(err=>{ if(recording===rec){ recording=null; renderRecIndicator(); note('record: '+(err&&err.message||err)); sendState(true); } });
+  }
+  function stopRecording(){
+    const rec=recording;
+    if(!rec) return 'Nothing is being recorded.';
+    if(rec.stopping) return;
+    rec.stopping=true; clearTimeout(rec.timer);
+    const done=(err)=>{ recording=null; renderRecIndicator(); if(err) note('record: the video could not be made: '+(err.message||err)); sendState(true); };
+    if(!rec.E){ done(rec.failed); return; }
+    // fill the slots up to now, so the take ends where Stop was pressed
+    try{ const due=Math.floor((performance.now()-rec.t0)*rec.fps/1000)+1; if(due>rec.slot){ render(); drawInto(rec.ctx,0,0,rec.w,rec.h); while(rec.slot<due){ rec.E.addFrame(rec.c,rec.slot); rec.slot++; } } }catch(e){}
+    const frames=rec.slot;
+    rec.E.done(frames).then(bytes=>{
+      const blob=new Blob([bytes],{type:'video/webm'}), r=new FileReader();
+      r.onload=()=>sendBig({t:'export',id:rec.id,format:'webm',live:true,data:r.result,bytes:blob.size,width:rec.w,height:rec.h,fps:rec.fps,frames,duration:frames/rec.fps,cfr:true,codec:rec.E.codec});
+      r.readAsDataURL(blob);
+      showDownload(blob,'boxsmith-recording.webm');
+      done(rec.failed);
+    }).catch(done);
+  }
+  // ● REC in the corner while recording (it is not part of the video), and the Record button's label
+  function renderRecIndicator(){
+    let el=$('#recIndicator');
+    if(!recording){ if(el) el.remove(); }
+    else {
+      if(!el){ el=document.createElement('button'); el.id='recIndicator'; el.type='button'; el.className='rec-indicator'; el.title='Recording. Click to stop.'; el.addEventListener('click',e=>{ e.stopPropagation(); stopRecording(); }); document.body.appendChild(el); }
+      const s=recording.E?Math.floor(recording.slot/recording.fps):0;
+      el.textContent='● REC '+Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
+    }
+    const b=$('#layoutRecord'); if(b){ b.textContent=recording?'■ Stop recording':'● Record'; b.classList.toggle('on',!!recording); }
   }
   // Import animation (host): read the file, warn before replacing the open layout, load with a
   // loading indicator (big files take a few seconds), then play.
@@ -927,7 +999,8 @@ const Remote=(()=>{
         '<section><h4>Animation</h4>'+(st.anim?'<p class="rm-small">'+(st.anim.playing?'Playing':'Paused')+' at '+st.anim.t.toFixed(2)+' of '+st.anim.duration.toFixed(2)+' s'+(st.exporting?' · recording…':'')+'</p>':'<p class="rm-small">No animation loaded. Animations are sent with the animate command (see the API guide).</p>')+
         '<div class="rm-row"><button type="button" class="btn" data-rm-anim="play"'+(st.anim?'':' disabled')+'>▶ Play</button><button type="button" class="btn" data-rm-anim="pause"'+(st.anim?'':' disabled')+'>❚❚ Pause</button><button type="button" class="btn" data-rm-anim="stop"'+(st.anim?'':' disabled')+'>■ Stop</button></div>'+
         '<div class="rm-row"><button type="button" class="btn" data-rm-cap="still">Capture view</button><button type="button" class="btn" data-rm-cap="sheet"'+(st.anim?'':' disabled')+'>Contact sheet (12 frames)</button>'+
-        '<button type="button" class="btn" data-rm-exp="webm"'+(st.anim&&!st.exporting?'':' disabled')+'>Record WebM</button><button type="button" class="btn" data-rm-exp="gif"'+(st.anim&&!st.exporting?'':' disabled')+'>Record GIF</button></div>'+
+        '<button type="button" class="btn" data-rm-exp="webm"'+(st.anim&&!st.exporting?'':' disabled')+'>Record WebM</button><button type="button" class="btn" data-rm-exp="gif"'+(st.anim&&!st.exporting?'':' disabled')+'>Record GIF</button>'+
+        '<button type="button" class="btn'+(st.recording?' on':'')+'" data-rm-live>'+(st.recording?'■ Stop live recording ('+st.recording.seconds+' s)':'● Live record')+'</button></div>'+
         (shots.length?'<div class="rm-shots">'+shots.map(x=>'<figure>'+(x.video?'<video src="'+x.src+'" controls muted playsinline style="width:100%"></video>':'<img src="'+x.src+'" alt="">')+'<figcaption>'+esc(x.label)+' · <a download="'+esc(x.name)+'" href="'+x.src+'">Save</a></figcaption></figure>').join('')+'</div>':'')+'</section>';
       setRemoteStatus(st.status||''); return;
     }
@@ -984,6 +1057,7 @@ const Remote=(()=>{
       if(b.dataset.rmLib){ const [kind,i]=b.dataset.rmLib.split(':'); return cmd('library',{kind,index:+i}); }
       if(b.dataset.rmCap) return cmd('capture',b.dataset.rmCap==='sheet'?{mode:'sheet',count:12}:{mode:'still'});
       if(b.dataset.rmExp) return cmd('export',{format:b.dataset.rmExp});
+      if(b.dataset.rmLive!==undefined) return cmd(st&&st.recording?'recordStop':'record',{});
       if(b.dataset.rmTurn) return cmd('turn',{kind:b.dataset.rmTurn});
     });
     p.addEventListener('change',e=>{
@@ -1013,6 +1087,8 @@ const Remote=(()=>{
   };
 
   function init(){
+    const recBtn=$('#layoutRecord');
+    if(recBtn) recBtn.addEventListener('click',()=>{ const err=recording?stopRecording():startRecording({}); if(err) toast(err); sendState(true); });
     if(!$('#remoteBtn')) return;
     $('#remoteBtn').addEventListener('click',()=>{ const d=$('#remoteDialog'); if(d.hidden) openDialog(); else closeDialog(); });
     $('#remoteDialog').addEventListener('click',e=>{
@@ -1040,6 +1116,6 @@ const Remote=(()=>{
     if(q.has('remote')) remoteMode(q.get('remote'));
     window.addEventListener('pagehide',()=>{ if(host) host.send({t:'bye'}); });
   }
-  return {init,hostStart,hostStop,remoteMode,animationFromFile,importAnimationFile,playLibrary,get library(){ return library&&{title:library.title,current:library.current,animations:library.animations.map(x=>x.name),designs:library.designs.map(x=>x.name)}; },run:(op,args)=>{ let e; try{ e=op==='batch'?Anim.runBatch(args&&args.cmds,runCmd).errors.join(' '):runCmd(op,args||{}); }catch(err){ e=err.message; } sendState(true); return e||null; },get anim(){ return anim&&{playing:anim.playing,t:anim.t,duration:anim.duration}; },get code(){ return hostCode; }};
+  return {record:a=>startRecording(a||{}),recordStop:()=>stopRecording(),get recording(){ return !!recording; },init,hostStart,hostStop,remoteMode,animationFromFile,importAnimationFile,playLibrary,get library(){ return library&&{title:library.title,current:library.current,animations:library.animations.map(x=>x.name),designs:library.designs.map(x=>x.name)}; },run:(op,args)=>{ let e; try{ e=op==='batch'?Anim.runBatch(args&&args.cmds,runCmd).errors.join(' '):runCmd(op,args||{}); }catch(err){ e=err.message; } sendState(true); return e||null; },get anim(){ return anim&&{playing:anim.playing,t:anim.t,duration:anim.duration}; },get code(){ return hostCode; }};
 })();
 Remote.init();
