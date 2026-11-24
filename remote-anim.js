@@ -278,6 +278,68 @@
   }
 
 
+  /* ---------- zip files ---------- */
+  // Reads a .zip (stored or deflated entries) into [{name, bytes}]. Folders are skipped. Uses the
+  // browser's own DecompressionStream, so nothing extra is needed.
+  async function readZip(buffer){
+    const u8=buffer instanceof Uint8Array?buffer:new Uint8Array(buffer), dv=new DataView(u8.buffer,u8.byteOffset,u8.byteLength);
+    let eocd=-1;
+    for(let i=u8.length-22;i>=Math.max(0,u8.length-65557);i--) if(dv.getUint32(i,true)===0x06054b50){ eocd=i; break; }
+    if(eocd<0) throw new Error('That is not a zip file.');
+    const count=dv.getUint16(eocd+10,true); let p=dv.getUint32(eocd+16,true);
+    if(count===0xffff||p===0xffffffff) throw new Error('Zip64 archives are not supported.');
+    const out=[], dec=new TextDecoder();
+    for(let k=0;k<count;k++){
+      if(dv.getUint32(p,true)!==0x02014b50) throw new Error('The zip file is damaged.');
+      const method=dv.getUint16(p+10,true), csize=dv.getUint32(p+20,true), size=dv.getUint32(p+24,true);
+      const nlen=dv.getUint16(p+28,true), xlen=dv.getUint16(p+30,true), clen=dv.getUint16(p+32,true), local=dv.getUint32(p+42,true);
+      const name=dec.decode(u8.subarray(p+46,p+46+nlen));
+      p+=46+nlen+xlen+clen;
+      if(name.endsWith('/')||name.startsWith('__MACOSX/')||/(^|\/)\./.test(name)) continue;   // folders, Mac and hidden files
+      const start=local+30+dv.getUint16(local+26,true)+dv.getUint16(local+28,true), raw=u8.subarray(start,start+csize);
+      let bytes;
+      if(method===0) bytes=raw.slice();
+      else if(method===8){
+        const stream=new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+        bytes=new Uint8Array(await new Response(stream).arrayBuffer());
+      } else throw new Error(name+' uses a compression method Boxsmith cannot read.');
+      if(bytes.length!==size) throw new Error(name+' did not unpack to the right size.');
+      out.push({name,bytes});
+    }
+    return out;
+  }
+  // Turns the files of a zip into a library: animations (with a matching video if there is one) and
+  // designs (layout files). Names come from the file names, minus a prefix they all share.
+  function buildLibrary(files,zipName){
+    const dec=new TextDecoder(), base=n=>n.split('/').pop().replace(/\.[^.]+$/,'');
+    const animations=[], designs=[], videos={};
+    for(const f of files){
+      const ext=(f.name.split('.').pop()||'').toLowerCase();
+      if(['mp4','webm','mov','m4v','gif'].includes(ext)){ videos[base(f.name).toLowerCase()]=f; continue; }
+      if(ext!=='json') continue;
+      const text=dec.decode(f.bytes), found=parseAnimationFile(text);
+      if(found.args){
+        const a=found.args, dur=Math.max(0,...(a.keyframes||[]).map(k=>+k.t||0),...(a.camera||[]).map(c=>+c.t||0));
+        animations.push({kind:'animation',file:f.name,key:base(f.name),args:a,duration:Math.round(dur*100)/100,boxes:a.base&&Array.isArray(a.base.boxes)?a.base.boxes.length:null});
+        continue;
+      }
+      try{ const d=JSON.parse(text); if(d&&d.format==='boxsmith-layout'&&Array.isArray(d.boxes)) designs.push({kind:'design',file:f.name,key:base(f.name),json:text,boxes:d.boxes.length}); }catch(e){}
+    }
+    const all=animations.concat(designs), keys=all.map(x=>x.key);
+    let prefix='';
+    if(keys.length>1){ prefix=keys.reduce((p,k)=>{ let i=0; while(i<p.length&&i<k.length&&p[i]===k[i]) i++; return p.slice(0,i); }); prefix=prefix.slice(0,prefix.search(/[-_ ][^-_ ]*$/)+1); }
+    const nice=k=>{ let s=k; if(prefix&&s.startsWith(prefix)&&s.length>prefix.length) s=s.slice(prefix.length); s=s.replace(/[-_ ]anim(ation)?$/i,'').replace(/[-_]+/g,' ').trim(); return s.charAt(0).toUpperCase()+s.slice(1); };
+    for(const x of all){
+      x.name=(x.args&&typeof x.args.name==='string'&&x.args.name)||nice(x.key);
+      if(x.kind==='animation'){ const v=videos[x.key.toLowerCase()]||videos[x.key.toLowerCase().replace(/[-_ ]anim(ation)?$/i,'')]; if(v) x.video=v; }
+    }
+    // title: the folder everything sits in, if there is one, else the zip's own name
+    const tops=new Set(files.map(f=>f.name.includes('/')?f.name.split('/')[0]:''));
+    const folder=tops.size===1?[...tops][0]:'';
+    const title=(folder||(zipName||'').replace(/\.zip$/i,'')).replace(/[-_]+/g,' ').trim();
+    return {title:title?title.charAt(0).toUpperCase()+title.slice(1):'Animations',animations,designs};
+  }
+
   /* ---------- batches ---------- */
   // Runs each {op, args}; run(op, args) returns an error string or nothing. Never throws.
   function runBatch(cmds,run,max=500){
@@ -292,5 +354,5 @@
     return {ran,errors};
   }
 
-  return {parseAnimationFile,runBatch,MAX_KEYS,MAX_DURATION,EASE,validateAnimation,sampleAt,evenTimes,rotationBetween,eulerToQuat,quatToEuler,slerp,splitMessage,joinParts,encodeGIF,LIMIT};
+  return {readZip,buildLibrary,parseAnimationFile,runBatch,MAX_KEYS,MAX_DURATION,EASE,validateAnimation,sampleAt,evenTimes,rotationBetween,eulerToQuat,quatToEuler,slerp,splitMessage,joinParts,encodeGIF,LIMIT};
 });

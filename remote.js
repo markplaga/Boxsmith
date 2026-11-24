@@ -112,6 +112,7 @@ const Remote=(()=>{
     return {t:'state',unit:S.unit,scale:layoutCoordinateScale(),sel:box?layoutSelection:-1,part:layoutPart,
       design:withDesign?box.settings:undefined,designKey:design.length+':'+hash(design),
       placing:placingBox,maximized:document.body.classList.contains('max3d'),stereo:stereo?stereo.value:view.stereo,boxCount:layoutBoxes.length,
+      library:library?{title:library.title,current:library.current,animations:library.animations.map(x=>({name:x.name,duration:x.duration,boxes:x.boxes})),designs:library.designs.map(x=>({name:x.name,boxes:x.boxes}))}:null,
       view:viewDeg(),anim:anim?{playing:anim.playing,t:Math.round(anim.t*1000)/1000,duration:anim.duration,loop:anim.loop}:null,exporting,
       boxes:layoutBoxes.map((b,i)=>({label:layoutBoxLabel(b,i),hidden:!!b.hidden,clash:clash.has(i),position:b.position,rotation:b.rotation,colors:b.settings.colors||{}})),
       parts:partNames(box),acrylic:!!box&&boxHasAcrylic(box),
@@ -221,6 +222,10 @@ const Remote=(()=>{
         if(!anim) return 'No animation is loaded.';
         if(!finite(a.t)) return 't must be a finite number of seconds.';
         seekAnim(a.t); return;
+      case 'library':
+        if(a.kind!=='animation'&&a.kind!=='design') return "kind must be 'animation' or 'design'.";
+        if(!Number.isInteger(a.index)) return 'index must be a whole number.';
+        { const r=playLibrary(a.kind,a.index,true); return typeof r==='string'?r:undefined; }
       case 'capture': return capture(a);
       case 'export': return exportAnim(a);
       default: return 'Unknown command.';
@@ -517,6 +522,7 @@ const Remote=(()=>{
   // loading indicator (big files take a few seconds), then play.
   function importAnimationFile(file){
     if(!file) return;
+    if(/\.zip$/i.test(file.name)||/zip/.test(file.type)) return openLibrary(file);
     const busy=document.createElement('div'); busy.className='anim-loading'; busy.innerHTML='<span>Loading animation…</span>'; document.body.appendChild(busy);
     const done=msg=>{ busy.remove(); if(msg){ toast(msg); } };
     file.text().then(text=>{
@@ -533,9 +539,79 @@ const Remote=(()=>{
       },60);
     }).catch(err=>done('Could not read that file: '+err.message));
   }
+  /* ---------- animation library (a zip of animations, designs and videos) ---------- */
+  let library=null;   // {title, animations, designs, current, owns}
+  function openLibrary(file){
+    const busy=document.createElement('div'); busy.className='anim-loading'; busy.innerHTML='<span>Opening '+esc(file.name)+'…</span>'; document.body.appendChild(busy);
+    file.arrayBuffer().then(buf=>Anim.readZip(buf)).then(files=>{
+      const lib=Anim.buildLibrary(files,file.name);
+      busy.remove();
+      if(!lib.animations.length&&!lib.designs.length){ toast('No animations or designs found in '+file.name+'.'); return; }
+      lib.animations.sort((a,b)=>a.name.localeCompare(b.name)); lib.designs.sort((a,b)=>a.name.localeCompare(b.name));
+      for(const x of lib.animations) if(x.video) x.videoURL=URL.createObjectURL(new Blob([x.video.bytes],{type:/\.webm$/i.test(x.video.name)?'video/webm':/\.gif$/i.test(x.video.name)?'image/gif':'video/mp4'}));
+      if(library) for(const x of library.animations) if(x.videoURL) URL.revokeObjectURL(x.videoURL);
+      library=Object.assign(lib,{current:null,owns:false,hidden:false});
+      renderLibrary(); sendState(true);
+      toast(lib.animations.length+' animation'+(lib.animations.length===1?'':'s')+(lib.designs.length?' and '+lib.designs.length+' design'+(lib.designs.length===1?'':'s'):'')+' ready to play');
+    }).catch(err=>{ busy.remove(); toast('Could not open '+file.name+': '+err.message); });
+  }
+  // Ask once before a library item replaces a layout the library did not load.
+  function libraryMayReplace(count){
+    if(library.owns||!layoutBoxes.length) return true;
+    return confirm('Playing from the library replaces the '+layoutBoxes.length+' boxes open now with '+(count?count+' boxes':'its own layout')+'. Save your layout first if you want to keep it.\n\nGo ahead?');
+  }
+  // kind: 'animation' or 'design'. fromRemote skips the question (the model screen's owner already has the library open).
+  function playLibrary(kind,index,fromRemote){
+    if(!library) return 'No library is open. Import a zip of animations first.';
+    const list=kind==='design'?library.designs:library.animations, item=list[index];
+    if(!item) return 'There is no '+kind+' '+index+' in the library.';
+    if(!fromRemote&&!libraryMayReplace(item.boxes)) return;
+    const busy=document.createElement('div'); busy.className='anim-loading'; busy.innerHTML='<span>Loading '+esc(item.name)+'…</span>'; document.body.appendChild(busy);
+    return new Promise(done=>setTimeout(()=>{
+      let err=null;
+      try{
+        if(kind==='design'){ stopAnim(true); openBoxLayout(item.json); }
+        else { err=runCmd('animate',item.args); if(!err&&anim) anim.name=item.name; }
+      }catch(e){ err=e.message; }
+      busy.remove();
+      if(err) toast('Could not play '+item.name+': '+err); else { library.owns=true; library.current=kind+':'+index; }
+      renderLibrary(); renderAnimBar(); sendState(true); done(err);
+    },60));
+  }
+  function showLibraryVideo(index){
+    const item=library&&library.animations[index]; if(!item||!item.videoURL) return;
+    const m=document.createElement('div'); m.className='lib-video';
+    m.innerHTML='<div>'+(/\.gif$/i.test(item.video.name)?'<img src="'+item.videoURL+'" alt="" style="max-width:100%;max-height:78vh">':'<video src="'+item.videoURL+'" controls autoplay playsinline></video>')+'<p><span>'+esc(item.name)+' · video</span><button type="button" class="btn">Close</button></p></div>';
+    const close=()=>m.remove();
+    m.addEventListener('click',e=>{ if(e.target===m||e.target.closest('button')) close(); });
+    document.body.appendChild(m);
+  }
+  function renderLibrary(){
+    let p=$('#animLib');
+    const btn=$('#animLibBtn'); if(btn) btn.hidden=!library;
+    if(!library||library.hidden){ if(p) p.remove(); return; }
+    if(!p){
+      p=document.createElement('div'); p.id='animLib'; p.className='anim-lib'; document.body.appendChild(p);
+      p.addEventListener('click',e=>{
+        const b=e.target.closest('button'); if(!b) return;
+        if(b.dataset.lib==='close'){ library.hidden=true; renderLibrary(); return; }
+        if(b.dataset.play!==undefined) playLibrary('animation',+b.dataset.play);
+        if(b.dataset.open!==undefined) playLibrary('design',+b.dataset.open);
+        if(b.dataset.video!==undefined) showLibraryVideo(+b.dataset.video);
+      });
+    }
+    const meta=x=>[x.duration!==undefined?x.duration.toFixed(1)+' s':'',x.boxes?x.boxes+' boxes':''].filter(Boolean).join(' · ');
+    const playing=k=>library.current===k&&anim&&anim.playing;
+    p.innerHTML='<header><b>📚 '+esc(library.title)+'</b><button type="button" class="btn" data-lib="close" aria-label="Hide the library">✕</button></header>'+
+      (library.animations.length?'<h5>Animations</h5>'+library.animations.map((x,i)=>'<div class="lib-row'+(library.current==='animation:'+i?' on':'')+'"><span class="lib-name"><b>'+esc(x.name)+'</b><small>'+esc(meta(x))+'</small></span>'+
+        '<button type="button" class="btn primary" data-play="'+i+'">'+(playing('animation:'+i)?'↻ Restart':'▶ Play')+'</button>'+(x.videoURL?'<button type="button" class="btn" data-video="'+i+'" title="Watch the recorded video">🎬</button>':'')+'</div>').join(''):'')+
+      (library.designs.length?'<h5>Designs</h5>'+library.designs.map((x,i)=>'<div class="lib-row'+(library.current==='design:'+i?' on':'')+'"><span class="lib-name"><b>'+esc(x.name)+'</b><small>'+esc(x.boxes+' boxes')+'</small></span><button type="button" class="btn" data-open="'+i+'">Open</button></div>').join(''):'');
+  }
+
   // Playback bar on the model screen, shown while an animation is loaded.
   let barRaf=0;
   function renderAnimBar(){
+    if(library&&!library.hidden&&$('#animLib')){ const k=library.current, on=!!(anim&&anim.playing); if(renderAnimBar._k!==k+on){ renderAnimBar._k=k+on; renderLibrary(); } }
     let bar=$('#animBar');
     if(!anim){ if(bar) bar.remove(); return; }
     if(!bar){
@@ -690,6 +766,9 @@ const Remote=(()=>{
         '<button type="button" class="btn" data-rm="openfile">Open a layout file from this device</button><input type="file" id="rmFile" accept=".json,application/json" hidden>'+
         '<button type="button" class="btn" data-rm="animfile">Import an animation from this device</button><input type="file" id="rmAnimFile" accept=".json,application/json" hidden></div>'+
         '<div class="rm-row"><button type="button" class="btn rm-danger" data-rm="clear"'+(st.boxCount?'':' disabled')+'>'+(clearArmed>Date.now()?'Tap again to clear every box':'Clear all boxes')+'</button></div></section>'+
+        (st.library?'<section><h4>Library · '+esc(st.library.title)+'</h4>'+
+          st.library.animations.map((x,i)=>'<div class="rm-row"><span class="rm-grow"><b>'+esc(x.name)+'</b> <small class="rm-small">'+x.duration.toFixed(1)+' s'+(x.boxes?' · '+x.boxes+' boxes':'')+'</small></span><button type="button" class="btn'+(st.library.current==='animation:'+i?' on':'')+'" data-rm-lib="animation:'+i+'">▶ Play</button></div>').join('')+
+          st.library.designs.map((x,i)=>'<div class="rm-row"><span class="rm-grow"><b>'+esc(x.name)+'</b> <small class="rm-small">design · '+x.boxes+' boxes</small></span><button type="button" class="btn'+(st.library.current==='design:'+i?' on':'')+'" data-rm-lib="design:'+i+'">Open</button></div>').join('')+'</section>':'')+
         '<section><h4>Animation</h4>'+(st.anim?'<p class="rm-small">'+(st.anim.playing?'Playing':'Paused')+' at '+st.anim.t.toFixed(2)+' of '+st.anim.duration.toFixed(2)+' s'+(st.exporting?' · recording…':'')+'</p>':'<p class="rm-small">No animation loaded. Animations are sent with the animate command (see the API guide).</p>')+
         '<div class="rm-row"><button type="button" class="btn" data-rm-anim="play"'+(st.anim?'':' disabled')+'>▶ Play</button><button type="button" class="btn" data-rm-anim="pause"'+(st.anim?'':' disabled')+'>❚❚ Pause</button><button type="button" class="btn" data-rm-anim="stop"'+(st.anim?'':' disabled')+'>■ Stop</button></div>'+
         '<div class="rm-row"><button type="button" class="btn" data-rm-cap="still">Capture view</button><button type="button" class="btn" data-rm-cap="sheet"'+(st.anim?'':' disabled')+'>Contact sheet (12 frames)</button>'+
@@ -747,6 +826,7 @@ const Remote=(()=>{
       if(r==='fit'||r==='top') return cmd(r,{});
       if(b.dataset.rmStep) return cmd('step',{key:b.dataset.rmStep});
       if(b.dataset.rmAnim) return cmd(b.dataset.rmAnim,{});
+      if(b.dataset.rmLib){ const [kind,i]=b.dataset.rmLib.split(':'); return cmd('library',{kind,index:+i}); }
       if(b.dataset.rmCap) return cmd('capture',b.dataset.rmCap==='sheet'?{mode:'sheet',count:12}:{mode:'still'});
       if(b.dataset.rmExp) return cmd('export',{format:b.dataset.rmExp});
       if(b.dataset.rmTurn) return cmd('turn',{kind:b.dataset.rmTurn});
@@ -787,6 +867,7 @@ const Remote=(()=>{
     });
     remoteEvents();
     $('#animImport').addEventListener('click',()=>$('#animFile').click());
+    $('#animLibBtn').addEventListener('click',()=>{ if(library){ library.hidden=!library.hidden; renderLibrary(); } });
     $('#animFile').addEventListener('change',e=>{ const f=e.target.files[0]; e.target.value=''; importAnimationFile(f); });
     // design edits on a remote's sidebar go to the model screen
     const upd=update;
@@ -798,6 +879,6 @@ const Remote=(()=>{
     if(q.has('remote')) remoteMode(q.get('remote'));
     window.addEventListener('pagehide',()=>{ if(host) host.send({t:'bye'}); });
   }
-  return {init,hostStart,hostStop,remoteMode,animationFromFile,importAnimationFile,run:(op,args)=>{ let e; try{ e=op==='batch'?Anim.runBatch(args&&args.cmds,runCmd).errors.join(' '):runCmd(op,args||{}); }catch(err){ e=err.message; } sendState(true); return e||null; },get anim(){ return anim&&{playing:anim.playing,t:anim.t,duration:anim.duration}; },get code(){ return hostCode; }};
+  return {init,hostStart,hostStop,remoteMode,animationFromFile,importAnimationFile,playLibrary,get library(){ return library&&{title:library.title,current:library.current,animations:library.animations.map(x=>x.name),designs:library.designs.map(x=>x.name)}; },run:(op,args)=>{ let e; try{ e=op==='batch'?Anim.runBatch(args&&args.cmds,runCmd).errors.join(' '):runCmd(op,args||{}); }catch(err){ e=err.message; } sendState(true); return e||null; },get anim(){ return anim&&{playing:anim.playing,t:anim.t,duration:anim.duration}; },get code(){ return hostCode; }};
 })();
 Remote.init();

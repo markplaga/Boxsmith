@@ -344,3 +344,36 @@ test('Import animation reads the saved animation file formats', () => {
   assert.match(Anim.parseAnimationFile('{"hello":1}').error, /No animation/);
   assert.match(Anim.parseAnimationFile('not json').error, /JSON/);
 });
+
+test('a zip of animations, designs and videos becomes a named library', async () => {
+  const zlib = require('node:zlib');
+  // a tiny zip writer: one stored entry, the rest deflated, all inside one folder
+  const entries = [
+    ['pack/', ''], ['pack/README.md', 'hello'],
+    ['pack/animations/bot-heart-climb-anim.json', JSON.stringify([{ op: 'animate', args: { keyframes: [{ t: 0, boxes: {} }, { t: 2.5, boxes: {} }], base: { format: 'boxsmith-layout', boxes: [{}, {}, {}] } } }])],
+    ['pack/animations/bot-wave-anim.json', JSON.stringify({ op: 'animate', args: { keyframes: [{ t: 1, boxes: {} }] } })],
+    ['pack/designs/bot-tower.json', JSON.stringify({ format: 'boxsmith-layout', version: 1, boxes: [{}, {}] })],
+    ['pack/videos/bot-heart-climb.mp4', 'not really a video'],
+    ['pack/.DS_Store', 'junk']
+  ];
+  const locals = [], central = []; let offset = 0;
+  entries.forEach(([name, text], k) => {
+    const data = Buffer.from(text), stored = k === 1 || !text, body = stored ? data : zlib.deflateRawSync(data);
+    const n = Buffer.from(name), head = Buffer.alloc(30), dir = Buffer.alloc(46);
+    head.writeUInt32LE(0x04034b50, 0); head.writeUInt16LE(stored ? 0 : 8, 8); head.writeUInt32LE(body.length, 18); head.writeUInt32LE(data.length, 22); head.writeUInt16LE(n.length, 26);
+    dir.writeUInt32LE(0x02014b50, 0); dir.writeUInt16LE(stored ? 0 : 8, 10); dir.writeUInt32LE(body.length, 20); dir.writeUInt32LE(data.length, 24); dir.writeUInt16LE(n.length, 28); dir.writeUInt32LE(offset, 42);
+    locals.push(head, n, body); central.push(dir, n); offset += 30 + n.length + body.length;
+  });
+  const cd = Buffer.concat(central), end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(entries.length, 8); end.writeUInt16LE(entries.length, 10); end.writeUInt32LE(cd.length, 12); end.writeUInt32LE(offset, 16);
+  const zip = Buffer.concat([...locals, cd, end]);
+
+  const files = await Anim.readZip(zip);
+  assert.deepEqual(files.map(f => f.name), ['pack/README.md', 'pack/animations/bot-heart-climb-anim.json', 'pack/animations/bot-wave-anim.json', 'pack/designs/bot-tower.json', 'pack/videos/bot-heart-climb.mp4']);
+  assert.equal(Buffer.from(files[0].bytes).toString(), 'hello');
+  const lib = Anim.buildLibrary(files, 'download-123.zip');
+  assert.equal(lib.title, 'Pack');                                                   // the folder inside the zip, not the download name
+  assert.deepEqual(lib.animations.map(a => [a.name, a.duration, a.boxes, !!a.video]), [['Heart climb', 2.5, 3, true], ['Wave', 1, null, false]]);
+  assert.deepEqual(lib.designs.map(d => [d.name, d.boxes]), [['Tower', 2]]);
+  await assert.rejects(Anim.readZip(Buffer.from('not a zip at all, just some text that is long enough')), /not a zip/);
+});
