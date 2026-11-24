@@ -1118,25 +1118,77 @@ function lampBasis(lamp,right,up,away,c0){
   Rl.premultiply(new THREE.Matrix4().makeTranslation(c0[0],c0[1],c0[2])); Rl.multiply(new THREE.Matrix4().makeTranslation(-c0[0],-c0[1],-c0[2]));
   return {Rl,CAMV:{away:a0,up:u0,right:r0}};
 }
-function renderGL(){
-  const w=cv.clientWidth, h=cv.clientHeight; if(!w||!h) return;
-  GL.r.setPixelRatio(window.devicePixelRatio||1); GL.r.setSize(w,h,false);
-  glColors(); lampFrame();
+// The 3D view's camera, worked out once for both drawing and reporting (Remote state, frame).
+// w, h: the canvas size in CSS pixels. Lengths are mm.
+function cameraGeometry(w=cv.clientWidth,h=cv.clientHeight){
   const arranging=layingOut(), lamp=LAMP.on&&!arranging;
   const model=arranging?boxLayoutScene:scene;
   const {ctr:center,R:radius}=model;
   const explode=arranging?0:view.explode;
   const up0=!arranging&&scene.divLift? (scene.divLift*1.15*1.25+0.6)*scene.R*view.explode : 0;
-  const C=[center[0]+view.pan[0],center[1]+view.pan[1],center[2]+up0*0.45+view.pan[2]], cy=Math.cos(view.yaw), sy=Math.sin(view.yaw), cp=Math.cos(view.pitch), sp=Math.sin(view.pitch), cp0=Math.cos(LAMP.pitch), sp0=Math.sin(LAMP.pitch); let cp_=0;
+  const C=[center[0]+view.pan[0],center[1]+view.pan[1],center[2]+up0*0.45+view.pan[2]], cy=Math.cos(view.yaw), sy=Math.sin(view.yaw), cp=Math.cos(view.pitch), sp=Math.sin(view.pitch);
   const stereo=stereoActive(), vw=stereo?w/2:w;
-  const scale=Math.min(vw,h)*(stereo?0.42:0.40)/(radius*(1+explode*0.9)+up0*0.45)*view.zoom;
+  const scale=Math.min(vw,h)*(stereo?0.42:0.40)/(radius*(1+explode*0.9)+up0*0.45)*view.zoom;   // CSS px per mm at the look-at point
   const away=[cp*sy,cp*cy,-sp], up=[sp*sy,sp*cy,cp], dist=radius*20, right=[cy,-sy,0];
   const {Rl,CAMV}=lampBasis(lamp,right,up,away,scene.ctr);
   // Perspective keeps the orbit and the framing: at the look-at point it shows exactly what the
   // orthographic view shows at the same zoom, so the camera stands at distance = (visible height) /
   // (2·tan(fov/2)), which is a base distance divided by zoom. A wider fov stands closer (stronger perspective).
-  const persp=cameraProjection()==='perspective', cam=persp?GL.pcam:GL.cam, fov=cameraFov();
+  const persp=cameraProjection()==='perspective', fov=cameraFov();
   const pdist=persp?(h/scale)/(2*Math.tan(fov/2*PI/180)):dist;
+  return {arranging,lamp,model,center,radius,C,stereo,w,h,vw,scale,away,up,right,dist,Rl,CAMV,persp,fov,pdist};
+}
+// What the camera shows, in mm: for Remote state. visible is the width and height covered at the
+// look-at point (the whole view in orthographic; the plane through the look-at point in perspective).
+function cameraInfo(){
+  const w=cv.clientWidth, h=cv.clientHeight; if(!w||!h||!scene) return null;
+  const g=cameraGeometry(w,h), r1=v=>Math.round(v*10)/10, r3=v=>Math.round(v*1000)/1000, V=a=>a.map(r1), U=a=>a.map(r3);
+  const out={projection:g.persp?'perspective':'ortho',fov:g.fov,lookAt:V(g.C),layoutCenter:V(g.center),
+    visible:{width:r1(g.vw/g.scale),height:r1(g.h/g.scale)},canvas:{width:w,height:h,pixelRatio:window.devicePixelRatio||1},
+    axes:{right:U(g.CAMV.right),up:U(g.CAMV.up),forward:U(g.CAMV.away)}};
+  if(g.stereo) out.stereo=true;   // each eye's half of the canvas
+  if(g.persp){ out.distance=r1(g.pdist); out.eye=V(g.C.map((c,i)=>c-g.CAMV.away[i]*g.pdist)); }
+  return out;
+}
+// Zoom and pan the layout view so the given arranged boxes fill it, leaving margin (a fraction of
+// their size) free on each side. yaw and pitch (degrees) turn the view first. Returns the new view.
+function frameLayoutBoxes(list,{margin=0.1,yaw,pitch}={}){
+  if(yaw!==undefined) view.yaw=yaw*PI/180;
+  if(pitch!==undefined) view.pitch=Math.max(-90,Math.min(90,pitch))*PI/180;
+  const pts=[];
+  for(const b of list){ const B=b.bounds; if(!B||!B.isBox3||B.isEmpty()) continue;
+    for(const x of [B.min.x,B.max.x]) for(const y of [B.min.y,B.max.y]) for(const z of [B.min.z,B.max.z]) pts.push([x,y,z]); }
+  if(!pts.length) return null;
+  const zoom0=view.zoom; view.zoom=1; const g=cameraGeometry(); view.zoom=zoom0;
+  const dot=(p,a)=>p[0]*a[0]+p[1]*a[1]+p[2]*a[2], ax=g.CAMV;
+  const R=pts.map(p=>dot(p,ax.right)), Uu=pts.map(p=>dot(p,ax.up)), A=pts.map(p=>dot(p,ax.away));
+  const mid=v=>(Math.min(...v)+Math.max(...v))/2, ma=mid(A), k=1+2*Math.max(0,margin);
+  let mr=mid(R), mu=mid(Uu);
+  const W1=g.vw/g.scale, H1=g.h/g.scale;   // visible at zoom 1
+  let zoom;
+  if(g.persp){
+    const tv=Math.tan(g.fov/2*PI/180), th=tv*g.vw/g.h;
+    const need=()=>{ let D=0; pts.forEach((p,i)=>{ const da=A[i]-ma; D=Math.max(D,Math.abs(Uu[i]-mu)*k/tv-da,Math.abs(R[i]-mr)*k/th-da); }); return Math.max(D,1); };
+    let D=need();
+    for(let it=0;it<6;it++){   // near things look bigger: move the aim so the picture is centred, then fit again
+      let x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity;
+      pts.forEach((p,i)=>{ const d=D+A[i]-ma, x=(R[i]-mr)/d, y=(Uu[i]-mu)/d; x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y); });
+      mr+=(x0+x1)/2*D; mu+=(y0+y1)/2*D; D=need();
+    }
+    zoom=(H1/(2*tv))/D;
+  } else zoom=Math.min(W1/Math.max((Math.max(...R)-Math.min(...R))*k,1e-6),H1/Math.max((Math.max(...Uu)-Math.min(...Uu))*k,1e-6));
+  const look=[0,1,2].map(i=>ax.right[i]*mr+ax.up[i]*mu+ax.away[i]*ma);
+  view.zoom=Math.max(0.05,Math.min(20,zoom));
+  view.pan=look.map((v,i)=>v-g.center[i]);
+  render();
+  return {yaw:view.yaw*180/PI,pitch:view.pitch*180/PI,zoom:view.zoom,pan:view.pan.slice()};
+}
+function renderGL(){
+  const w=cv.clientWidth, h=cv.clientHeight; if(!w||!h) return;
+  GL.r.setPixelRatio(window.devicePixelRatio||1); GL.r.setSize(w,h,false);
+  glColors(); lampFrame();
+  const g=cameraGeometry(w,h), {arranging,lamp,model,radius,C,stereo,vw,scale,dist,Rl,CAMV,persp,fov,pdist}=g;
+  const cam=persp?GL.pcam:GL.cam;
   for(const L of [GL.dl,GL.dl2]) if(L.parent!==cam){ cam.add(L); cam.add(L.target); }   // the lights ride with whichever camera draws
   GL.curCam=cam; GL.curEyes=persp?GL.eyePCams:GL.eyeCams;
   const setCam=(eye)=>{ const D=persp?pdist:dist, e=eye*D*Math.tan((view.stereoDeg||3.5)/2*PI/180);

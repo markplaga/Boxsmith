@@ -229,6 +229,7 @@ The **📱 Remote** button in Arrange boxes links a second screen to the one sho
 | `color`, `nocolor` | `{ hex: '#rrggbb' }` | Colors the selected box or part. |
 | `design`, `add` | `{ index, settings }` / `{ settings }` | Replaces a box's design in place, or adds a new box. |
 | `view` | `{ yaw?, pitch?, zoom?, pan?, projection?, fov? }` | Sets the camera (degrees). `projection` is `'ortho'` or `'perspective'`; `fov` is the perspective lens, 5–120° vertical. |
+| `frame` | `{ boxes?: [i, …] \| 'all', margin?, yaw?, pitch? }` | Zooms and pans so those boxes (default: every box not hidden) fill the view, leaving `margin` (default 0.1, a fraction of their size) free on each side. `yaw` and `pitch` (degrees) turn the view first. Works in either projection. |
 | `fit`, `top`, `place`, `maximize`, `stereo`, `units`, `save`, `open`, `clear` | `{ mode }` for `stereo`, `{ unit }` for `units`, `{ json }` for `open` | The Layout & view controls. |
 | `batch` | `{ cmds: [{ op, args }, …] }` (up to 500) | Runs them all, then sends one state. No need to pace commands for the relay's 60 messages a second. |
 | `animate` | see below | Loads an animation and plays it (unless `autoplay: false`). Positions are in the display unit, the same as `set`. |
@@ -237,7 +238,26 @@ The **📱 Remote** button in Arrange boxes links a second screen to the one sho
 | `capture` | see below | Pictures of the view or the animation. |
 | `export` | `{ format: 'webm' \| 'gif', fps?, width?, height? }` | Records the animation from start to finish. The host also shows a Download button. |
 
-**State** (`{"t":"state",…}`) includes `boxes` (label, position, rotation, colors, hidden), `sel`, `part`, `parts`, `unit`, `stereo`, `view` (`yaw`, `pitch` in degrees, `zoom`, `pan`, `projection`, `fov`), `anim` (`playing`, `t`, `duration`, `loop`, or `null`) and `exporting`.
+**State** (`{"t":"state",…}`) includes `boxes` (label, position, rotation, colors, hidden), `sel`, `part`, `parts`, `unit`, `stereo`, `view` (`yaw`, `pitch` in degrees, `zoom`, `pan`, `projection`, `fov`), `camera` (what the camera shows, in mm: see below), `anim` (`playing`, `t`, `duration`, `loop`, or `null`) and `exporting`.
+
+### Camera framing in the state
+
+`state.camera` says exactly what the view shows, so a shot can be framed by arithmetic instead of guesswork. Lengths are millimetres, whatever the display unit.
+
+```json
+"camera": { "projection": "ortho", "fov": 30,
+  "lookAt": [0, 0, 3371], "layoutCenter": [0, 0, 3371],
+  "visible": { "width": 14783, "height": 9239 },
+  "canvas": { "width": 1280, "height": 800, "pixelRatio": 2 },
+  "axes": { "right": [0.825, -0.565, 0], "up": [0.167, 0.244, 0.955], "forward": [0.54, 0.788, -0.296] } }
+```
+
+- `layoutCenter` is the centre of all the boxes' bounds (its z is half the layout's height, not the floor). `view.pan` is measured from it, so `lookAt` = `layoutCenter` + `pan`.
+- `visible` is the width and height the view covers at the look-at point, at the current zoom and canvas size. It is inversely proportional to zoom: `visible.height` = (its value at zoom 1) ÷ zoom. A point at `lookAt + axes.up × visible.height/2` sits exactly on the top edge.
+- `canvas` is the model screen's 3D view in CSS pixels. Captures and exports letterbox this view into the size you ask for, so ask for the same aspect ratio to keep the framing. In stereo, `stereo: true` is added and each eye gets half the width.
+- `axes` are the camera's right, up and forward directions in world space.
+- `projection` and `fov` (degrees) are the current projection. In perspective, `visible` is measured on the plane through the look-at point, and `distance` and `eye` (the camera's position) are added.
+- The values are live: during playback every state reflects the camera at that moment (send `{"t":"hello"}` for a fresh state at any time).
 
 ### Animate
 

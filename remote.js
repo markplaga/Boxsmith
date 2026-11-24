@@ -113,7 +113,7 @@ const Remote=(()=>{
       design:withDesign?box.settings:undefined,designKey:design.length+':'+hash(design),
       placing:placingBox,maximized:document.body.classList.contains('max3d'),stereo:stereo?stereo.value:view.stereo,boxCount:layoutBoxes.length,
       library:library?{title:library.title,current:library.current,animations:library.animations.map(x=>({name:x.name,duration:x.duration,boxes:x.boxes})),designs:library.designs.map(x=>({name:x.name,boxes:x.boxes}))}:null,
-      view:viewDeg(),anim:anim?{playing:anim.playing,t:Math.round(anim.t*1000)/1000,duration:anim.duration,loop:anim.loop}:null,exporting,
+      view:viewDeg(),camera:typeof cameraInfo==='function'?cameraInfo():null,anim:anim?{playing:anim.playing,t:Math.round(anim.t*1000)/1000,duration:anim.duration,loop:anim.loop}:null,exporting,
       boxes:layoutBoxes.map((b,i)=>({label:layoutBoxLabel(b,i),hidden:!!b.hidden,clash:clash.has(i),position:b.position,rotation:b.rotation,colors:b.settings.colors||{}})),
       parts:partNames(box),acrylic:!!box&&boxHasAcrylic(box),
       sides:[...$('#layoutSnapSide').options].map(o=>[o.value,o.textContent]),
@@ -215,6 +215,16 @@ const Remote=(()=>{
         if(a.zoom!==undefined) view.zoom=Math.max(0.05,Math.min(20,a.zoom));
         if(a.pan!==undefined) view.pan=a.pan.slice();
         render(); return;
+      }
+      case 'frame': {
+        let list;
+        if(a.boxes===undefined||a.boxes==='all') list=layoutBoxes.filter(b=>!b.hidden);
+        else if(Array.isArray(a.boxes)&&a.boxes.length&&a.boxes.every(i=>Number.isInteger(i)&&layoutBoxes[i])) list=a.boxes.map(i=>layoutBoxes[i]);
+        else return "boxes must be 'all' or a list of box indexes from 0 to "+(layoutBoxes.length-1)+'.';
+        for(const f of ['margin','yaw','pitch']) if(a[f]!==undefined&&!finite(a[f])) return f+' must be a finite number.';
+        if(a.margin!==undefined&&(a.margin<0||a.margin>2)) return 'margin must be from 0 to 2.';
+        if(!frameLayoutBoxes(list,{margin:a.margin===undefined?0.1:a.margin,yaw:a.yaw,pitch:a.pitch})) return 'Those boxes have nothing to frame.';
+        return;
       }
       case 'save': press('#layoutSave'); return;
       case 'open': try{ stopAnim(true); openBoxLayout(a.json); }catch(err){ toast('That layout file could not be opened.'); return 'That layout file could not be opened: '+err.message; } return;
