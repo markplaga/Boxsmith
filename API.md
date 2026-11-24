@@ -280,6 +280,8 @@ That makes box 0 hop 60 mm three times while turning a full circle, tints box 1'
 - Captures never disturb the live view. Each frame is posed, drawn and read, and the live pose and camera are put back, all before the screen next updates.
 - The reply is `{"t":"capture","id":"review-1","mode":"sheet","images":["data:image/png;base64,…"],"times":[…]}`.
 
+**Saved animation files.** An animation file is the `animate` command saved as JSON, usually as a list with one command: `[{"op":"animate","args":{…}}]`. A single `{"op":"animate","args":{…}}`, a full `{"t":"cmd",…}` message, or the bare `args` object also work. Put the layout in `args.base` so the file plays on its own. **▶ Import animation** in Arrange boxes (and *Import an animation from this device* on a remote) reads these. `BoxsmithAnim.parseAnimationFile(text)` in `remote-anim.js` returns `{args}` or `{error}`.
+
 **Big replies.** Messages over about 7.5 MB are split. A capture with many images arrives as several `capture` messages with `part` and `of`. Anything still too big, such as a long recording, arrives as `{"t":"chunk","id","part","of","data"}` pieces: join the `data` strings in `part` order and parse the result. `BoxsmithAnim.joinParts` in `remote-anim.js` does it for you. The same splitting works in the other direction for large `open`, `add` or `animate` messages.
 
 ## Tests

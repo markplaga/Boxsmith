@@ -335,3 +335,12 @@ test('turn rule: up to 180° takes the shortest path, bigger turns are kept as w
   // the shortest-path case on more than one axis still ends exactly on the key
   assert.deepEqual(Anim.rotationBetween([0, 0, 0], [90, 0, 90], 1), [90, 0, 90]);
 });
+
+test('Import animation reads the saved animation file formats', () => {
+  const args = { unit: 'mm', keyframes: [{ t: 0, boxes: { 0: { position: [0, 0, 0] } } }] };
+  for (const file of [[{ op: 'animate', args }], { t: 'cmd', op: 'animate', args }, { op: 'animate', args }, args, [{ op: 'fit', args: {} }, { op: 'animate', args }]])
+    assert.deepEqual(Anim.parseAnimationFile(JSON.stringify(file)).args, args);
+  assert.match(Anim.parseAnimationFile(JSON.stringify({ format: 'boxsmith-layout', version: 1, boxes: [] })).error, /layout file/);
+  assert.match(Anim.parseAnimationFile('{"hello":1}').error, /No animation/);
+  assert.match(Anim.parseAnimationFile('not json').error, /JSON/);
+});

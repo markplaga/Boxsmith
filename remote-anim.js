@@ -123,11 +123,15 @@
   // has it, the box's starting value holds (a key at t>0 eases in from the start pose).
   // hasStart: the start pose says something about this field, even "no colors" (undefined).
   function propAt(list,field,t,start,ease,mix,hasStart){
-    const keys=list.filter(k=>k[field]!==undefined);
+    // the keys that set this field, worked out once per track and kept with it
+    const cache=list._by||(Object.defineProperty(list,'_by',{value:{},enumerable:false}),list._by);
+    const keys=cache[field]||(cache[field]=list.filter(k=>k[field]!==undefined));
     if(!keys.length) return start;
     const pts=keys[0].t>0&&(hasStart||start!==undefined)?[{t:0,[field]:start}].concat(keys):keys;
     if(t<=pts[0].t) return pts[0][field];
-    for(let k=1;k<pts.length;k++){
+    let lo=1, hi=pts.length-1;                       // first key with t <= key.t (or > for steps)
+    while(lo<hi){ const mid=(lo+hi)>>1; if(mix?t<=pts[mid].t:t<pts[mid].t) hi=mid; else lo=mid+1; }
+    for(let k=lo;k<pts.length;k++){
       if(!mix){ if(t<pts[k].t) return pts[k-1][field]; continue; }   // step: hold until the next key's time
       if(t<=pts[k].t){
         const a=pts[k-1], b=pts[k];
@@ -258,6 +262,22 @@
     return Uint8Array.from(b);
   }
 
+  /* ---------- animation files ---------- */
+  // Import animation reads what a remote would send: [{op:'animate',args}], {t:'cmd',op:'animate',args},
+  // {op,args}, or the animate args on their own. Returns {args} or {error}.
+  function parseAnimationFile(text){
+    let data;
+    try{ data=JSON.parse(text); }catch(e){ return {error:'That file is not valid JSON.'}; }
+    const list=Array.isArray(data)?data:[data];
+    for(const item of list){
+      if(item&&item.op==='animate'&&item.args&&typeof item.args==='object') return {args:item.args};
+      if(item&&Array.isArray(item.keyframes)) return {args:item};
+    }
+    if(data&&data.format==='boxsmith-layout') return {error:'That is a layout file. Use Open layout for it; Import animation takes an animation file.'};
+    return {error:'No animation found in that file. It should hold an animate command: [{"op":"animate","args":{…}}].'};
+  }
+
+
   /* ---------- batches ---------- */
   // Runs each {op, args}; run(op, args) returns an error string or nothing. Never throws.
   function runBatch(cmds,run,max=500){
@@ -272,5 +292,5 @@
     return {ran,errors};
   }
 
-  return {runBatch,MAX_KEYS,MAX_DURATION,EASE,validateAnimation,sampleAt,evenTimes,rotationBetween,eulerToQuat,quatToEuler,slerp,splitMessage,joinParts,encodeGIF,LIMIT};
+  return {parseAnimationFile,runBatch,MAX_KEYS,MAX_DURATION,EASE,validateAnimation,sampleAt,evenTimes,rotationBetween,eulerToQuat,quatToEuler,slerp,splitMessage,joinParts,encodeGIF,LIMIT};
 });

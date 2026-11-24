@@ -68,6 +68,11 @@ const Remote=(()=>{
     };
   }
 
+  /* ---------- animation files ---------- */
+  // Accepts what a remote would send: [{op:'animate',args}], {t:'cmd',op:'animate',args}, {op,args},
+  // or the animate args on their own. Returns {args} or {error}.
+  const animationFromFile=text=>window.BoxsmithAnim.parseAnimationFile(text);
+
   /* ---------- host: the screen with the model ---------- */
   let host=null, hostCode='', remotes=0, localPeer=false, stateTimer=null;
   function hash(s){ let h=0; for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))|0; return (h>>>0).toString(36); }
@@ -227,6 +232,42 @@ const Remote=(()=>{
   let anim=null;   // {spec, duration, fps, loop, t, playing, raf, wall0, t0, lastFrameT, originals, view0, variants, onFrame, onDone}
   const poseOf=box=>({position:box.position.slice(),rotation:box.rotation.slice(),colors:box.settings.colors?JSON.parse(JSON.stringify(box.settings.colors)):undefined,hidden:!!box.hidden,settings:box.settings});
   const viewDeg=()=>({yaw:view.yaw*180/PI,pitch:view.pitch*180/PI,zoom:view.zoom,pan:view.pan.slice()});
+  /* Fast, exact pose for playback. A box's lowest point (and its bounds) can only be at a corner of
+     the convex outline of one of its panels, so each panel's outline is reduced once to its convex
+     hull (a finger-jointed panel goes from hundreds of points to a handful). The result is the same
+     pose transformLayoutBox gives; the slower overlap data is refreshed when playback stops. */
+  function hull2D(loop){
+    const n=loop.length; if(n<4) return loop.slice();
+    const p0=loop[0]; let far=loop[1], fd=0;
+    for(const p of loop){ const d=(p[0]-p0[0])**2+(p[1]-p0[1])**2+(p[2]-p0[2])**2; if(d>fd){ fd=d; far=p; } }
+    let nx=0,ny=0,nz=0;   // Newell normal
+    for(let i=0;i<n;i++){ const a=loop[i], b=loop[(i+1)%n]; nx+=(a[1]-b[1])*(a[2]+b[2]); ny+=(a[2]-b[2])*(a[0]+b[0]); nz+=(a[0]-b[0])*(a[1]+b[1]); }
+    const ul=Math.sqrt(fd)||1, u=[(far[0]-p0[0])/ul,(far[1]-p0[1])/ul,(far[2]-p0[2])/ul];
+    const v=[ny*u[2]-nz*u[1], nz*u[0]-nx*u[2], nx*u[1]-ny*u[0]];
+    const pts=loop.map((p,i)=>{ const d=[p[0]-p0[0],p[1]-p0[1],p[2]-p0[2]]; return [d[0]*u[0]+d[1]*u[1]+d[2]*u[2], d[0]*v[0]+d[1]*v[1]+d[2]*v[2], i]; }).sort((a,b)=>a[0]-b[0]||a[1]-b[1]);
+    const cross=(o,a,b)=>(a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]);
+    const lower=[], upper=[];
+    for(const p of pts){ while(lower.length>=2&&cross(lower[lower.length-2],lower[lower.length-1],p)<=0) lower.pop(); lower.push(p); }
+    for(let i=pts.length-1;i>=0;i--){ const p=pts[i]; while(upper.length>=2&&cross(upper[upper.length-2],upper[upper.length-1],p)<=0) upper.pop(); upper.push(p); }
+    const hull=lower.slice(0,-1).concat(upper.slice(0,-1));
+    return hull.length>=3?hull.map(h=>loop[h[2]]):loop.slice();
+  }
+  const fastE=new THREE.Euler(), fastT=new THREE.Matrix4(), fastV=new THREE.Vector3();
+  function fastTransform(box){
+    const model=box.model;
+    if(!model._hull) model._hull=model.solids.flatMap(s=>hull2D(s.bot[0]).concat(hull2D(s.top[0])));
+    const r=box.rotation, ctr=model.ctr;
+    const m=(box.pose&&box.pose.isMatrix4)?box.pose:(box.pose=new THREE.Matrix4());
+    m.makeRotationFromEuler(fastE.set(r[0]*PI/180,r[1]*PI/180,r[2]*PI/180,'ZYX')).multiply(fastT.makeTranslation(-ctr[0],-ctr[1],-ctr[2]));
+    let x0=Infinity,y0=Infinity,z0=Infinity,x1=-Infinity,y1=-Infinity,z1=-Infinity;
+    for(const p of model._hull){
+      fastV.fromArray(p).applyMatrix4(m);
+      if(fastV.x<x0)x0=fastV.x; if(fastV.x>x1)x1=fastV.x; if(fastV.y<y0)y0=fastV.y; if(fastV.y>y1)y1=fastV.y; if(fastV.z<z0)z0=fastV.z; if(fastV.z>z1)z1=fastV.z;
+    }
+    const ox=box.position[0], oy=box.position[1], oz=box.position[2]-z0;
+    m.elements[12]+=ox; m.elements[13]+=oy; m.elements[14]+=oz;
+    if(box.bounds&&box.bounds.isBox3){ box.bounds.min.set(x0+ox,y0+oy,z0+oz); box.bounds.max.set(x1+ox,y1+oy,z1+oz); }
+  }
   function relayoutNoFit(){
     boxLayoutScene.solids=layoutBoxes.flatMap(box=>{ transformLayoutBox(box); for(const solid of box.model.solids) solid.layoutBox=box; return box.model.solids; });
     if(layingOut()) buildGL(boxLayoutScene);
@@ -241,7 +282,7 @@ const Remote=(()=>{
     stopAnim(true);
     const spec=v.anim, originals={}, variants={};
     for(const i of Object.keys(spec.tracks)){
-      const box=layoutBoxes[i];
+      const box=layoutBoxes[i]; box._animColors=undefined;
       originals[i]={box,pose:poseOf(box)};
       // build each new design once now, so playback only swaps meshes when a key changes settings
       for(const key of spec.tracks[i]) if(key.settings){
@@ -273,8 +314,11 @@ const Remote=(()=>{
         if(next&&next!==box){ layoutBoxes[i]=next; box=next; swapped=true; }
       }
       box.position=p.position.slice(); box.rotation=p.rotation.slice(); box.hidden=!!p.hidden;
-      if(p.colors) box.settings.colors=JSON.parse(JSON.stringify(p.colors)); else delete box.settings.colors;
-      if(!swapped) transformLayoutBox(box);
+      if(p.colors!==box._animColors){   // colors only change at their keys, so most frames skip this
+        box._animColors=p.colors;
+        if(p.colors) box.settings.colors=JSON.parse(JSON.stringify(p.colors)); else delete box.settings.colors;
+      }
+      if(!swapped) fastTransform(box);
     }
     if(swapped) relayoutNoFit();
     if(s.camera){
@@ -285,6 +329,7 @@ const Remote=(()=>{
     }
     anim.t=t; anim.lastFrameT=t;
     if(draw) render();
+    if(!barRaf) barRaf=requestAnimationFrame(()=>{ barRaf=0; renderAnimBar(); });
     if(anim.onFrame) anim.onFrame(t);
   }
   function tick(now){
@@ -298,7 +343,9 @@ const Remote=(()=>{
     if(t-anim.lastFrameT>=1/anim.fps-1e-4||t<anim.lastFrameT) applyFrame(t);
     anim.raf=requestAnimationFrame(tick);
   }
+  const settle=()=>{ if(anim) for(const i of Object.keys(anim.originals)) if(layoutBoxes[i]) transformLayoutBox(layoutBoxes[i]); };
   function finishAnim(){
+    settle(); renderAnimBar();
     if(host) host.send({t:'anim',state:'done',time:anim.duration});
     syncBoxLayout(); sendState(true);
     const done=anim.onDone; anim.onDone=null; if(done) done();
@@ -312,12 +359,12 @@ const Remote=(()=>{
     if(host) host.send({t:'anim',state:'playing',time:anim.t,unit:anim.unit});
     anim.raf=requestAnimationFrame(tick);
   }
-  function pauseAnim(){ if(!anim) return; anim.playing=false; cancelAnimationFrame(anim.raf); syncBoxLayout(); }
+  function pauseAnim(){ if(!anim) return; anim.playing=false; cancelAnimationFrame(anim.raf); settle(); syncBoxLayout(); renderAnimBar(); }
   function seekAnim(t){
     t=Math.max(0,Math.min(anim.duration,t));
     applyFrame(t);
     if(anim.playing){ anim.t0=t; anim.wall0=performance.now(); }
-    else syncBoxLayout();
+    else { settle(); syncBoxLayout(); }
   }
   // Stop: put every animated box (and the camera) back as it was before the animation.
   // forget=true also unloads the animation.
@@ -327,7 +374,7 @@ const Remote=(()=>{
     let swapped=false;
     for(const [i,o] of Object.entries(anim.originals)){
       if(layoutBoxes[i]!==o.box&&layoutBoxes[i]&&anim.variants[i]&&Object.values(anim.variants[i]).includes(layoutBoxes[i])){ layoutBoxes[i]=o.box; swapped=true; }
-      const box=o.box, p=o.pose;
+      const box=o.box, p=o.pose; box._animColors=undefined;
       box.position=p.position.slice(); box.rotation=p.rotation.slice(); box.hidden=p.hidden;
       if(p.colors) box.settings.colors=JSON.parse(JSON.stringify(p.colors)); else delete box.settings.colors;
       transformLayoutBox(box);
@@ -335,7 +382,7 @@ const Remote=(()=>{
     if(swapped) relayoutNoFit();
     const v=anim.view0; view.yaw=v.yaw*PI/180; view.pitch=v.pitch*PI/180; view.zoom=v.zoom; view.pan=v.pan.slice();
     if(forget) anim=null; else { anim.t=0; anim.lastFrameT=-1; }
-    render(); syncBoxLayout();
+    render(); syncBoxLayout(); renderAnimBar();
   }
 
   /* ---------- capture ---------- */
@@ -465,6 +512,50 @@ const Remote=(()=>{
     anim.onFrame=()=>drawInto(ctx,0,0,w,h);       // every played frame is copied into the recording
     anim.onDone=()=>{ anim.loop=keepLoop; setTimeout(()=>rec.stop(),Math.max(120,2000/fps)); };
     anim.t=0; rec.start(250); playAnim();
+  }
+  // Import animation (host): read the file, warn before replacing the open layout, load with a
+  // loading indicator (big files take a few seconds), then play.
+  function importAnimationFile(file){
+    if(!file) return;
+    const busy=document.createElement('div'); busy.className='anim-loading'; busy.innerHTML='<span>Loading animation…</span>'; document.body.appendChild(busy);
+    const done=msg=>{ busy.remove(); if(msg){ toast(msg); } };
+    file.text().then(text=>{
+      const found=animationFromFile(text);
+      if(found.error) return done(found.error);
+      const a=found.args;
+      if(a.base&&layoutBoxes.length&&!confirm('This animation comes with its own layout ('+(a.base.boxes?a.base.boxes.length:'?')+' boxes), which will replace the '+layoutBoxes.length+' boxes open now. Save your layout first if you want to keep it.\n\nReplace it and play?')) return done();
+      busy.firstChild.textContent='Building '+(a.base&&a.base.boxes?a.base.boxes.length+' boxes':'the animation')+'…';
+      setTimeout(()=>{   // let the indicator paint before the heavy work
+        let err; try{ err=runCmd('animate',a); }catch(e){ err=e.message; }
+        done(err?'Could not play '+file.name+': '+err:null);
+        if(!err&&anim){ anim.name=file.name.replace(/\.json$/i,''); renderAnimBar(); }
+        sendState(true);
+      },60);
+    }).catch(err=>done('Could not read that file: '+err.message));
+  }
+  // Playback bar on the model screen, shown while an animation is loaded.
+  let barRaf=0;
+  function renderAnimBar(){
+    let bar=$('#animBar');
+    if(!anim){ if(bar) bar.remove(); return; }
+    if(!bar){
+      bar=document.createElement('div'); bar.id='animBar'; bar.className='anim-bar';
+      bar.innerHTML='<span class="anim-name"></span><button type="button" class="btn" data-ab="play"></button><button type="button" class="btn" data-ab="stop" title="Back to the start">■</button>'+
+        '<input type="range" min="0" step="0.01" aria-label="Animation time"><span class="anim-time"></span><button type="button" class="btn" data-ab="close" aria-label="Close animation" title="Stop and close">✕</button>';
+      document.body.appendChild(bar);
+      bar.addEventListener('click',e=>{
+        const b=e.target.closest('[data-ab]'); if(!b||!anim) return;
+        if(b.dataset.ab==='play'){ if(anim.playing) pauseAnim(); else playAnim(); }
+        else if(b.dataset.ab==='stop') stopAnim(false);
+        else if(b.dataset.ab==='close') stopAnim(true);
+        sendState(true); renderAnimBar();
+      });
+      bar.querySelector('input').addEventListener('input',e=>{ if(anim){ seekAnim(+e.target.value); renderAnimBar(); } });
+    }
+    bar.querySelector('.anim-name').textContent=anim.name||'Animation';
+    bar.querySelector('[data-ab=play]').textContent=anim.playing?'❚❚ Pause':'▶ Play';
+    const r=bar.querySelector('input'); r.max=anim.duration; if(document.activeElement!==r) r.value=anim.t;
+    bar.querySelector('.anim-time').textContent=anim.t.toFixed(2)+' / '+anim.duration.toFixed(2)+' s';
   }
   function showDownload(blob,name){
     let bar=$('#remoteDownload');
@@ -596,7 +687,8 @@ const Remote=(()=>{
         '<div class="rm-row"><label>Viewing <select data-rm="stereo">'+[['off','Normal view'],['cross','Stereo · cross-eyed'],['parallel','Stereo · parallel']].map(([v,l])=>'<option value="'+v+'"'+(st.stereo===v?' selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
         '<label>Units <select data-rm="units"><option value="mm"'+(u==='mm'?' selected':'')+'>mm</option><option value="in"'+(u==='in'?' selected':'')+'>in</option></select></label></div></section>'+
         '<section><h4>Layout file</h4><div class="rm-row"><button type="button" class="btn" data-rm="save">Save layout (downloads on the model screen)</button>'+
-        '<button type="button" class="btn" data-rm="openfile">Open a layout file from this device</button><input type="file" id="rmFile" accept=".json,application/json" hidden></div>'+
+        '<button type="button" class="btn" data-rm="openfile">Open a layout file from this device</button><input type="file" id="rmFile" accept=".json,application/json" hidden>'+
+        '<button type="button" class="btn" data-rm="animfile">Import an animation from this device</button><input type="file" id="rmAnimFile" accept=".json,application/json" hidden></div>'+
         '<div class="rm-row"><button type="button" class="btn rm-danger" data-rm="clear"'+(st.boxCount?'':' disabled')+'>'+(clearArmed>Date.now()?'Tap again to clear every box':'Clear all boxes')+'</button></div></section>'+
         '<section><h4>Animation</h4>'+(st.anim?'<p class="rm-small">'+(st.anim.playing?'Playing':'Paused')+' at '+st.anim.t.toFixed(2)+' of '+st.anim.duration.toFixed(2)+' s'+(st.exporting?' · recording…':'')+'</p>':'<p class="rm-small">No animation loaded. Animations are sent with the animate command (see the API guide).</p>')+
         '<div class="rm-row"><button type="button" class="btn" data-rm-anim="play"'+(st.anim?'':' disabled')+'>▶ Play</button><button type="button" class="btn" data-rm-anim="pause"'+(st.anim?'':' disabled')+'>❚❚ Pause</button><button type="button" class="btn" data-rm-anim="stop"'+(st.anim?'':' disabled')+'>■ Stop</button></div>'+
@@ -644,6 +736,7 @@ const Remote=(()=>{
       if(r==='max') return cmd('maximize',{});
       if(r==='save') return cmd('save',{});
       if(r==='openfile') return p.querySelector('#rmFile').click();
+      if(r==='animfile') return p.querySelector('#rmAnimFile').click();
       if(r==='clear'){ if(clearArmed>Date.now()){ clearArmed=0; cmd('clear',{}); } else { clearArmed=Date.now()+4000; renderRemote(); setTimeout(renderRemote,4100); } return; }
       if(r==='dup') return cmd('dup',{});
       if(r==='dupin') return cmd('dup',{inPlace:true});
@@ -665,6 +758,7 @@ const Remote=(()=>{
       if(t.dataset.rm==='color') return cmd('color',{hex:t.value,final:true});
       if(t.dataset.rm==='units') return cmd('units',{unit:t.value});
       if(t.dataset.rm==='stereo') return cmd('stereo',{mode:t.value});
+      if(t.id==='rmAnimFile'&&t.files[0]){ const f=t.files[0]; t.value=''; f.text().then(text=>{ const found=animationFromFile(text); if(found.error) return setRemoteStatus(found.error); setRemoteStatus('Sending '+f.name+' to the model screen…'); cmd('animate',found.args); }); return; }
       if(t.id==='rmFile'&&t.files[0]){ const f=t.files[0]; f.text().then(json=>{ cmd('open',{json}); setRemoteStatus('Sent '+f.name+' to the model screen.'); }); t.value=''; return; }
       if(t.dataset.rmSet!==undefined&&t.value!=='') return cmd('set',{k:+t.dataset.rmSet,value:+t.value});
       if(t.dataset.rmRot!==undefined&&t.value!=='') return cmd('set',{rot:true,k:+t.dataset.rmRot,value:+t.value});
@@ -692,6 +786,8 @@ const Remote=(()=>{
       else if(r==='join') remoteMode('');
     });
     remoteEvents();
+    $('#animImport').addEventListener('click',()=>$('#animFile').click());
+    $('#animFile').addEventListener('change',e=>{ const f=e.target.files[0]; e.target.value=''; importAnimationFile(f); });
     // design edits on a remote's sidebar go to the model screen
     const upd=update;
     update=function(){ const out=upd.apply(this,arguments); if(document.body.classList.contains('remote-mode')) designChanged(); return out; };
@@ -702,6 +798,6 @@ const Remote=(()=>{
     if(q.has('remote')) remoteMode(q.get('remote'));
     window.addEventListener('pagehide',()=>{ if(host) host.send({t:'bye'}); });
   }
-  return {init,hostStart,hostStop,remoteMode,run:(op,args)=>{ let e; try{ e=op==='batch'?Anim.runBatch(args&&args.cmds,runCmd).errors.join(' '):runCmd(op,args||{}); }catch(err){ e=err.message; } sendState(true); return e||null; },get anim(){ return anim&&{playing:anim.playing,t:anim.t,duration:anim.duration}; },get code(){ return hostCode; }};
+  return {init,hostStart,hostStop,remoteMode,animationFromFile,importAnimationFile,run:(op,args)=>{ let e; try{ e=op==='batch'?Anim.runBatch(args&&args.cmds,runCmd).errors.join(' '):runCmd(op,args||{}); }catch(err){ e=err.message; } sendState(true); return e||null; },get anim(){ return anim&&{playing:anim.playing,t:anim.t,duration:anim.duration}; },get code(){ return hostCode; }};
 })();
 Remote.init();

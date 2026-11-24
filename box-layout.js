@@ -283,7 +283,8 @@ function syncBoxLayout(){
   $('#layoutFit').disabled=!layoutBoxes.length;
   $('#layoutPlace').setAttribute('aria-pressed',String(placingBox));
   cv.classList.toggle('layout-placing',layingOut()&&placingBox);
-  const warn=overlaps.length?'⚠ Possible overlap: '+overlaps.map(([i,j])=>'box '+(i+1)+' and box '+(j+1)).join(', ')+'. Move them apart or use Snap.':'';
+  const shown=overlaps.slice(0,6).map(([i,j])=>'box '+(i+1)+' and box '+(j+1)).join(', ');   // a heap of boxes can overlap thousands of ways; list a few
+  const warn=overlaps.length?'⚠ Possible overlap: '+shown+(overlaps.length>6?', and '+(overlaps.length-6)+' more pairs':'')+'. Move them apart or use Snap.':'';
   const status=$('#layoutStatus');
   status.classList.toggle('warn',!!warn&&!placingBox);
   status.textContent=warn&&!placingBox?warn:!GL?'Arranging boxes requires WebGL.':placingBox?'Click where the center of the selected box should go.':
