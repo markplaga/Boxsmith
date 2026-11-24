@@ -1120,14 +1120,14 @@ function lampBasis(lamp,right,up,away,c0){
 }
 // The 3D view's camera, worked out once for both drawing and reporting (Remote state, frame).
 // w, h: the canvas size in CSS pixels. Lengths are mm.
-function cameraGeometry(w=cv.clientWidth,h=cv.clientHeight){
+function cameraGeometry(w=cv.clientWidth,h=cv.clientHeight,mono=false){
   const arranging=layingOut(), lamp=LAMP.on&&!arranging;
   const model=arranging?boxLayoutScene:scene;
   const {ctr:center,R:radius}=model;
   const explode=arranging?0:view.explode;
   const up0=!arranging&&scene.divLift? (scene.divLift*1.15*1.25+0.6)*scene.R*view.explode : 0;
   const C=[center[0]+view.pan[0],center[1]+view.pan[1],center[2]+up0*0.45+view.pan[2]], cy=Math.cos(view.yaw), sy=Math.sin(view.yaw), cp=Math.cos(view.pitch), sp=Math.sin(view.pitch);
-  const stereo=stereoActive(), vw=stereo?w/2:w;
+  const stereo=!mono&&stereoActive(), vw=stereo?w/2:w;
   const scale=Math.min(vw,h)*(stereo?0.42:0.40)/(radius*(1+explode*0.9)+up0*0.45)*view.zoom;   // CSS px per mm at the look-at point
   const away=[cp*sy,cp*cy,-sp], up=[sp*sy,sp*cy,cp], dist=radius*20, right=[cy,-sy,0];
   const {Rl,CAMV}=lampBasis(lamp,right,up,away,scene.ctr);
@@ -1183,14 +1183,16 @@ function frameLayoutBoxes(list,{margin=0.1,yaw,pitch}={}){
   render();
   return {yaw:view.yaw*180/PI,pitch:view.pitch*180/PI,zoom:view.zoom,pan:view.pan.slice()};
 }
-function renderGL(){
-  const w=cv.clientWidth, h=cv.clientHeight; if(!w||!h) return;
-  GL.r.setPixelRatio(window.devicePixelRatio||1); GL.r.setSize(w,h,false);
+// off: {w, h, target} draws the view into a render target of that size (one eye, white background)
+// instead of onto the page, for captures and recordings: see renderOffscreen.
+function renderGL(off){
+  const w=off?off.w:cv.clientWidth, h=off?off.h:cv.clientHeight; if(!w||!h) return;
+  if(!off){ GL.r.setPixelRatio(window.devicePixelRatio||1); GL.r.setSize(w,h,false); }
   glColors(); lampFrame();
-  const g=cameraGeometry(w,h), {arranging,lamp,model,radius,C,stereo,vw,scale,dist,Rl,CAMV,persp,fov,pdist}=g;
+  const g=cameraGeometry(w,h,!!off), {arranging,lamp,model,radius,C,stereo,vw,scale,dist,Rl,CAMV,persp,fov,pdist}=g;
   const cam=persp?GL.pcam:GL.cam;
   for(const L of [GL.dl,GL.dl2]) if(L.parent!==cam){ cam.add(L); cam.add(L.target); }   // the lights ride with whichever camera draws
-  GL.curCam=cam; GL.curEyes=persp?GL.eyePCams:GL.eyeCams;
+  if(!off){ GL.curCam=cam; GL.curEyes=persp?GL.eyePCams:GL.eyeCams; }
   const setCam=(eye)=>{ const D=persp?pdist:dist, e=eye*D*Math.tan((view.stereoDeg||3.5)/2*PI/180);
     cam.position.set(C[0]-CAMV.away[0]*D+CAMV.right[0]*e,C[1]-CAMV.away[1]*D+CAMV.right[1]*e,C[2]-CAMV.away[2]*D); cam.up.set(CAMV.up[0],CAMV.up[1],CAMV.up[2]); cam.lookAt(C[0],C[1],C[2]);
     if(persp){ cam.fov=fov; cam.aspect=vw/h; cam.near=Math.max(1,D*0.01); cam.far=D+radius*40+10000; }   // near/far keep the whole stage, floor and room in view
@@ -1229,6 +1231,12 @@ function renderGL(){
     ob.edges.material = sel&&tint ? GL.hiLine : GL.line;   // a coloured selection keeps its colour and gets orange outlines
     ob.mesh.material = sel&&!tint ? [GL.hiCap,highlightEdge] : tint?[tint.cap,tint.side]:(clear?[GL.clearCap,GL.clearSide]:paint?[paint.cap,paint.side]:[base.cap,base.side]);
   }
+  if(off){
+    const cc=GL.r.getClearColor(new THREE.Color()), ca=GL.r.getClearAlpha();
+    GL.r.setRenderTarget(off.target); GL.r.setScissorTest(false); GL.r.setClearColor(0xffffff,1); GL.r.clear(); GL.r.render(GL.sc,cam);
+    GL.r.setRenderTarget(null); GL.r.setClearColor(cc,ca);
+    return;
+  }
   if(!stereo){ GL.r.setScissorTest(false); GL.r.setViewport(0,0,w,h); GL.r.render(GL.sc,cam); }
   else {
     // cross-eyed: the left picture is what the RIGHT eye sees; parallel: left picture = left eye
@@ -1248,6 +1256,27 @@ function renderGL(){
   if(cv.width!==Math.round(w*dpr)||cv.height!==Math.round(h*dpr)){ cv.width=Math.round(w*dpr); cv.height=Math.round(h*dpr); }
   ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
   if(stereo){ ctx.strokeStyle='rgba(120,100,80,0.25)'; ctx.setLineDash([4,6]); ctx.beginPath(); ctx.moveTo(w/2,10); ctx.lineTo(w/2,h-10); ctx.stroke(); ctx.setLineDash([]); }
+}
+/* The current view drawn at exactly w×h pixels, as ImageData, whatever the window's size, pixel
+   ratio or stereo setting: the same camera (look-at point, zoom, projection) seen through a canvas of
+   that size. Captures, exports and recordings use this instead of copying the screen, whose drawing
+   buffer the browser may make smaller than asked on very large or high-density screens. */
+function renderOffscreen(w,h){
+  if(!GL||!scene||!(w>0&&h>0)) return null;
+  GL.rts=GL.rts||new Map();
+  const key=w+'x'+h; let rt=GL.rts.get(key);
+  if(!rt){
+    const MS=GL.r.capabilities.isWebGL2&&THREE.WebGLMultisampleRenderTarget;
+    rt=MS?new THREE.WebGLMultisampleRenderTarget(w,h,{format:THREE.RGBAFormat}):new THREE.WebGLRenderTarget(w,h,{format:THREE.RGBAFormat});
+    if(MS) rt.samples=4;
+    if(GL.rts.size>=4){ const [k0,r0]=GL.rts.entries().next().value; r0.dispose(); GL.rts.delete(k0); }
+    GL.rts.set(key,rt);
+  }
+  renderGL({w,h,target:rt});
+  const px=new Uint8Array(w*h*4); GL.r.readRenderTargetPixels(rt,0,0,w,h,px);
+  const img=new ImageData(w,h), row=w*4;
+  for(let y=0;y<h;y++) img.data.set(px.subarray((h-1-y)*row,(h-y)*row),y*row);   // WebGL rows run bottom-up
+  return img;
 }
 function render(){
   if(!scene) return;

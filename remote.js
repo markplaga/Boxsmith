@@ -469,8 +469,15 @@ const Remote=(()=>{
     // soundtrack, each frame shows the moment it will be on screen (it is held for 1/fps and appears
     // about one display refresh after it is drawn), so pictures and sound line up rather than trail.
     if(st!==null){ const lead=0.5/anim.fps+1/60, d=anim.duration; t=anim.loop?(t+lead)%d:Math.min(d,t+lead); }
-    if(t-anim.lastFrameT>=1/anim.fps-1e-4||t<anim.lastFrameT) applyFrame(t);
+    // while a live recording runs, it poses and draws every frame itself (one render per slot), so
+    // playback doesn't draw a second time in between
+    if(!(recording&&recording.E)&&(t-anim.lastFrameT>=1/anim.fps-1e-4||t<anim.lastFrameT)) applyFrame(t);
     anim.raf=requestAnimationFrame(tick);
+  }
+  // The animation's time right now, by the same clock tick() uses (no display lead).
+  function animClock(now){
+    const st=soundTime(now); let t=st!==null?st:anim.t0+(now-anim.wall0)/1000;
+    return anim.loop&&anim.duration>0?t%anim.duration:Math.min(t,anim.duration);
   }
   const settle=()=>{ if(anim) for(const i of Object.keys(anim.originals)) if(layoutBoxes[i]) transformLayoutBox(layoutBoxes[i]); };
   function finishAnim(){
@@ -558,6 +565,9 @@ const Remote=(()=>{
   // Draw the live WebGL canvas into a 2D canvas, letterboxed on white. Called right after a render,
   // in the same task, so the drawing buffer still holds the frame.
   function drawInto(ctx,x,y,w,h){
+    // the view rendered at exactly this size (same camera), not a copy of the screen
+    const img=typeof renderOffscreen==='function'&&renderOffscreen(Math.round(w),Math.round(h));
+    if(img){ ctx.putImageData(img,Math.round(x),Math.round(y)); return; }
     const src=glCanvas(), sw=src.width, sh=src.height, s=Math.min(w/sw,h/sh), dw=sw*s, dh=sh*s;
     ctx.fillStyle='#ffffff'; ctx.fillRect(x,y,w,h);
     ctx.drawImage(src,0,0,sw,sh,x+(w-dw)/2,y+(h-dh)/2,dw,dh);
@@ -798,7 +808,14 @@ const Remote=(()=>{
         const due=Math.floor((performance.now()-rec.t0)*fps/1000)+1;   // slots started so far
         try{
           if(due>rec.slot&&rec.E.backlog()<30){
-            render(); drawInto(ctx,0,0,w,h);                             // the view as it is right now
+            // A fresh pose for this very slot. When the take is behind (a slot was missed), the recording
+            // comes first: the screen's own redraw is skipped for this slot so the next one is on time.
+            const behind=due>rec.slot+1||rec.lastTickMs>900/fps; rec.skipped=(rec.skipped||0)+(behind?1:0);
+            const t0=performance.now();
+            if(anim&&anim.playing) applyFrame(animClock(t0),!behind);
+            else if(!behind) render();
+            drawInto(ctx,0,0,w,h);                                       // the view as it is right now, at the take's size
+            rec.lastTickMs=performance.now()-t0;
             while(rec.slot<due){ rec.E.addFrame(c,rec.slot); rec.slot++; }
           }
         }catch(err){ rec.failed=err; return stopRecording(); }
@@ -818,7 +835,7 @@ const Remote=(()=>{
     const done=(err)=>{ recording=null; renderRecIndicator(); if(err) note('record: the video could not be made: '+(err.message||err)); sendState(true); };
     if(!rec.E){ done(rec.failed); return; }
     // fill the slots up to now, so the take ends where Stop was pressed
-    try{ const due=Math.floor((performance.now()-rec.t0)*rec.fps/1000)+1; if(due>rec.slot){ render(); drawInto(rec.ctx,0,0,rec.w,rec.h); while(rec.slot<due){ rec.E.addFrame(rec.c,rec.slot); rec.slot++; } } }catch(e){}
+    try{ const due=Math.floor((performance.now()-rec.t0)*rec.fps/1000)+1; if(due>rec.slot){ drawInto(rec.ctx,0,0,rec.w,rec.h); while(rec.slot<due){ rec.E.addFrame(rec.c,rec.slot); rec.slot++; } } }catch(e){}
     const frames=rec.slot;
     rec.E.done(frames).then(bytes=>{
       const blob=new Blob([bytes],{type:'video/webm'}), r=new FileReader();
