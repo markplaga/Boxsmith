@@ -407,8 +407,11 @@ const Remote=(()=>{
     const start={}; for(const i of Object.keys(originals)) start[i]=originals[i].pose;
     anim={spec,unit:spec.unit,start,duration:spec.duration,fps:spec.fps,loop:spec.loop,t:0,playing:false,raf:0,originals,variants,view0:viewDeg(),lastFrameT:-1};
     if(curView!=='layout') document.querySelector('#tabs [data-v="layout"]')?.click();
+    if(typeof a.name==='string') anim.name=a.name.slice(0,200);
     applyFrame(0); syncProjectionControls();
     loadSound(a);
+    // tell the remotes it's ready (before any 'playing'), so they can send export, seek, … without guessing
+    if(host) host.send({t:'anim',state:'loaded',time:0,duration:Math.round(anim.duration*1000)/1000,name:anim.name||null,unit:anim.unit,autoplay:a.autoplay!==false,soundtrack:anim.sound?anim.sound.name:null});
     if(a.autoplay!==false){ if(anim.sound&&anim.sound.state==='loading'){ anim.pendingPlay=true; setTimeout(()=>{ if(anim&&anim.pendingPlay){ anim.pendingPlay=false; playAnim(); } },5000); } else playAnim(); }
   }
   // Pose every animated box (and the camera) for time t, then draw. Transforms only: meshes are
@@ -898,7 +901,7 @@ const Remote=(()=>{
       let err=null;
       try{
         if(kind==='design'){ stopAnim(true); openBoxLayout(item.json); }
-        else { err=runCmd('animate',item.args); if(!err&&anim) anim.name=item.name; }
+        else { const args=Object.assign({},item.args,{name:item.name}); if(audioFor.has(item.args)) audioFor.set(args,audioFor.get(item.args)); err=runCmd('animate',args); }
       }catch(e){ err=e.message; }
       busy.remove();
       if(err) toast('Could not play '+item.name+': '+err); else { library.owns=true; library.current=kind+':'+index; }
@@ -929,7 +932,7 @@ const Remote=(()=>{
     try{
       if(kind==='design'){ stopAnim(true); openBoxLayout(item.json); }
       else {
-        const args=Object.assign({},item.args,{autoplay:a.autoplay!==false});
+        const args=Object.assign({},item.args,{autoplay:a.autoplay!==false,name:item.name});
         if(a.loop!==undefined) args.loop=a.loop;
         if(audioFor.has(item.args)) audioFor.set(args,audioFor.get(item.args));
         err=runCmd('animate',args); if(!err&&anim) anim.name=item.name;

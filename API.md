@@ -235,7 +235,7 @@ The **📱 Remote** button in Arrange boxes links a second screen to the one sho
 | `batch` | `{ cmds: [{ op, args }, …] }` (up to 500) | Runs them all, then sends one state. No need to pace commands for the relay's 60 messages a second. |
 | `animate` | see below | Loads an animation and plays it (unless `autoplay: false`). Positions are in the display unit, the same as `set`. |
 | `library` | none, or `{ kind: 'animation' \| 'design', index }` | With no args, replies `{"t":"library","library":{…}}` listing what's in the zip imported on the model screen. With `kind` and `index`, plays an animation or opens a design from it. |
-| `libraryPlay` | `{ index \| name, autoplay?: true, loop? }` | Loads a library animation exactly as if its `animate` file had been sent, without sending it: the remote names it and the model screen reads it from the zip it already has open. Plays at once unless `autoplay: false`. `loop` overrides the file's own setting. Replies with the usual `anim` playing and done messages. |
+| `libraryPlay` | `{ index \| name, autoplay?: true, loop? }` | Loads a library animation exactly as if its `animate` file had been sent, without sending it: the remote names it and the model screen reads it from the zip it already has open. Plays at once unless `autoplay: false`. `loop` overrides the file's own setting. Replies `{"t":"anim","state":"loaded",…}` once it's ready (autoplay or not), then the usual playing and done messages. |
 | `libraryLoadDesign` | `{ index \| name }` | Opens a design from the library. |
 | `play`, `pause`, `stop`, `seek` | `{ t }` for `seek` | Playback. `stop` puts every animated box and the camera back where they were. |
 | `capture` | see below | Pictures of the view or the animation. |
@@ -307,7 +307,7 @@ That makes box 0 hop 60 mm three times while turning a full circle, tints box 1'
 - Playback follows the real clock at up to `fps` frames a second, so it stays on time on a slow device. Optional `base` is a layout (object or JSON text) to open first.
 - Limits: 2000 keyframes, 120 seconds, `fps` 1–60.
 - While an animation plays, the model screen hides its whole interface and fills the screen (cinema mode). It comes back when playback ends, pauses or stops. A tap, click, Esc or Space on the model screen pauses it. Exports play without cinema mode.
-- The host sends `{"t":"anim","state":"playing","time":0}` when playback starts and `{"t":"anim","state":"done","time":3}` at the end.
+- As soon as an animation has loaded (from `animate`, `libraryPlay` or `library`, with or without autoplay), the host sends `{"t":"anim","state":"loaded","time":0,"duration":8,"name":"Stadium wave","autoplay":false,"soundtrack":null}`. Wait for it before sending `export`, `seek` or `capture`. Then it sends `{"t":"anim","state":"playing","time":0}` when playback starts and `{"t":"anim","state":"done","time":3}` at the end.
 
 ### Camera keys
 
