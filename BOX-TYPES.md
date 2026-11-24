@@ -241,4 +241,6 @@ Reply with the JSON only. I will paste back any problems Boxsmith finds.
 
 A type you save in the Type lab is kept in that browser. Settings files and layouts that use it carry the type file with them (under `"types"`), so they open on another computer, which then adds the type to its own My types.
 
-Shared types live in [markplaga/markplaga-boxsmith-type](https://github.com/markplaga/markplaga-boxsmith-type), one file per type. A type's `id` is how Boxsmith tells types apart, so pick one that is unlikely to clash, and raise `typeVersion` when you change a shared type.
+Shared types live in [markplaga/markplaga-boxsmith-type](https://github.com/markplaga/markplaga-boxsmith-type), one folder per type (`types/<id>/type.json`). In the Type lab, **Shared types** lists them with pictures; **Install** adds one to My types.
+
+To share one of yours, click **Share** next to it under My types. GitHub opens with the file ready; propose the change and open a pull request. A check builds the type at many settings (small and large sizes, 6 mm material, inside measurements, every corner style, screws, and each of its own settings at its smallest, largest and every choice) and must pass before it's merged. Shared types need `author`, `description` and `typeVersion`. A type's `id` is how Boxsmith tells types apart, so pick one that is unlikely to clash, and raise `typeVersion` when you change a shared type: Boxsmith offers an **Update** when the version changes.

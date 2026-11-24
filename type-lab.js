@@ -77,6 +77,7 @@ function syncTypeParams(){
 }
 
 /* ---------- the Type lab panel ---------- */
+const SHARED_REPO='markplaga/markplaga-boxsmith-type', SHARED_RAW='https://raw.githubusercontent.com/'+SHARED_REPO+'/main/';
 const LAB_EXAMPLES=[['closed-box','Closed box'],['open-tray','Open tray'],['cube-frame','Cube frame'],['box-with-shelf','Box with a shelf']];
 const LAB_STARTER={format:'boxsmith-type',version:1,id:'my-box',name:'My box',description:'',
   inside:{W:'2*t',D:'2*t',H:'2*t'},
@@ -100,7 +101,9 @@ function labEl(){
    +'<div class="labRow"><button class="btn sm" id="labCheck" type="button">Check</button><button class="btn sm" id="labTry" type="button">Try it</button><button class="btn sm primary" id="labSave" type="button">Save to My types</button></div>'
    +'<div id="labReport" aria-live="polite"></div>'
    +'<div class="labRow"><button class="btn sm hidden" id="labCopy" type="button">Copy problems for an AI</button><button class="btn sm" id="labDownload" type="button">Download file</button></div>'
-   +'<h3>My types</h3><div id="labMine"></div>';
+   +'<h3>My types</h3><div id="labMine"></div>'
+   +'<h3>Shared types</h3><p class="hint">Styles other people made, each checked at many sizes. <a href="https://github.com/'+SHARED_REPO+'" target="_blank" rel="noopener">The collection</a></p>'
+   +'<div id="labShared"><button class="btn sm" id="labSharedLoad" type="button">Show shared types</button></div>';
   document.body.appendChild(el);
   $('#labClose').addEventListener('click',closeTypeLab);
   $('#labFile').addEventListener('change',async e=>{ const f=e.target.files[0]; if(!f) return; $('#labText').value=await f.text(); e.target.value=''; labCheck(); });
@@ -129,11 +132,21 @@ function labEl(){
     const txt='Boxsmith found these problems in the type file (each line starts with its place in the file). Fix them and send the whole file again.\n\n'+Boxsmith.types.explain(labLast.errors.concat(labLast.warnings||[]));
     try{ await navigator.clipboard.writeText(txt); toast('Copied — paste it to the AI that wrote the file'); }catch(e){ toast('Clipboard blocked by the browser'); } });
   $('#labDownload').addEventListener('click',async()=>{ const def=labParse(); if(!def) return; await saveFile((def.id||'box-type')+'.json',JSON.stringify(def,null,2)); });
+  $('#labShared').addEventListener('click',async e=>{
+    if(e.target.id==='labSharedLoad'){ loadShared(); return; }
+    const u=e.target.closest('button[data-use]'); if(u){ S.type=u.dataset.use; update(true); return; }
+    const b=e.target.closest('button[data-install]'); if(!b) return;
+    b.disabled=true; b.textContent='Installing…';
+    try{ await installShared(sharedIndex.types.find(t=>t.id===b.dataset.install)); }
+    catch(err){ toast('Couldn\'t install it: '+err.message); }
+    renderShared();
+  });
   $('#labMine').addEventListener('click',e=>{
     const b=e.target.closest('button[data-act]'); if(!b) return; const id=b.dataset.id, def=Boxsmith.types.get(id); if(!def) return;
     if(b.dataset.act==='use'){ S.type=id; update(true); }
     if(b.dataset.act==='edit'){ $('#labText').value=JSON.stringify(def,null,2); labCheck(); $('#labText').focus(); }
     if(b.dataset.act==='dl') saveFile(id+'.json',JSON.stringify(def,null,2));
+    if(b.dataset.act==='share') shareType(def);
     if(b.dataset.act==='rm'){
       const used=(typeof layoutBoxes!=='undefined'?layoutBoxes:[]).filter(x=>x.settings.type===id).length;
       confirmTwice(b,used?'Used by '+used+' box'+(used>1?'es':'')+' in Arrange — click again':'Click again to remove',()=>{
@@ -141,6 +154,55 @@ function labEl(){
     }
   });
   return el;
+}
+/* ---------- the shared collection (a GitHub repo with an index.json) ---------- */
+let sharedIndex=null;
+async function loadShared(){
+  const box=$('#labShared'); box.innerHTML='<p class="hint">Loading…</p>';
+  try{
+    const r=await fetch(SHARED_RAW+'index.json',{cache:'no-cache'}); if(!r.ok) throw new Error('HTTP '+r.status);
+    const idx=await r.json();
+    if(idx.format!=='boxsmith-type-index'||!Array.isArray(idx.types)) throw new Error('not a type index');
+    sharedIndex=idx; renderShared();
+  }catch(e){ box.innerHTML='<p class="hint">Couldn\'t load the shared types ('+esc(e.message)+'). Are you online?</p><button class="btn sm" id="labSharedLoad" type="button">Try again</button>'; }
+}
+function renderShared(){
+  if(!sharedIndex) return;
+  const box=$('#labShared');
+  if(!sharedIndex.types.length){ box.innerHTML='<p class="hint">No shared types yet. Share one of yours!</p>'; return; }
+  box.innerHTML=sharedIndex.types.map(t=>{
+    const mine=Boxsmith.types.get(t.id), same=mine&&mine.typeVersion===t.typeVersion&&mine.author===t.author;
+    const label=!mine?'Install':same?'Installed':'Update';
+    return '<div class="labShared">'+(t.preview?'<img src="'+esc(SHARED_RAW+t.preview)+'" alt="" loading="lazy">':'<div></div>')
+      +'<div><b>'+esc(t.name)+'</b><span>'+esc(t.description)+'</span><span>by '+esc(t.author||'unknown')+(t.typeVersion?' · v'+esc(t.typeVersion):'')
+      +(t.params&&t.params.length?' · settings: '+esc(t.params.join(', ')):'')+'</span>'
+      +'<div class="labRow"><button class="btn sm'+(same?'':' primary')+'" data-install="'+esc(t.id)+'" type="button"'+(same?' disabled':'')+'>'+label+'</button>'
+      +(same?'<button class="btn sm" data-use="'+esc(t.id)+'" type="button">Use</button>':'')
+      +(mine&&!same?'<span class="hint">Replaces your “'+esc(mine.name)+'”</span>':'')
+      +'<a class="hint" href="https://github.com/'+SHARED_REPO+'/tree/main/types/'+encodeURIComponent(t.id)+'" target="_blank" rel="noopener">Details</a></div></div></div>';
+  }).join('');
+}
+async function installShared(t){
+  if(!t) throw new Error('it is not in the list');
+  const r=await fetch(SHARED_RAW+t.file,{cache:'no-cache'}); if(!r.ok) throw new Error('HTTP '+r.status);
+  const def=await r.json();
+  if(def.id!==t.id) throw new Error('the file\'s id doesn\'t match');
+  const v=Boxsmith.types.validate(def); if(!v.ok) throw new Error(Boxsmith.types.explain(v.errors).split('\n')[0]);
+  keepType(def); S.type=def.id; update(true);
+  toast('Installed '+def.name+' — it\'s in your style list');
+}
+// propose a type for the shared collection: GitHub's "new file" page with the file filled in
+function shareType(def){
+  const missing=['author','description','typeVersion'].filter(k=>!def[k]);
+  if(missing.length){
+    $('#labText').value=JSON.stringify(Object.assign({},def,Object.fromEntries(missing.map(k=>[k,k==='typeVersion'?'1.0.0':'']))),null,2); labCheck();
+    toast('Fill in '+missing.join(', ')+' first, then Save to My types and Share again'); $('#labText').focus(); return;
+  }
+  const text=JSON.stringify(def,null,2)+'\n';
+  const base='https://github.com/'+SHARED_REPO+'/new/main?filename='+encodeURIComponent('types/'+def.id+'/type.json');
+  const url=base+'&value='+encodeURIComponent(text);
+  if(url.length<7500){ window.open(url,'_blank','noopener'); toast('On GitHub: “Propose changes”, then open the pull request. The check runs on it.'); }
+  else { saveFile(def.id+'.json',text); window.open(base,'_blank','noopener'); toast('This type is long, so it was downloaded: paste its contents into the GitHub page, then propose the change.'); }
 }
 // a prompt any chat AI can answer with a type file: the format, one worked example, the user's words
 let typeRefText='';
@@ -198,7 +260,7 @@ function renderLabMine(){
   $('#labMine').innerHTML=list.length?list.map(t=>'<div class="labMine"><div><b>'+esc(t.name)+'</b><span>'+esc(t.id)+(saved.has(t.id)?'':' · not saved')+'</span></div>'
     +'<button class="btn sm" data-act="use" data-id="'+esc(t.id)+'" type="button">Use</button><button class="btn sm" data-act="edit" data-id="'+esc(t.id)+'" type="button">Edit</button>'
     +'<button class="btn sm" data-act="dl" data-id="'+esc(t.id)+'" type="button" aria-label="Download '+esc(t.name)+'">↓</button>'
-    +(saved.has(t.id)?'<button class="btn sm" data-act="rm" data-id="'+esc(t.id)+'" type="button">Remove</button>':'')+'</div>').join('')
+    +(saved.has(t.id)?'<button class="btn sm" data-act="share" data-id="'+esc(t.id)+'" type="button" title="Propose it for the shared collection on GitHub">Share</button><button class="btn sm" data-act="rm" data-id="'+esc(t.id)+'" type="button">Remove</button>':'')+'</div>').join('')
     :'<p class="hint">None yet. Types you save here stay in this browser; download a file to keep a copy or share it.</p>';
 }
 // where JSON text first goes wrong (browsers don't all say), or -1
