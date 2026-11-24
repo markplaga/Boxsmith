@@ -234,7 +234,7 @@ function rebuildBoxLayout(){
 function restoreLayoutBox(entry,cache){
   const rotation=entry?.rotation??[0,0,entry?.angle];
   const vector=value=>Array.isArray(value)&&value.length===3&&value.every(Number.isFinite);
-  if(!entry?.settings || !TYPES.some(type=>type.id===entry.settings.type)
+  if(!entry?.settings || !(TYPES.some(type=>type.id===entry.settings.type)||customTypeDef(entry.settings.type))
     || !vector(entry.position) || !vector(rotation)) throw new Error('Invalid box in layout');
   return makeLayoutBox(entry.settings,entry.position,rotation,entry.hidden===true,cache);
 }
@@ -299,7 +299,7 @@ function openBoxLayout(input){
 }
 
 function layoutBoxLabel(box,index){
-  return (index+1)+'. '+TYPES.find(type=>type.id===box.settings.type).name+(box.hidden?' (hidden)':'');
+  return (index+1)+'. '+typeInfo(box.settings.type).name+(box.hidden?' (hidden)':'');
 }
 
 function layoutCoordinateScale(){
@@ -308,7 +308,7 @@ function layoutCoordinateScale(){
 
 function syncBoxLayout(){
   const box=layoutBoxes[layoutSelection];
-  const type=TYPES.find(type=>type.id===S.type);
+  const type=typeInfo(S.type);
   $('#layoutAdd').textContent='Add '+(type?.name||'current box');
   $('#layoutAdd').disabled=!GL;
   $('#layoutSave').disabled=$('#layoutClear').disabled=!layoutBoxes.length;

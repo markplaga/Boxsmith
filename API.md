@@ -62,6 +62,37 @@ Open `frame-and-boxes.json` with **Open layout** in Boxsmith. You can also read 
 
 Every control on the page is a settings key (a test checks this). `W`, `D` and `H` are width, depth and height. Common keys are `t` for material thickness, `fw` for finger width, `kerf`, and `dimMode` with `'inside'` or `'outside'`. `paint` (`'none'`, `'watercolor'` or `'acrylic'`), `paintColor` (like `'#3a7bd5'`) and `paintStrength` (10 to 100, watercolor only) set the painted look in the preview. `look` is optional and sets the material a box keeps in a layout (see below). Style keys include `frameW` for a Frame's ring width, `beamW` for a Cube frame's beam width, `drawers` for drawer count and `sides` for polygon sides. `unit` selects the display unit. `qty` is the number of boxes to cut (1 to 500); `design.compute` nests every copy across as many sheets as needed, and `stats.parts` counts them all. For a decorated design, a Settings JSON file exported from Boxsmith shows the matching keys and nested artwork records.
 
+## New box styles: `types`
+
+A box type file is JSON that describes a new style of box: its parts, their sizes, where they sit, and which edges have fingers. It holds only numbers and short formulas, no code. [BOX-TYPES.md](BOX-TYPES.md) is the full format, written so you can hand it to an AI; [`boxsmith-type.schema.json`](boxsmith-type.schema.json) is its JSON Schema; [`types/`](types/) has the Closed box, Open tray and Cube frame written as type files.
+
+| Method | Result |
+| --- | --- |
+| `types.validate(type)` | `{ok, errors, warnings}`. Checks the file without building it. Each problem is `{path, message}`, where `path` is the place in the file (`parts[2].panel.edges[1]`). |
+| `types.check(type, settings = {})` | Validates, builds with these settings, and tests the parts in 3D: every finger meets a partner's gap, no two parts run into each other or overlap, and each part fits the sheet. Returns `{ok, stage, errors, warnings, parts, size, notes}`; `stage` is `'format'`, `'build'`, `'fit'` or `'done'`. Nothing stays registered. |
+| `types.register(type)` | Adds the type (or replaces one with the same `id`). It then lists in `boxes.list()` and works everywhere a built-in style does: `boxes.create`, `design.compute`, layouts. Throws a `TypeError` with an `errors` list if the file has problems. |
+| `types.unregister(id)` | Removes it. |
+| `types.get(id)`, `types.list()` | A registered type file, or all of them. |
+| `types.explain(errors)` | The problems as plain lines, ready to show or paste back to an AI. |
+| `types.parts(settings)` | The parts any style makes, in a form you can compare: name, outline, holes, circles, 3D placement and text, plus the warnings and notes. |
+| `types.formula(src, env)`, `types.template(text, env)` | The formula language on its own: `types.formula('2*t + W/2', {t: 3, W: 100})` → `56`. |
+
+A type's own settings go in `typeParams`, keyed by type id, so they can't clash with Boxsmith's settings or another type's:
+
+```js
+const frame = JSON.parse(fs.readFileSync('types/cube-frame.json', 'utf8'));
+frame.id = 'slim-frame';
+frame.params.push({ key: 'slack', label: 'Slack', kind: 'length', default: 2, min: 0, max: 10 });
+
+const report = Boxsmith.types.check(frame, { W: 200, D: 200, H: 200 });
+if (!report.ok) throw new Error(Boxsmith.types.explain(report.errors));
+
+Boxsmith.types.register(frame);
+const design = Boxsmith.design.compute({ type: 'slim-frame', beamW: 30, typeParams: { 'slim-frame': { slack: 4 } } });
+```
+
+A param that reuses a standard setting (`beamW` above, or `handles`, `cols`, …) reads that setting instead. `boxes.create` checks `typeParams` against each loaded type's `kind`, `min`, `max` and `choices`; values for a type that isn't loaded are kept as they are.
+
 ## Cut sheets, files, costs: `design`
 
 Needs the full API (Node with `boxsmith-node.js`, or the page).

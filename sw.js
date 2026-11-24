@@ -1,9 +1,9 @@
 /* Boxsmith service worker: makes the app installable and usable offline.
    Bump VERSION whenever you change app files so installed copies refresh. */
-const VERSION = 'boxsmith-v34';
+const VERSION='boxsmith-v35';
 const CORE = [
   './', 'index.html', 'help.html', 'manifest.webmanifest',
-  'three.min.js', 'designs.js', 'tools.js', 'boxsmith-api.js', 'box-layout.js',
+  'three.min.js', 'designs.js', 'tools.js', 'box-types.js', 'boxsmith-api.js', 'box-layout.js',
   'mosaic-core.js', 'app.js', 'mosaic.js', 'boxsmith-engine.js', 'remote-anim.js', 'remote.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png',
   'icons/apple-touch-icon.png', 'icons/favicon-32.png'

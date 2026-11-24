@@ -56,7 +56,7 @@
       if(card) files.push({name:name+'-assembly-card.html',type:'text/html',data:cardHTML(true)});
       return {
         type:design.type,
-        name:TYPES.find(item=>item.id===design.type).name,
+        name:typeInfo(design.type).name,
         fileBase:name,
         settings:clone(design),
         outside:size(info),
@@ -106,6 +106,104 @@
     },
     /** Printable assembly card (HTML). It has no 3D picture when made outside the page. */
     assemblyCard:settings=>computeDesign(settings,{svg:false,dxf:false}).files.find(file=>file.name.endsWith('.html')).data
+  };
+
+  /* ---------- box type files: build one and test that its parts fit together ----------
+     check(def, settings?) → {ok, errors:[{path, message}], warnings:[…], parts, size}. It validates the
+     file, builds it with these settings (or the defaults), then samples the solid parts in 3D:
+     - along every edge, inside the first thickness: a point where this part has material must not also
+       be inside another part (two fingers clash), and a gap exactly one thickness deep (where a partner's
+       finger belongs) must be filled by exactly one other part (else there is a hole, or nothing joins
+       that edge). Cutouts deeper or shallower than one thickness (a notch) are left alone.
+     - across each part's middle: no other part may be there (two panels overlap).
+     Corners (the first and last thickness of each edge) are skipped, as several parts meet there. */
+  function solidsOf(parts){
+    return parts.filter(p=>p.map&&p.outline&&!p.solids&&!p.noCut).map(p=>{
+      const {o,u,v,n}=p.map, th=p.th||G.t, holes=p.holes.concat(p.circles.map(circlePts));
+      const corners=[]; for(const q of p.outline) for(const h of [0,th]) corners.push([0,1,2].map(k=>o[k]+u[k]*q[0]+v[k]*q[1]+n[k]*h));
+      const lo=[0,1,2].map(k=>Math.min(...corners.map(c=>c[k]))-1e-6), hi=[0,1,2].map(k=>Math.max(...corners.map(c=>c[k]))+1e-6);
+      const local=P=>{ const d=[P[0]-o[0],P[1]-o[1],P[2]-o[2]]; return [d[0]*u[0]+d[1]*u[1]+d[2]*u[2], d[0]*v[0]+d[1]*v[1]+d[2]*v[2], d[0]*n[0]+d[1]*n[1]+d[2]*n[2]]; };
+      const in2=q=>pointIn(q,p.outline)&&!holes.some(h=>pointIn(q,h));
+      return {p,th,lo,hi,local,in2,
+        has(P){ if(P[0]<lo[0]||P[1]<lo[1]||P[2]<lo[2]||P[0]>hi[0]||P[1]>hi[1]||P[2]>hi[2]) return false; const L=local(P); return L[2]>0&&L[2]<th&&in2([L[0],L[1]]); },
+        world:(x,y,h)=>[0,1,2].map(k=>o[k]+u[k]*x+v[k]*y+n[k]*h)};
+    });
+  }
+  function jointReport(parts){
+    const S3=solidsOf(parts), problems=[], t=G.t;
+    const others=(P,me)=>S3.filter(s=>s!==me&&s.has(P));
+    for(const s of S3){
+      const bb=bbox(s.p.outline), step=Math.max(0.25,Math.min(1,t/3));
+      // the four sides of the part, walking along each inside the first thickness
+      const sides=[
+        {name:'top edge',L:bb.w,pt:(a,d)=>[bb.x+a,bb.y+d]},{name:'right edge',L:bb.h,pt:(a,d)=>[bb.x+bb.w-d,bb.y+a]},
+        {name:'bottom edge',L:bb.w,pt:(a,d)=>[bb.x+a,bb.y+bb.h-d]},{name:'left edge',L:bb.h,pt:(a,d)=>[bb.x+d,bb.y+a]}];
+      for(const side of sides){
+        let run=null;
+        const flush=()=>{ if(run&&run.len>=Math.max(0.9,t*0.3)) problems.push(run); run=null; };
+        for(let a=t+step/2;a<side.L-t;a+=step){
+          const q=side.pt(a,t*0.5), mid=s.th*0.5, P=s.world(q[0],q[1],mid);
+          const mine=s.in2(q), other=others(P,s);
+          let bad=null;
+          if(mine&&other.length) bad={kind:'clash',with:other[0].p.name};
+          else if(!mine&&!other.length){
+            // a finger-deep gap: no material until exactly one thickness in (deeper or shallower cuts are cutouts)
+            if(!s.in2(side.pt(a,t*0.92))&&s.in2(side.pt(a,t*1.08))) bad={kind:'gap'};
+          }
+          else if(!mine&&other.length>1) bad={kind:'clash',with:other[1].p.name,also:other[0].p.name};
+          if(bad&&run&&run.kind===bad.kind&&run.with===bad.with&&Math.abs(run.end-a)<=step*1.5){ run.end=a; run.len+=step; }
+          else if(bad){ flush(); run=Object.assign({part:s.p.name,side:side.name,start:a,end:a,len:step},bad); }
+          else flush();
+        }
+        flush();
+      }
+      // the middle of the part: nothing else should be there
+      const inset=Math.max(2*t,1), nx=Math.max(1,Math.min(24,Math.floor((bb.w-2*inset)/4))), ny=Math.max(1,Math.min(24,Math.floor((bb.h-2*inset)/4)));
+      let overlap=null;
+      for(let i=0;i<=nx&&!overlap;i++) for(let j=0;j<=ny&&!overlap;j++){
+        const q=[bb.x+inset+(bb.w-2*inset)*(nx?i/nx:0.5)+0.013,bb.y+inset+(bb.h-2*inset)*(ny?j/ny:0.5)+0.017];
+        if(!s.in2(q)) continue;
+        const o=others(s.world(q[0],q[1],s.th*0.5),s); if(o.length) overlap=o[0].p.name;
+      }
+      if(overlap&&!problems.some(x=>x.kind==='overlap'&&x.with===s.p.name&&x.part===overlap)) problems.push({kind:'overlap',part:s.p.name,with:overlap});
+    }
+    const mm=x=>Math.round(x*10)/10, merged=[];
+    for(const x of problems){ const m=x.kind!=='overlap'&&merged.find(y=>y.kind===x.kind&&y.part===x.part&&y.side===x.side&&y.with===x.with);
+      if(m){ m.start=Math.min(m.start,x.start); m.end=Math.max(m.end,x.end); m.count++; } else merged.push(Object.assign({count:1},x)); }
+    const where=x=>'"'+x.part+'", '+x.side+(x.count>1?' ('+x.count+' places between '+mm(x.start-0.5)+' and '+mm(x.end+0.5)+' mm along)':' ('+mm(x.start-0.5)+'–'+mm(x.end+0.5)+' mm along)');
+    return merged.map(x=>x.kind==='gap'
+      ? {path:'',part:x.part,message:where(x)+': there are finger gaps that no other part fills. Either nothing joins this edge (make it "e", plain), or the part that joins it has the same kind of edge: a "F" edge must meet an "f" edge.'}
+      : x.kind==='clash'
+      ? {path:'',part:x.part,message:where(x)+': '+(x.also?'"'+x.also+'" and "'+x.with+'" both fill the same place.':'it runs into "'+x.with+'". Both edges have fingers in the same places; one of them should be "F" (or check where the parts are placed).')}
+      : {path:'',part:x.part,message:'"'+x.part+'" and "'+x.with+'" overlap through the middle of a panel; check their "at", "u", "v" and "n", and their sizes.'});
+  }
+  const builtInTypes=API.boxes.list().filter(x=>!x.custom).map(x=>x.id);
+  API.types.check=function(def,settings={},options={}){
+    const v=API.types.validate(def);
+    if(!v.ok) return {ok:false,stage:'format',errors:v.errors,warnings:v.warnings};
+    const prev=API.types.get(def.id);
+    API.types.register(def);
+    try{
+      return withSettings(Object.assign({},settings,{type:def.id}),()=>{
+        let res;
+        try{ res=generate(); }
+        catch(e){ return {ok:false,stage:'build',errors:[{path:e.path||'',message:e.detail||e.message}],warnings:v.warnings}; }
+        const errors=[], warnings=v.warnings.slice();
+        if(!res.parts.length) errors.push({path:'parts',message:'With these settings the type makes no parts at all.'});
+        const sizes=[S.sheetW,S.sheetH].sort((a,b)=>b-a);
+        for(const p of res.parts){ const b=bbox(p.outline||[[0,0]]), s=[b.w,b.h].sort((a,c)=>c-a);
+          if(!(b.w>0&&b.h>0)) errors.push({path:'',part:p.name,message:'"'+p.name+'" has no area.'});
+          else if(s[0]>sizes[0]||s[1]>sizes[1]) warnings.push({path:'',part:p.name,message:'"'+p.name+'" ('+Math.round(b.w)+' × '+Math.round(b.h)+' mm) doesn\'t fit the '+sizes[0]+' × '+sizes[1]+' mm sheet.'}); }
+        if(options.joints!==false) errors.push(...jointReport(res.parts));
+        for(const w of res.warns) warnings.push({path:'',message:w});
+        const info=res.info||{};
+        return {ok:!errors.length,stage:errors.length?'fit':'done',errors,warnings,parts:res.parts.length,size:{W:round(info.W),D:round(info.D),H:round(info.H)},notes:res.notes};
+      });
+    } finally { if(prev) API.types.register(prev); else API.types.unregister(def.id); }
+  };
+  /** The parts a type makes, in a comparable form: name, outline, holes and circles (mm, rounded). */
+  API.types.parts=function(settings){
+    return withSettings(settings,()=>{ const r=generate(); return r.parts.map(p=>({name:p.name,outline:(p.outline||[]).map(q=>[round(q[0],3),round(q[1],3)]),holes:p.holes.map(h=>h.map(q=>[round(q[0],3),round(q[1],3)])),circles:p.circles.map(c=>[round(c.x,3),round(c.y,3),round(c.r,3)]),map:p.map&&{o:p.map.o.map(x=>round(x,3)),u:p.map.u,v:p.map.v,n:p.map.n},th:p.th,mat:p.mat,texts:p.texts.map(x=>({x:round(x.x,3),y:round(x.y,3),rot:x.rot}))})).concat([{warns:r.warns,notes:r.notes}]); });
   };
 
   /* ---------- measuring and arranging whole boxes ---------- */

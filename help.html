@@ -23,6 +23,7 @@
 <li><a href="#h-production">Production: batches, kits, cost</a></li>
 <li><a href="#h-saving">Saving your work</a></li>
 <li><a href="#h-api">Use the JavaScript API</a></li>
+<li><a href="#h-types">Make your own box styles</a></li>
 <li><a href="#h-kerftest">Dialing in fit with the kerf test</a></li>
 <li><a href="#h-trouble">Troubleshooting</a></li>
 <li><a href="#h-glossary">Glossary</a></li>
@@ -282,6 +283,14 @@ Boxsmith.browser.showBox(tray);</code></pre>
 <li><code>assemblies.place()</code> positions an intact box. <code>assemblies.create()</code> collects those placements into one layout, and <code>assemblies.serialize()</code> produces JSON that <b>Open layout</b> accepts.</li>
 </ul>
 <p>Follow the illustrated walkthrough to build a Frame layout, save it, and reopen it, or use the reference to look up a method. <a href="docs/boxsmith-api-guide.pdf">Illustrated API guide (PDF)</a> · <a href="https://github.com/markplaga/Boxsmith/blob/main/API.md">API reference</a> · <a href="boxsmith-api.js" download>Download API script</a></p>
+
+<h3 id="h-types">Make your own box styles</h3>
+<p>A <b>box type file</b> describes a new style of box in JSON: which flat parts it has, how big each one is, where it sits, and which edges join with fingers. It holds only numbers and short formulas such as <code>W - 2*t</code>, never code, so a type file from someone else (or written by an AI) is safe to try. Edges are <code>"e"</code> (plain), <code>"f"</code> (fingers) and <code>"F"</code> (the matching gaps), and Boxsmith adds the finger spacing, corners, kerf and screw holes for you.</p>
+<p>Boxsmith checks a type in three steps and tells you where each problem is: the file itself, then building it at your size, then fitting the parts together in 3D (every finger needs a partner, and no two parts may run into each other).</p>
+<pre style="overflow-x:auto"><code>const report = Boxsmith.types.check(myType, { W: 160, D: 100, H: 60 });
+console.log(report.ok ? 'Fits' : Boxsmith.types.explain(report.errors));
+Boxsmith.types.register(myType);   // then use it like any style</code></pre>
+<p>To have an AI write one, give it the format reference and describe your box, then paste back any problems Boxsmith reports. <a href="https://github.com/markplaga/Boxsmith/blob/main/BOX-TYPES.md">Box type format</a> · <a href="https://github.com/markplaga/Boxsmith/tree/main/types">Example types</a> · <a href="https://github.com/markplaga/markplaga-boxsmith-type">Shared types</a></p>
 
 <h2 id="h-kerftest">16. Dialing in fit with the kerf test</h2>
 <ol>

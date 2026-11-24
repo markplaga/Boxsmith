@@ -1,0 +1,901 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/markplaga/Boxsmith/blob/main/boxsmith-type.schema.json",
+  "title": "Boxsmith box type",
+  "description": "A new style of laser-cut box for Boxsmith. See BOX-TYPES.md for what each field means. Boxsmith.types.validate checks a few things a schema can't (that every formula can be read, that defaults suit min/max and choices); Boxsmith.types.check also builds the type and tests that the parts fit.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "version",
+    "id",
+    "name",
+    "parts"
+  ],
+  "properties": {
+    "format": {
+      "const": "boxsmith-type"
+    },
+    "version": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,39}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "icon": {
+      "type": "string"
+    },
+    "author": {
+      "type": "string"
+    },
+    "typeVersion": {
+      "type": "string"
+    },
+    "license": {
+      "type": "string"
+    },
+    "inside": {
+      "oneOf": [
+        {
+          "const": false
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "W": {
+              "$ref": "#/$defs/formula"
+            },
+            "D": {
+              "$ref": "#/$defs/formula"
+            },
+            "H": {
+              "$ref": "#/$defs/formula"
+            }
+          }
+        }
+      ]
+    },
+    "screws": {
+      "type": "boolean"
+    },
+    "params": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "label",
+          "kind",
+          "default"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+            "not": {
+              "enum": [
+                "W",
+                "D",
+                "H",
+                "t"
+              ]
+            }
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "enum": [
+              "length",
+              "number",
+              "integer",
+              "bool",
+              "choice",
+              "text",
+              "color"
+            ]
+          },
+          "default": {
+            "type": [
+              "number",
+              "boolean",
+              "string"
+            ]
+          },
+          "min": {
+            "type": "number"
+          },
+          "max": {
+            "type": "number"
+          },
+          "step": {
+            "type": "number"
+          },
+          "choices": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "value"
+                  ],
+                  "properties": {
+                    "value": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "showIf": {
+            "$ref": "#/$defs/formula"
+          },
+          "help": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "let": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/formula"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "text"
+            ],
+            "properties": {
+              "when": {
+                "$ref": "#/$defs/formula"
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "parts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/component"
+      }
+    },
+    "info": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "when": {
+          "$ref": "#/$defs/formula"
+        },
+        "inner": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "W": {
+              "$ref": "#/$defs/formula"
+            },
+            "D": {
+              "$ref": "#/$defs/formula"
+            },
+            "H": {
+              "$ref": "#/$defs/formula"
+            },
+            "label": {
+              "type": "string"
+            }
+          }
+        },
+        "hole": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "W": {
+              "$ref": "#/$defs/formula"
+            },
+            "D": {
+              "$ref": "#/$defs/formula"
+            },
+            "H": {
+              "$ref": "#/$defs/formula"
+            },
+            "label": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "text"
+            ],
+            "properties": {
+              "when": {
+                "$ref": "#/$defs/formula"
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "formula": {
+      "description": "A number, true/false, or a formula such as \"W - 2*t\" (see BOX-TYPES.md).",
+      "type": [
+        "number",
+        "boolean",
+        "string",
+        "array"
+      ]
+    },
+    "edge": {
+      "anyOf": [
+        {
+          "enum": [
+            "e",
+            "f",
+            "F"
+          ]
+        },
+        {
+          "type": "string",
+          "description": "A formula giving \"e\", \"f\", \"F\" or a list of [x, y] points."
+        },
+        {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "$ref": "#/$defs/formula"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "hole": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "A formula giving one shape, a list of shapes, or []."
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rect"
+          ],
+          "properties": {
+            "rect": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "minItems": 4,
+                  "maxItems": 4,
+                  "items": {
+                    "$ref": "#/$defs/formula"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "circle"
+          ],
+          "properties": {
+            "circle": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "items": {
+                    "$ref": "#/$defs/formula"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "slot"
+          ],
+          "properties": {
+            "slot": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "minItems": 4,
+                  "maxItems": 4,
+                  "items": {
+                    "$ref": "#/$defs/formula"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "polygon"
+          ],
+          "properties": {
+            "polygon": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "minItems": 3,
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "array",
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "items": {
+                          "$ref": "#/$defs/formula"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "fingers"
+          ],
+          "properties": {
+            "fingers": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "size",
+                "edges"
+              ],
+              "properties": {
+                "size": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "minItems": 2,
+                      "maxItems": 2,
+                      "items": {
+                        "$ref": "#/$defs/formula"
+                      }
+                    }
+                  ]
+                },
+                "edges": {
+                  "type": "array",
+                  "minItems": 4,
+                  "maxItems": 4,
+                  "items": {
+                    "$ref": "#/$defs/edge"
+                  }
+                },
+                "at": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "minItems": 2,
+                      "maxItems": 2,
+                      "items": {
+                        "$ref": "#/$defs/formula"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "holes": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hole"
+          }
+        }
+      ]
+    },
+    "axis": {
+      "anyOf": [
+        {
+          "enum": [
+            "X",
+            "-X",
+            "Y",
+            "-Y",
+            "Z",
+            "-Z"
+          ]
+        },
+        {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "$ref": "#/$defs/formula"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "box"
+          ]
+        },
+        {
+          "required": [
+            "panel"
+          ]
+        },
+        {
+          "required": [
+            "dividers"
+          ]
+        }
+      ],
+      "properties": {
+        "box": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "size": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "items": {
+                    "$ref": "#/$defs/formula"
+                  }
+                }
+              ]
+            },
+            "at": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "items": {
+                    "$ref": "#/$defs/formula"
+                  }
+                }
+              ]
+            },
+            "faces": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "bottom",
+                  "top",
+                  "front",
+                  "back",
+                  "left",
+                  "right"
+                ]
+              }
+            },
+            "prefix": {
+              "type": "string"
+            },
+            "holes": {
+              "type": "object",
+              "propertyNames": {
+                "enum": [
+                  "bottom",
+                  "top",
+                  "front",
+                  "back",
+                  "left",
+                  "right"
+                ]
+              },
+              "additionalProperties": {
+                "$ref": "#/$defs/holes"
+              }
+            },
+            "topEdges": {
+              "type": "object",
+              "propertyNames": {
+                "enum": [
+                  "front",
+                  "back",
+                  "left",
+                  "right"
+                ]
+              },
+              "additionalProperties": {
+                "$ref": "#/$defs/edge"
+              }
+            },
+            "text": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "on"
+              ],
+              "properties": {
+                "on": {
+                  "enum": [
+                    "bottom",
+                    "top",
+                    "front",
+                    "back",
+                    "left",
+                    "right"
+                  ]
+                },
+                "rot": {
+                  "enum": [
+                    0,
+                    180
+                  ]
+                },
+                "x": {
+                  "$ref": "#/$defs/formula"
+                },
+                "y": {
+                  "$ref": "#/$defs/formula"
+                }
+              }
+            }
+          }
+        },
+        "panel": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name"
+          ],
+          "oneOf": [
+            {
+              "required": [
+                "size"
+              ],
+              "not": {
+                "required": [
+                  "outline"
+                ]
+              }
+            },
+            {
+              "required": [
+                "outline"
+              ],
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "size"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "edges"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "size": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "$ref": "#/$defs/formula"
+                  }
+                }
+              ]
+            },
+            "edges": {
+              "type": "array",
+              "minItems": 4,
+              "maxItems": 4,
+              "items": {
+                "$ref": "#/$defs/edge"
+              }
+            },
+            "outline": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "minItems": 3,
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "array",
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "items": {
+                          "$ref": "#/$defs/formula"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "at": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "items": {
+                    "$ref": "#/$defs/formula"
+                  }
+                }
+              ]
+            },
+            "u": {
+              "$ref": "#/$defs/axis"
+            },
+            "v": {
+              "$ref": "#/$defs/axis"
+            },
+            "n": {
+              "$ref": "#/$defs/axis"
+            },
+            "holes": {
+              "$ref": "#/$defs/holes"
+            },
+            "material": {
+              "enum": [
+                "wood",
+                "acrylic"
+              ]
+            },
+            "role": {
+              "type": "string"
+            },
+            "text": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "rot": {
+                  "enum": [
+                    0,
+                    180
+                  ]
+                },
+                "x": {
+                  "$ref": "#/$defs/formula"
+                },
+                "y": {
+                  "$ref": "#/$defs/formula"
+                }
+              }
+            }
+          }
+        },
+        "dividers": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "at",
+            "size"
+          ],
+          "properties": {
+            "at": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "items": {
+                    "$ref": "#/$defs/formula"
+                  }
+                }
+              ]
+            },
+            "size": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "items": {
+                    "$ref": "#/$defs/formula"
+                  }
+                }
+              ]
+            },
+            "cols": {
+              "$ref": "#/$defs/formula"
+            },
+            "rows": {
+              "$ref": "#/$defs/formula"
+            },
+            "height": {
+              "$ref": "#/$defs/formula"
+            },
+            "prefix": {
+              "type": "string"
+            }
+          }
+        },
+        "when": {
+          "$ref": "#/$defs/formula"
+        },
+        "for": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/formula"
+                }
+              }
+            ]
+          }
+        },
+        "let": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/formula"
+          }
+        }
+      }
+    }
+  }
+}

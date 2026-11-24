@@ -74,7 +74,9 @@ async function load({ dir = __dirname, timeout = 20000, chrome } = {}) {
   };
   const rethrow = error => {
     const Type = (error && globalThis[error.name] && /Error$/.test(error.name)) ? globalThis[error.name] : Error;
-    throw new Type(error && error.message ? error.message : String(error));
+    const out = new Type(error && error.message ? error.message : String(error));
+    if (error && Array.isArray(error.errors)) out.errors = plain(error.errors);   // box type problems, one per entry
+    throw out;
   };
   const node = wrap(api);
   delete node._checkRender;

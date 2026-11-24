@@ -184,7 +184,129 @@ function hingeSlits(z0,z1,Hw,pitch,bridge){
   return slits;
 }
 /* ================= BOX TYPES ================= */
+/* ================= BOX TYPE FILES =================
+   A custom box type (box-types.js format) is built here from the same pieces the built-in styles
+   use: buildBox for finger-jointed boxes, panelOutline for flat panels, makeDividers. Edges use the
+   Boxes.py letters: e plain, f fingers (the panel that owns the corners), F their partner. */
+class TypeBuildError extends Error{ constructor(path,message){ super((path?path+': ':'')+message); this.path=path; this.detail=message; } }
+const EDGE_OF={e:'plain',f:'M',F:'F'};
+/** The built-in style or a loaded type file with this id, as {id, name, d, ic}. */
+function typeInfo(id){ const b=TYPES.find(x=>x.id===id); if(b) return b; const c=customTypeDef(id); return c?{id,name:c.name,d:c.description||'',ic:c.icon||'closed',custom:true}:{id,name:id,d:'',ic:'closed'}; }
+function customTypeDef(id){ return Boxsmith.types&&Boxsmith.types.get?Boxsmith.types.get(id):(Boxsmith._customTypes||{})[id]||null; }
+function generateCustom(def){
+  const T=BoxTypes, t=G.t, warns=[], notes=[], parts=[], counters={};
+  const savedTs=G.ts; if(def.screws===false) G.ts=null;
+  const at=(path,fn)=>{ try{ return fn(); }catch(e){ if(e instanceof TypeBuildError) throw e; throw new TypeBuildError(path,e.message); } };
+  const host={
+    fmt:x=>fmt(+x),
+    // a finger-jointed rectangle (as a hole or a shape): size w×h, edges top, right, bottom, left
+    fingers:(w,h,edges)=>panelOutline(+w,+h,(edges||['e','e','e','e']).map(edgeSpec)),
+    handleHoles:(d,h)=>handleHoles(+d,+h)
+  };
+  function edgeSpec(e){
+    if(typeof e==='string'&&EDGE_OF[e]) return EDGE_OF[e];
+    if(Array.isArray(e)&&e.length&&Array.isArray(e[0])) return {pts:e.map(q=>[+q[0],+q[1]])};
+    throw new Error('an edge must be "e", "f", "F" or a list of points, not '+JSON.stringify(e));
+  }
+  const F=(src,env,path)=>at(path,()=>T.formula(src,env,host));
+  const edge=(e,env,path)=>at(path,()=>edgeSpec(typeof e==='string'&&EDGE_OF[e]?e:T.formula(e,env,host)));
+  const numF=(src,env,path)=>{ const v=F(src,env,path); if(typeof v!=='number'||!Number.isFinite(v)) throw new TypeBuildError(path,'must work out to a number, not '+JSON.stringify(v)); return v; };
+  const vecF=(src,env,path,n)=>{ const v=Array.isArray(src)?src.map((x,i)=>numF(x,env,path+'['+i+']')):F(src,env,path); if(!Array.isArray(v)||v.length!==n||!v.every(x=>typeof x==='number'&&Number.isFinite(x))) throw new TypeBuildError(path,'must work out to '+n+' numbers, not '+JSON.stringify(v)); return v; };
+  const axisF=(src,env,path)=>typeof src==='string'&&T.AXES[src]?T.AXES[src].slice():vecF(src,env,path,3);
+  const isPoly=v=>Array.isArray(v)&&v.length>=3&&v.every(q=>Array.isArray(q)&&q.length===2&&q.every(x=>typeof x==='number'&&Number.isFinite(x)));
+  // holes: shape objects or formulas giving a polygon or a list of polygons → {holes:[polygons], circles:[{x,y,r}]}
+  function holesOf(list,env,path){
+    const out={holes:[],circles:[]};
+    const addPoly=(v,p)=>{ if(isPoly(v)) out.holes.push(v.map(q=>[q[0],q[1]])); else if(Array.isArray(v)&&v.every(isPoly)) v.forEach(x=>out.holes.push(x)); else if(!(Array.isArray(v)&&!v.length)) throw new TypeBuildError(p,'must work out to a polygon (a list of [x, y] points) or a list of polygons.'); };
+    const items=typeof list==='string'?[list]:list||[];
+    items.forEach((h,j)=>{ const p=path+'['+j+']';
+      if(typeof h==='string'){ addPoly(F(h,env,p),p); return; }
+      if(h.rect){ const [x,y,w,hh]=vecF(h.rect,env,p+'.rect',4); out.holes.push(rect(x,y,w,hh)); }
+      else if(h.slot){ const [cx,cy,w,hh]=vecF(h.slot,env,p+'.slot',4); out.holes.push(T.FUNCS.slot(cx,cy,w,hh)); }
+      else if(h.circle){ const [x,y,r]=vecF(h.circle,env,p+'.circle',3); out.circles.push({x,y,r}); }
+      else if(h.polygon){ const v=typeof h.polygon==='string'?F(h.polygon,env,p+'.polygon'):h.polygon.map((q,k)=>vecF(q,env,p+'.polygon['+k+']',2)); addPoly(v,p+'.polygon'); }
+      else if(h.fingers){ const g=h.fingers, [w,hh]=vecF(g.size,env,p+'.fingers.size',2), [x,y]=g.at?vecF(g.at,env,p+'.fingers.at',2):[0,0];
+        out.holes.push(panelOutline(w,hh,g.edges.map((e,k)=>edge(e,env,p+'.fingers.edges['+k+']'))).map(q=>[q[0]+x,q[1]+y])); }
+    });
+    return out;
+  }
+  try{
+    // the sizes: outside sizes, or inside plus what the type adds
+    const env={t,fw:G.fw,clr:S.clr,inside:S.dimMode==='inside',text:S.text||'',tslot:S.tslot,corners:S.corners,tAcr:S.tAcr};
+    for(const p of def.params||[]) env[p.key]=Object.prototype.hasOwnProperty.call(DEFAULTS,p.key)?S[p.key]:paramValue(def,p.key);
+    let W=+S.W, D=+S.D, H=+S.H;
+    if(env.inside&&def.inside){ const add=k=>def.inside[k]===undefined?0:numF(def.inside[k],env,'inside.'+k); const a=[add('W'),add('D'),add('H')]; W+=a[0]; D+=a[1]; H+=a[2]; }
+    Object.assign(env,{W,D,H});
+    for(const [k,v] of Object.entries(def.let||{})) env[k]=F(v,env,'let.'+k);
+    const when=(x,env,path)=>x===undefined||!!F(x,env,path);
+    (def.warnings||[]).forEach((w,i)=>{ const o=typeof w==='string'?{text:w}:w; if(when(o.when,env,'warnings['+i+'].when')) warns.push(at('warnings['+i+'].text',()=>T.template(o.text,env,host,{}))); });
+    // every combination of the "for" values, in order (the first name changes slowest)
+    const combos=(c,env,path)=>{
+      let out=[{}];
+      for(const [k,v] of Object.entries(c.for||{})){
+        const vals=Array.isArray(v)?v.map((x,i)=>F(x,env,path+'.for.'+k+'['+i+']')):F(v,env,path+'.for.'+k);
+        if(!Array.isArray(vals)) throw new TypeBuildError(path+'.for.'+k,'must work out to a list.');
+        out=out.flatMap(o=>vals.map(x=>Object.assign({},o,{[k]:x})));
+        if(out.length>2000) throw new TypeBuildError(path+'.for','makes more than 2000 parts.');
+      }
+      return out;
+    };
+    (def.parts||[]).forEach((c,i)=>{ const path='parts['+i+']';
+      for(const vars of combos(c,env,path)){
+        const e=Object.assign({},env,vars);
+        for(const [k,v] of Object.entries(c.let||{})) e[k]=F(v,e,path+'.let.'+k);
+        if(!when(c.when,e,path+'.when')) continue;
+        if(c.box){ const b=c.box, p=path+'.box';
+          const [bw,bd,bh]=vecF(b.size||['W','D','H'],e,p+'.size',3), [ox,oy,oz]=b.at?vecF(b.at,e,p+'.at',3):[0,0,0];
+          const faces=b.faces||BoxTypes.FACES, f={}; for(const x of faces) f[x]=1;
+          const holes={}, circles={}, custom={};
+          for(const [face,hs] of Object.entries(b.holes||{})){ const r=holesOf(hs,e,p+'.holes.'+face); holes[face]=r.holes; circles[face]=r.circles; }
+          for(const [wall,ed] of Object.entries(b.topEdges||{})){ const s=edge(ed,e,p+'.topEdges.'+wall); if(s!=='M') custom[wall+'_top']=s; }
+          const out=buildBox({W:bw,D:bd,H:bh,f,ox,oy,oz,pre:b.prefix?at(p+'.prefix',()=>T.template(b.prefix,e,host,counters)):'',holes,custom});
+          for(const face of Object.keys(circles)) if(out[face]&&circles[face].length) out[face].circles=out[face].circles.concat(circles[face]);
+          if(b.text&&out[b.text.on]){ const q=out[b.text.on], [sw,sh]=q.size; addText(q,sw,sh,b.text.rot===180); const tx=q.texts[q.texts.length-1];
+            if(tx){ if(b.text.x!==undefined) tx.x=numF(b.text.x,e,p+'.text.x'); if(b.text.y!==undefined) tx.y=numF(b.text.y,e,p+'.text.y'); } }
+          parts.push(...Object.values(out));
+        }
+        else if(c.panel){ const b=c.panel, p=path+'.panel';
+          const name=at(p+'.name',()=>T.template(b.name,e,host,counters));
+          let outline, size=null;
+          if(b.size){ size=vecF(b.size,e,p+'.size',2); if(!(size[0]>0&&size[1]>0)) throw new TypeBuildError(p+'.size','must be bigger than 0 both ways (it works out to '+size.map(x=>Math.round(x*100)/100).join(' × ')+').');
+            const eds=(b.edges||['e','e','e','e']).map((x,k)=>edge(x,e,p+'.edges['+k+']')); outline=panelOutline(size[0],size[1],eds); }
+          else { const v=typeof b.outline==='string'?F(b.outline,e,p+'.outline'):b.outline.map((q,k)=>vecF(q,e,p+'.outline['+k+']',2)); if(!isPoly(v)) throw new TypeBuildError(p+'.outline','must work out to a list of at least 3 [x, y] points.'); outline=clean(v.map(q=>q.slice())); }
+          const o=vecF(b.at||[0,0,0],e,p+'.at',3), u=axisF(b.u||'X',e,p+'.u'), v=axisF(b.v||'Y',e,p+'.v'), n=axisF(b.n||'Z',e,p+'.n');
+          { const d=(a,c)=>a[0]*c[0]+a[1]*c[1]+a[2]*c[2], one=a=>Math.abs(Math.hypot(...a)-1)<1e-6;
+            if(!one(u)||!one(v)||!one(n)) throw new TypeBuildError(p,'u, v and n must each be one unit long (like X or -Z); they are '+[u,v,n].map(a=>'['+a.map(x=>Math.round(x*1000)/1000)+']').join(', ')+'.');
+            if(Math.abs(d(u,v))>1e-6||Math.abs(d(u,n))>1e-6||Math.abs(d(v,n))>1e-6) throw new TypeBuildError(p,'u, v and n must be at right angles to each other (u along the panel\'s width, v along its height, n through its thickness).'); }
+          const hs=b.holes?holesOf(b.holes,e,p+'.holes'):{holes:[],circles:[]};
+          const acr=b.material==='acrylic', extra={map:mapOf(o,u,v,n),holes:hs.holes,circles:hs.circles,role:b.role||null};
+          if(size) extra.size=size;
+          if(acr){ extra.mat='acrylic'; extra.th=Math.max(0.5,+S.tAcr||3); }
+          const q=part(name,outline,extra);
+          if(b.text&&S.text){ const bb=bbox(outline); q.texts.push({x:b.text.x!==undefined?numF(b.text.x,e,p+'.text.x'):bb.x+bb.w/2,y:b.text.y!==undefined?numF(b.text.y,e,p+'.text.y'):bb.y+bb.h/2,size:S.textSize,text:S.text,rot:b.text.rot===180?180:0,main:true}); }
+          parts.push(q);
+        }
+        else if(c.dividers){ const b=c.dividers, p=path+'.dividers';
+          const [ox,oy,oz]=vecF(b.at,e,p+'.at',3), [wi,di,hi]=vecF(b.size,e,p+'.size',3);
+          parts.push(...makeDividers(ox,oy,oz,wi,di,hi,b.cols===undefined?1:numF(b.cols,e,p+'.cols'),b.rows===undefined?1:numF(b.rows,e,p+'.rows'),b.height===undefined?100:numF(b.height,e,p+'.height'),b.prefix?at(p+'.prefix',()=>T.template(b.prefix,e,host,counters)):''));
+        }
+      }
+    });
+    (def.notes||[]).forEach((x,i)=>{ const o=typeof x==='string'?{text:x}:x; if(when(o.when,env,'notes['+i+'].when')) notes.push(at('notes['+i+'].text',()=>T.template(o.text,env,host,{}))); });
+    const info={W,D,H};
+    if(def.info&&when(def.info.when,env,'info.when')) for(const k of ['inner','hole']) if(def.info[k]){
+      const r={}; for(const [kk,vv] of Object.entries(def.info[k])) r[kk]=kk==='label'?vv:numF(vv,env,'info.'+k+'.'+kk); info[k]=r; }
+    return {parts,warns,notes,info};
+  } finally { G.ts=savedTs; }
+}
+// A custom type's own setting (not one of Boxsmith's standard ones): from S.typeParams, else its default.
+function paramValue(def,key){
+  const p=(def.params||[]).find(x=>x.key===key), own=S.typeParams&&S.typeParams[def.id];
+  return own&&Object.prototype.hasOwnProperty.call(own,key)?own[key]:p?p.default:undefined;
+}
 function generate(){
+  const customDef=customTypeDef(S.type);
+  if(customDef) return generateCustom(customDef);
   const t=G.t, warns=[], notes=[]; let parts=[];
   const ins=S.dimMode==='inside';
   let W=S.W, D=S.D, H=S.H;
@@ -1613,7 +1735,7 @@ document.addEventListener('click',()=>$('#dlPop').classList.add('hidden'));
 function toast(m){ const t=$('#toast'); t.textContent=m; t.classList.add('show'); clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove('show'),2200); }
 
 let LAST=null;
-const baseName=()=>{ const ty=TYPES.find(x=>x.id===S.type).name.toLowerCase().replace(/[^a-z0-9]+/g,'-'); return 'boxsmith-'+ty+'-'+Math.round(S.W)+'x'+Math.round(S.D)+'x'+Math.round(S.H); };
+const baseName=()=>{ const ty=typeInfo(S.type).name.toLowerCase().replace(/[^a-z0-9]+/g,'-'); return 'boxsmith-'+ty+'-'+Math.round(S.W)+'x'+Math.round(S.D)+'x'+Math.round(S.H); };
 $('#dlPop').addEventListener('click',async e=>{ const b=e.target.closest('button'); if(!b||!LAST) return; const k=b.dataset.dl; const sh=LAST.sheets, nm=baseName();
   if(k==='svg'){ if(sh.length===1) await saveFile(nm+'.svg', sheetSVG(sh[0])); else await saveFile(nm+'-svg.zip', makeZip(sh.map((s,i)=>({name:nm+'-sheet'+(i+1)+'.svg',data:sheetSVG(s)})))); }
   if(k==='dxf'){ await saveFile(nm+'-dxf.zip', makeZip(sh.map((s,i)=>({name:nm+'-sheet'+(i+1)+'.dxf',data:sheetDXF(s)})))); }
@@ -1714,7 +1836,7 @@ const $$m=v=>'$'+v.toFixed(2);
 /* ================= ASSEMBLY CARD ================= */
 function snapshot(){ try{ render(); if(GL) return GL.r.domElement.toDataURL('image/png'); return cv.toDataURL('image/png'); }catch(e){ return ''; } }
 function cardHTML(noImage){
-  if(!LAST) return ''; const {res,fparts}=LAST, ty=TYPES.find(x=>x.id===S.type), I=res.info, img=noImage?'':snapshot();
+  if(!LAST) return ''; const {res,fparts}=LAST, ty=typeInfo(S.type), I=res.info, img=noImage?'':snapshot();
   const title=S.text||ty.name, cnt=new Map(); fparts.forEach(f=>{ const k=f.name.replace(/ \d+$/,''); cnt.set(f.name,(cnt.get(f.name)||0)+1); });
   return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+esc(title)+' — assembly</title><style>'
    +'body{font-family:"Times New Roman",Georgia,serif;color:#111;max-width:7.5in;margin:0.5in auto;line-height:1.45}h1{font-size:26pt;margin:0}h2{font-size:14pt;margin:18px 0 6px}'
@@ -1771,8 +1893,8 @@ function update(resetView){
   $$('#sheets [data-sheet]').forEach(b=>b.addEventListener('click',()=>{ const i=+b.dataset.sheet; saveFile(baseName()+'-sheet'+(i+1)+'-'+sheetLabel(LAST.sheets[i]).replace(/[^a-z0-9]+/gi,'-')+'.svg', sheetSVG(LAST.sheets[i])); }));
   markSheetSel();
   const rows=fparts.map(f=>'<tr><td>'+esc(f.name)+'</td><td class="m">'+fmt(f.bb.w)+' × '+fmt(f.bb.h)+'</td></tr>').join('');
-  const ty=TYPES.find(x=>x.id===S.type);
-  $('#guide').innerHTML='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap"><div><h3>'+ty.name+' — assembly</h3><p style="color:var(--muted);margin:0 0 8px">'+fparts.length+' parts'+(qtyOf()>1?' per box · '+qtyOf()+' boxes':'')+' · material '+fmt(S.t)+' · kerf '+fmt(S.kerf)+'</p></div><button class="btn primary" id="cardBtn">Download assembly card</button></div><ol>'
+  const ty=typeInfo(S.type);
+  $('#guide').innerHTML='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap"><div><h3>'+esc(ty.name)+' — assembly</h3><p style="color:var(--muted);margin:0 0 8px">'+fparts.length+' parts'+(qtyOf()>1?' per box · '+qtyOf()+' boxes':'')+' · material '+fmt(S.t)+' · kerf '+fmt(S.kerf)+'</p></div><button class="btn primary" id="cardBtn">Download assembly card</button></div><ol>'
     +(S.type!=='kerftest'?'<li>Cut one corner first if this is a new material — fingers should press in by hand and hold. Adjust kerf ±0.02 mm if not.</li>':'')
     +(G.ts?'<li>Screw joints: drop an '+S.tslot+' nut into each T-slot, then drive an '+S.tslot+' × '+fmt(S.screwLen)+' screw through the matching hole.</li>':'')
     +res.notes.map(n=>'<li>'+esc(n)+'</li>').join('')

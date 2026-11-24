@@ -1,0 +1,45 @@
+{
+  "format": "boxsmith-type",
+  "version": 1,
+  "id": "open-tray",
+  "name": "Open tray (type file)",
+  "description": "No top",
+  "icon": "open",
+  "author": "Boxsmith",
+  "typeVersion": "1.0.0",
+  "inside": { "W": "2*t", "D": "2*t", "H": "t" },
+  "params": [
+    { "key": "handles", "label": "Hand-hold cutouts on the ends", "kind": "bool", "default": false },
+    { "key": "handleH", "label": "Hand-hold height", "kind": "length", "default": 22, "min": 10, "max": 60, "showIf": "handles" },
+    { "key": "notch", "label": "Finger notch on the front wall", "kind": "bool", "default": false },
+    { "key": "notchH", "label": "Notch depth", "kind": "length", "default": 14, "min": 0, "max": 60, "showIf": "notch" },
+    { "key": "cols", "label": "Compartments across", "kind": "integer", "default": 1, "min": 1, "max": 12 },
+    { "key": "rows", "label": "Compartments deep", "kind": "integer", "default": 1, "min": 1, "max": 12 },
+    { "key": "divPct", "label": "Divider height (% of the wall)", "kind": "number", "default": 85, "min": 20, "max": 100, "showIf": "cols > 1 || rows > 1" }
+  ],
+  "let": {
+    "rx": "min(14, W*0.12)",
+    "ry": "max(2, min(notchH > 0 ? notchH : 14, H*0.4))"
+  },
+  "parts": [
+    {
+      "box": {
+        "size": ["W", "D", "H"],
+        "faces": ["bottom", "front", "back", "left", "right"],
+        "holes": {
+          "left": "handles ? handleHoles(D, H) : []",
+          "right": "handles ? handleHoles(D, H) : []"
+        },
+        "topEdges": {
+          "front": "notch ? concat([[0, 0], [W/2 - rx, 0]], arc(W/2, 0, rx, ry, PI, 0, 16), [[W/2 + rx, 0], [W, 0]]) : 'f'"
+        },
+        "text": { "on": "front" }
+      }
+    },
+    { "dividers": { "at": ["t", "t", "t"], "size": ["W-2*t", "D-2*t", "H-t"], "cols": "cols", "rows": "rows", "height": "divPct" } }
+  ],
+  "info": { "inner": { "W": "W-2*t", "D": "D-2*t", "H": "H-t" } },
+  "notes": [
+    "Four walls press onto the base; the front/back panels own the corners."
+  ]
+}

@@ -521,3 +521,79 @@ test('groups: layout files, group keys and camera targets', () => {
   assert.deepEqual(Anim.sampleAt(c, 3, {}, view).camera.pan, [300, 0, 10]); // past the last key it keeps following
   assert.match(Anim.validateAnimation({ keyframes: [{ t: 0, boxes: {} }], camera: [{ t: 0, pan: [0, 0, 0], target: { group: 'bot' } }] }, 1, 'mm', ['bot']).error, /both pan and target/);
 });
+
+/* ---------- custom box types ---------- */
+const typeFile = name => JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'types', name + '.json'), 'utf8'));
+
+test('box types: the formula language', () => {
+  const T = B.types;
+  assert.equal(T.formula('2*t + max(W, D)/2', { t: 3, W: 100, D: 60 }), 56);
+  assert.deepEqual(T.formula('[1,2] + [10,20]', {}), [11, 22]);
+  assert.deepEqual(T.formula('a ? axis(1) : -Z', { a: 1 }), [0, 1, 0]);
+  assert.equal(T.template('Strip {k}{#k}', { k: 'A' }), 'Strip A1');
+  assert.throws(() => T.formula('Wd + 1', { W: 1 }), /did you mean "W"/);
+});
+
+test('box types: the file format is checked with plain messages', () => {
+  for (const f of ['closed-box', 'open-tray', 'cube-frame']) assert.equal(B.types.validate(typeFile(f)).ok, true, f);
+  const r = B.types.validate({ format: 'boxsmith-type', version: 1, id: 'closed', name: 'X', parts: [{ box: { size: ['W', 'D'] }, panel: {} }] });
+  assert.equal(r.ok, false);
+  assert.ok(r.errors.some(e => e.path === 'id'), 'built-in ids are taken');
+  assert.ok(r.errors.some(e => e.path === 'parts[0]'), 'one component per entry');
+  assert.throws(() => B.types.register({ format: 'nope' }), e => Array.isArray(e.errors) && e.errors.length > 0);
+});
+
+test('box types: the three type files make the same parts as the built-ins', () => {
+  const cases = { closed: ['closed-box', [{}, { W: 201, D: 90, H: 41, t: 4.5 }, { dimMode: 'inside', corners: 'pinwheel' }, { tslot: 'M3', t: 6, fw: 14 }]],
+    open: ['open-tray', [{}, { notch: true, handles: true, cols: 3, rows: 2 }, { dimMode: 'inside', corners: 'edge', notch: true, notchH: 20 }]],
+    cubeframe: ['cube-frame', [{}, { beamW: 5 }, { beamW: 80, W: 300, D: 120, H: 90 }, { dimMode: 'inside', beamW: 30 }]] };
+  for (const [built, [file, settings]] of Object.entries(cases)) {
+    const def = typeFile(file);
+    B.types.register(def);
+    try {
+      for (const s of settings) {
+        assert.deepEqual(B.types.parts({ ...s, type: file }), B.types.parts({ ...s, type: built }), file + ' ' + JSON.stringify(s));
+        const c = B.types.check(def, s);
+        assert.equal(c.ok, true, file + ' ' + JSON.stringify(s) + ': ' + JSON.stringify(c.errors));
+      }
+    } finally { B.types.unregister(file); }
+  }
+});
+
+test('box types: check finds joints that do not meet, overlaps and build errors', () => {
+  const base = { format: 'boxsmith-type', version: 1, name: 'Test' };
+  const pair = (id, a, b) => ({ ...base, id, parts: [
+    { panel: { name: 'A', size: [100, 60], edges: [a, 'e', 'e', 'e'], u: 'X', v: 'Y', n: 'Z' } },
+    { panel: { name: 'B', size: [100, 60], edges: [b, 'e', 'e', 'e'], at: [0, 't', 0], u: 'X', v: 'Z', n: '-Y' } }] });
+  assert.equal(B.types.check(pair('good-pair', 'f', 'F')).ok, true);
+  const same = B.types.check(pair('same-pair', 'f', 'f'));
+  assert.equal(same.stage, 'fit');
+  assert.ok(same.errors.some(e => /runs into "B"/.test(e.message)) && same.errors.some(e => /finger gaps/.test(e.message)));
+  const lone = B.types.check({ ...base, id: 'lone', parts: [{ panel: { name: 'A', size: [100, 60], edges: ['f', 'e', 'e', 'e'] } }] });
+  assert.match(lone.errors[0].message, /no other part fills/);
+  const over = B.types.check({ ...base, id: 'over', parts: [{ panel: { name: 'A', size: [100, 60] } }, { panel: { name: 'B', size: [100, 60], at: [20, 10, 0] } }] });
+  assert.ok(over.errors.some(e => /overlap through the middle/.test(e.message)));
+  const bad = B.types.check({ ...base, id: 'bad-axes', parts: [{ panel: { name: 'A', size: [10, 10], u: '2*X' } }] });
+  assert.equal(bad.stage, 'build'); assert.match(bad.errors[0].message, /one unit long/);
+  assert.equal(B.types.get('good-pair'), null, 'check leaves nothing registered');
+});
+
+test('box types: a registered type works like a built-in, with its own parameters', () => {
+  const def = typeFile('cube-frame');
+  def.id = 'my-frame'; def.params.push({ key: 'slack', kind: 'length', default: 2, min: 0, max: 10, label: 'Gap' });
+  B.types.register(def);
+  try {
+    assert.ok(B.boxes.list().some(t => t.id === 'my-frame'));
+    const d = B.design.compute({ type: 'my-frame', beamW: 30, typeParams: { 'my-frame': { slack: 4 } } }, { card: false });
+    assert.ok(d.parts.length > 6);
+    assert.throws(() => B.boxes.create('my-frame', { typeParams: { 'my-frame': { slack: 99 } } }), /slack/);
+  } finally { B.types.unregister('my-frame'); }
+  assert.ok(!B.boxes.list().some(t => t.id === 'my-frame'));
+});
+
+test('box types: the JSON Schema accepts the example type files', () => {
+  const Ajv = require('ajv/dist/2020');
+  const validate = new Ajv({ allErrors: true, strict: false }).compile(require('../boxsmith-type.schema.json'));
+  for (const f of ['closed-box', 'open-tray', 'cube-frame']) assert.equal(validate(typeFile(f)), true, f + ': ' + JSON.stringify(validate.errors));
+  assert.equal(validate({ format: 'boxsmith-type', version: 1, id: 'x', name: 'X', parts: [] }), false);
+});

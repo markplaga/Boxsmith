@@ -33,8 +33,24 @@
     kStep:0.03, sheetW:600, sheetH:400, gap:4, stroke:'0.1', labels:false,
     fit:'press', tslot:'off', screwLen:12, bit:0, rimW:9, frontPct:55, cardDivs:3, nestN:3, tAcr:3, baseM:10,
     textMode:'engrave', textAlign:'center', textColor:'#000000', textFill:false, textOutlineOn:false, textOutline:'#1b1b1b', textLine:0, frame:'none', frameGap:4, frameLine:1, frameCount:1, frameSpacing:3, frameBands:[], accent:'none', accentOn:'top', accentSize:14, accentLine:0.8, accentMode:'fill', deco:'none', decoOn:'walls', decoCell:16, decoWeb:3, decoSeed:7, cornerStyle:'square', cornerR:6, art:[],
-    qty:1, holdTabs:0, holdW:0.4, layerScheme:'simple', grain:false, sheetPrice:8, rate:30, speed:18, markup:150, matName:''
+    qty:1, holdTabs:0, holdW:0.4, layerScheme:'simple', grain:false, sheetPrice:8, rate:30, speed:18, markup:150, matName:'',
+    typeParams:{}   // custom box types' own settings: {typeId: {key: value}}
   };
+  /* Custom box types (box-types.js format), by id. They list, build and save like the built-in styles. */
+  const BoxTypes=typeof module==='object'&&module.exports&&typeof require==='function'?require('./box-types.js'):globalThis.BoxTypes;
+  const CUSTOM=new Map();
+  const typeEntry=def=>({id:def.id,name:def.name,d:def.description||'',ic:def.icon||'closed',custom:true});
+  const allTypes=()=>TYPES.concat([...CUSTOM.values()].map(typeEntry));
+  // the shape and formulas, plus: a param that adopts one of Boxsmith's own settings must match its kind
+  function validateTypeDef(def){
+    if(!BoxTypes) throw new Error('box-types.js is not loaded');
+    const res=BoxTypes.validateType(def,{standardKeys:Object.keys(DEFAULTS),builtInIds:TYPES.map(x=>x.id)});
+    if(res.ok) for(const [i,p] of (def.params||[]).entries()) if(Object.hasOwn(DEFAULTS,p.key)){
+      const d=DEFAULTS[p.key], ok=typeof d==='number'?['length','number','integer'].includes(p.kind):typeof d==='boolean'?p.kind==='bool':typeof d==='string'?['text','choice','color'].includes(p.kind):false;
+      if(!ok||p.key==='typeParams'||p.key==='type'){ res.errors.push({path:'params['+i+'].kind',message:'"'+p.key+'" is one of Boxsmith\'s own settings, which is '+(typeof d==='number'?'a number':typeof d==='boolean'?'true/false':'text')+'; use a matching kind, or another key.'}); res.ok=false; }
+    }
+    return res;
+  }
 
   /** Material looks a box can keep in a layout (the 3D preview's material list). */
   const LOOKS=['birch','walnut','mdf','clear','black','pink','card'];
@@ -53,15 +69,37 @@
   const isRecord=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 
   function requireType(type){
-    if(!TYPES.some(box=>box.id===type)) throw new RangeError('Unknown box type: '+type);
+    if(!TYPES.some(box=>box.id===type)&&!CUSTOM.has(type)) throw new RangeError('Unknown box type: '+type);
+  }
+  // a custom type's own settings: known keys, the right kind, inside min and max
+  function checkTypeParams(tp){
+    if(!isRecord(tp)) throw new TypeError('typeParams must be an object like {"my-type": {"lip": 8}}');
+    for(const [id,values] of Object.entries(tp)){
+      const def=CUSTOM.get(id);
+      if(!isRecord(values)) throw new TypeError('typeParams.'+id+' must be an object');
+      if(!def) continue;   // settings for a type not loaded right now are kept as they are
+      for(const [k,v] of Object.entries(values)){
+        const p=(def.params||[]).find(x=>x.key===k&&!Object.hasOwn(DEFAULTS,x.key));
+        if(!p) throw new RangeError(id+' has no setting called '+k);
+        const isNum=['length','number','integer'].includes(p.kind);
+        if(isNum&&!Number.isFinite(v)) throw new TypeError(id+'.'+k+' must be a number');
+        if(p.kind==='integer'&&!Number.isInteger(v)) throw new TypeError(id+'.'+k+' must be a whole number');
+        if(isNum&&((p.min!==undefined&&v<p.min)||(p.max!==undefined&&v>p.max))) throw new RangeError(id+'.'+k+' must be from '+(p.min??'-∞')+' to '+(p.max??'∞'));
+        if(p.kind==='bool'&&typeof v!=='boolean') throw new TypeError(id+'.'+k+' must be true or false');
+        if(['text','choice','color'].includes(p.kind)&&typeof v!=='string') throw new TypeError(id+'.'+k+' must be text');
+        if(p.kind==='choice'&&!p.choices.some(c=>(c.value??c)===v)) throw new RangeError(id+'.'+k+' must be one of '+p.choices.map(c=>c.value??c).join(', '));
+        if(p.kind==='color'&&!/^#[0-9a-f]{6}$/i.test(v)) throw new TypeError(id+'.'+k+" must look like '#3a7bd5'");
+      }
+    }
   }
 
   function createBox(type,parameters={}){
     requireType(type);
     if(!isRecord(parameters)) throw new TypeError('Box parameters must be an object');
     checkLook(parameters.look); checkColors(parameters.colors);
+    if(parameters.typeParams!==undefined) checkTypeParams(parameters.typeParams);
     for(const [key,value] of Object.entries(parameters)){
-      if(key==='look'||key==='colors') continue;
+      if(key==='look'||key==='colors'||key==='typeParams') continue;
       if(key==='type'||!Object.hasOwn(DEFAULTS,key)) throw new RangeError('Unknown box parameter: '+key);
       const expected=DEFAULTS[key];
       const valid=Array.isArray(expected)?Array.isArray(value):
@@ -190,7 +228,27 @@
   return {
     version:VERSION,
     looks:LOOKS.slice(),
-    boxes:{list:()=>clone(TYPES),defaults:(type='closed')=>createBox(type),create:createBox},
+    boxes:{list:()=>clone(allTypes()),defaults:(type='closed')=>createBox(type),create:createBox},
+    /** Box type files: validate(def) → {ok, errors, warnings}; register(def) adds it (replacing one with
+        the same id) so it lists, builds and saves like a built-in style; get(id), list(), unregister(id).
+        The engine adds check(def, settings), which also builds it and tests that the parts fit. */
+    types:{
+      format:BoxTypes?BoxTypes.FORMAT:'boxsmith-type',
+      validate:def=>clone(validateTypeDef(def)),
+      register(def){
+        const res=validateTypeDef(def);
+        if(!res.ok){ const e=new TypeError('This box type has problems:\n'+BoxTypes.explain(res.errors)); e.errors=res.errors; throw e; }
+        CUSTOM.set(def.id,clone(def));
+        return typeEntry(def);
+      },
+      unregister:id=>CUSTOM.delete(id),
+      get:id=>CUSTOM.has(id)?clone(CUSTOM.get(id)):null,
+      list:()=>[...CUSTOM.values()].map(typeEntry),
+      explain:list=>BoxTypes.explain(list),
+      /** The formula language on its own: formula('2*t + W/2', {t:3, W:100}) → 56; template('Strip {k}', {k:'A'}) → 'Strip A'. */
+      formula:(src,env={})=>clone(BoxTypes.formula(String(src),Object.assign({},env),{})),
+      template:(text,env={})=>BoxTypes.template(String(text),Object.assign({},env),{},{})
+    },
     assemblies:{
       format:FORMAT,
       place:placeBox,

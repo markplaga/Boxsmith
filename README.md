@@ -26,10 +26,15 @@ Closed box · open tray · lift-off lid · split lid · sliding lid · hinged li
 
 Everything the page does can be scripted: cut sheets, SVG and DXF, parts, costs and assembly cards, arranging and snapping whole boxes, saved materials and recipes, picture mosaics, rendering layouts to PNG and the 3D preview. Use it in the browser console, or in Node.js with `npm install jsdom @napi-rs/canvas` and `require('./boxsmith-node.js')`. `npm test` checks that every control on the page is reachable from the API. [API reference and examples](API.md)
 
+## New box styles
+
+A box type file describes a new style of box in JSON, with formulas but no code, and Boxsmith builds it, checks that every joint meets, and treats it like a built-in style. [Format reference](BOX-TYPES.md) (written to hand to an AI) · [JSON Schema](boxsmith-type.schema.json) · [Examples](types/) · [Shared types](https://github.com/markplaga/markplaga-boxsmith-type)
+
 ## Files
 - `index.html` — page and styles
 - `app.js` — box geometry, layout, export, UI
 - `boxsmith-api.js` — box catalog and portable assembly files
+- `box-types.js` — the box type format: the formula language and the file checker
 - `boxsmith-engine.js` — adds cut sheets, costs, layout measuring and snapping, mosaic, library and preview control to the API
 - `boxsmith-node.js` — runs the whole page headlessly so Node.js gets the complete API (pictures also need `playwright-core` and Chrome)
 - `test/` — API tests (`npm test`)

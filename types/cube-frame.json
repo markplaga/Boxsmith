@@ -1,0 +1,79 @@
+{
+  "format": "boxsmith-type",
+  "version": 1,
+  "id": "cube-frame",
+  "name": "Cube frame (type file)",
+  "description": "Hollow cube, open through every side",
+  "icon": "cubeframe",
+  "author": "Boxsmith",
+  "typeVersion": "1.0.0",
+  "screws": false,
+  "params": [
+    { "key": "beamW", "label": "Beam width", "kind": "length", "default": 22, "min": 1, "max": 400, "help": "How wide each hollow edge beam is, outside to outside." }
+  ],
+  "let": {
+    "minW": "max(3*t, 10)",
+    "maxW": "(min(W, D, H) - 10)/2",
+    "w0": "max(minW, beamW)",
+    "w": "w0 > maxW ? max(minW, maxW) : w0",
+    "ok": "min(W, D, H) - 2*w >= 10",
+    "dims": "[W, D, H]",
+    "Ls": "[W - 2*w + 2*t, D - 2*w + 2*t, H - 2*w + 2*t]"
+  },
+  "warnings": [
+    { "when": "beamW < minW", "text": "Beam width raised to {fmt(minW)} — the narrowest that leaves room for finger joints on both sides of each strip." },
+    { "when": "w0 > maxW", "text": "The beams are too wide for this size, so the openings would vanish. Beam width reduced to {fmt(w)}." },
+    { "when": "!ok", "text": "The box is too small for a cube frame in this material — make it bigger." }
+  ],
+  "parts": [
+    {
+      "when": "ok",
+      "box": {
+        "size": ["W", "D", "H"],
+        "prefix": "Outer ",
+        "holes": {
+          "bottom": [{ "fingers": { "size": ["Ls[0]", "Ls[1]"], "edges": ["f", "f", "f", "f"], "at": ["w-t", "w-t"] } }],
+          "top":    [{ "fingers": { "size": ["Ls[0]", "Ls[1]"], "edges": ["f", "f", "f", "f"], "at": ["w-t", "w-t"] } }],
+          "front":  [{ "fingers": { "size": ["Ls[0]", "Ls[2]"], "edges": ["f", "f", "f", "f"], "at": ["w-t", "w-t"] } }],
+          "back":   [{ "fingers": { "size": ["Ls[0]", "Ls[2]"], "edges": ["f", "f", "f", "f"], "at": ["w-t", "w-t"] } }],
+          "left":   [{ "fingers": { "size": ["Ls[1]", "Ls[2]"], "edges": ["f", "f", "f", "f"], "at": ["w-t", "w-t"] } }],
+          "right":  [{ "fingers": { "size": ["Ls[1]", "Ls[2]"], "edges": ["f", "f", "f", "f"], "at": ["w-t", "w-t"] } }]
+        },
+        "text": { "on": "top", "rot": 180, "y": "w/2" }
+      }
+    },
+    {
+      "when": "ok",
+      "for": { "a": [0, 1, 2], "h0": [0, 1], "h1": [0, 1], "j": [0, 1] },
+      "let": {
+        "o1": "a == 0 ? 1 : 0",
+        "o2": "a == 2 ? 1 : 2",
+        "p": "j == 0 ? o1 : o2",
+        "q": "j == 0 ? o2 : o1",
+        "hp": "j == 0 ? h0 : h1",
+        "hq": "j == 0 ? h1 : h0",
+        "sh": "a < p ? 'f' : 'F'",
+        "cv": "j == 0 ? 'f' : 'F'",
+        "k": "sh == 'f' ? (cv == 'f' ? 'A' : 'B') : (cv == 'f' ? 'C' : 'D')"
+      },
+      "panel": {
+        "name": "Strip {k}{#k}",
+        "size": ["w", "Ls[a]"],
+        "edges": ["sh", "cv", "sh", "f"],
+        "at": "axis(a)*(w - t) + axis(p)*(hp ? dims[p] - w : w - t) + axis(q)*(hq ? dims[q] : 0)",
+        "u": "axis(q)*(hq ? -1 : 1)",
+        "v": "axis(a)",
+        "n": "axis(p)",
+        "role": "strip"
+      }
+    }
+  ],
+  "info": { "when": "ok", "inner": { "W": "w", "D": "w", "H": "w", "label": "beam" }, "hole": { "W": "W - 2*w", "D": "D - 2*w" } },
+  "notes": [
+    { "when": "ok", "text": "Thirty parts: six outer rings (one per side) and 24 inner strips that line the tunnels. Each edge of the cube is a hollow square beam {fmt(w)} across." },
+    { "when": "ok", "text": "Openings: {fmt(W-2*w)} × {fmt(H-2*w)} front and back, {fmt(D-2*w)} × {fmt(H-2*w)} on the sides, {fmt(W-2*w)} × {fmt(D-2*w)} top and bottom." },
+    { "when": "ok", "text": "Strips come in four kinds (A–D) that differ only in their finger pattern. Build one beam at a time: glue the two inner strips into the bottom ring's opening, then add the side rings, then the top ring last." },
+    { "when": "ok && inside", "text": "Cube frame sizes are always outside dimensions." },
+    { "when": "ok && tslot != 'off'", "text": "Cube frames are glued; screw joints are turned off for this style." }
+  ]
+}
