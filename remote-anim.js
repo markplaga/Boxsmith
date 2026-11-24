@@ -111,6 +111,7 @@
         for(const f of ['yaw','pitch','zoom']) if(c[f]!==undefined&&!isNum(c[f])) return bad(where+'.'+f+' must be a finite number.');
         if(c.pitch!==undefined&&Math.abs(c.pitch)>90) return bad(where+'.pitch must be between -90 and 90.');
         if(c.zoom!==undefined&&(c.zoom<0.05||c.zoom>20)) return bad(where+'.zoom must be between 0.05 and 20.');
+        if(c.fov!==undefined&&(!isNum(c.fov)||c.fov<5||c.fov>120)) return bad(where+'.fov must be from 5 to 120 degrees.');
         if(c.pan!==undefined&&!isTriple(c.pan)) return bad(where+'.pan must be three finite numbers.');
         if(c.ease!==undefined&&!EASE[c.ease]) return bad(where+'.ease must be '+EASE_NAMES+'.');
         const cam=Object.assign({},c); if(c.pan!==undefined) cam.pan=toMM(c.pan);
@@ -121,8 +122,10 @@
     }
     const cameraInterp=args.cameraInterp===undefined?'linear':args.cameraInterp;
     if(cameraInterp!=='linear'&&cameraInterp!=='catmullRom') return bad("cameraInterp must be 'linear' or 'catmullRom'.");
+    const projection=args.projection===undefined?'ortho':args.projection;
+    if(projection!=='ortho'&&projection!=='perspective') return bad("projection must be 'ortho' or 'perspective'.");
     for(const list of Object.values(tracks)) list.sort((a,b)=>a.t-b.t);
-    return {ok:true,anim:{tracks,camera,cameraInterp,duration,fps,easing,loop:!!args.loop,unit}};
+    return {ok:true,anim:{tracks,camera,cameraInterp,projection,duration,fps,easing,loop:!!args.loop,unit}};
   }
 
   /* ---------- sampling ---------- */
@@ -170,7 +173,7 @@
   // key, the view the animation started from holds (and eases in with the animation's easing).
   // Angles are plain numbers: yaw is never wrapped to the shortest way round, so 350 -> 10 turns
   // back through 180 and 0 -> 720 makes two full orbits.
-  const CAM_FIELDS=['yaw','pitch','zoom','pan'];
+  const CAM_FIELDS=['yaw','pitch','zoom','pan','fov'];
   const same=(a,b)=>Array.isArray(a)?Array.isArray(b)&&a.every((v,i)=>v===b[i]):a===b;
   function camKeys(cam,field,startVal){
     const cache=cam._by||(Object.defineProperty(cam,'_by',{value:{},enumerable:false}),cam._by);

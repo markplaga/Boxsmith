@@ -857,7 +857,7 @@ const MATS={
   birch:{face:[226,196,150],side:[176,138,92],a:1,wood:true}, walnut:{face:[122,82,54],side:[84,54,34],a:1,wood:true}, mdf:{face:[168,124,82],side:[120,84,52],a:1,wood:true},
   clear:{face:[190,225,235],side:[120,170,185],a:0.42}, black:{face:[48,48,52],side:[22,22,24],a:1}, pink:{face:[244,150,180],side:[214,100,140],a:0.85}, card:{face:[196,160,112],side:[150,118,78],a:1}
 };
-const view={yaw:-0.6,pitch:0.5,zoom:1,explode:0,spin:false,mat:'birch',animT:0,play:0,phase:0,loop:false,hw:true,pan:[0,0,0],stereo:'off',stereoDeg:3.5};
+const view={yaw:-0.6,pitch:0.5,zoom:1,explode:0,spin:false,mat:'birch',animT:0,play:0,phase:0,loop:false,hw:true,pan:[0,0,0],stereo:'off',stereoDeg:3.5,projection:'ortho',fov:30};
 const EDGE_COLOR_KEY='boxsmith-cut-edge-colors';
 const cutEdgeColors={};
 const savedEdgeColors=lsGet(EDGE_COLOR_KEY,{});
@@ -964,7 +964,10 @@ function makeGLContext(canvas,extra){
     const cl=(c,o)=>new THREE.MeshLambertMaterial({color:c,transparent:true,opacity:o,depthWrite:false,side:THREE.DoubleSide});
     const hiCap=new THREE.MeshLambertMaterial({color:0xf08a63,emissive:0x5a1a05}), hiSide=new THREE.MeshLambertMaterial({color:0xd0562c,emissive:0x3a1003});
     const eyeCams=[new THREE.OrthographicCamera(),new THREE.OrthographicCamera()];
-    return {r,sc,cam,eyeCams,root,amb,dl,dl2,cap,side,line,steel:new THREE.MeshLambertMaterial({color:0xb7bcc2,emissive:0x1a1c1f}),nutMat:new THREE.MeshLambertMaterial({color:0x8c9299,emissive:0x111214}),clearCap:cl(0xc4e4ee,0.32),clearSide:cl(0x8fc3d2,0.6),hiCap,hiSide,objs:[]};
+    // perspective: the same orbit, seen through a lens (view.projection 'perspective', view.fov in degrees)
+    const pcam=new THREE.PerspectiveCamera(30,1,1,1e6); sc.add(pcam);
+    const eyePCams=[new THREE.PerspectiveCamera(),new THREE.PerspectiveCamera()];
+    return {r,sc,cam,eyeCams,pcam,eyePCams,root,amb,dl,dl2,cap,side,line,steel:new THREE.MeshLambertMaterial({color:0xb7bcc2,emissive:0x1a1c1f}),nutMat:new THREE.MeshLambertMaterial({color:0x8c9299,emissive:0x111214}),clearCap:cl(0xc4e4ee,0.32),clearSide:cl(0x8fc3d2,0.6),hiCap,hiSide,objs:[]};
 }
 function initGL(){
   if(!window.THREE) return;
@@ -1129,10 +1132,18 @@ function renderGL(){
   const scale=Math.min(vw,h)*(stereo?0.42:0.40)/(radius*(1+explode*0.9)+up0*0.45)*view.zoom;
   const away=[cp*sy,cp*cy,-sp], up=[sp*sy,sp*cy,cp], dist=radius*20, right=[cy,-sy,0];
   const {Rl,CAMV}=lampBasis(lamp,right,up,away,scene.ctr);
-  const cam=GL.cam;
-  const setCam=(eye)=>{ const e=eye*dist*Math.tan((view.stereoDeg||3.5)/2*PI/180);
-    cam.position.set(C[0]-CAMV.away[0]*dist+CAMV.right[0]*e,C[1]-CAMV.away[1]*dist+CAMV.right[1]*e,C[2]-CAMV.away[2]*dist); cam.up.set(CAMV.up[0],CAMV.up[1],CAMV.up[2]); cam.lookAt(C[0],C[1],C[2]);
-    cam.left=-vw/2/scale; cam.right=vw/2/scale; cam.top=h/2/scale; cam.bottom=-h/2/scale; cam.near=0.1; cam.far=dist*4; cam.updateProjectionMatrix(); };
+  // Perspective keeps the orbit and the framing: at the look-at point it shows exactly what the
+  // orthographic view shows at the same zoom, so the camera stands at distance = (visible height) /
+  // (2·tan(fov/2)), which is a base distance divided by zoom. A wider fov stands closer (stronger perspective).
+  const persp=cameraProjection()==='perspective', cam=persp?GL.pcam:GL.cam, fov=cameraFov();
+  const pdist=persp?(h/scale)/(2*Math.tan(fov/2*PI/180)):dist;
+  for(const L of [GL.dl,GL.dl2]) if(L.parent!==cam){ cam.add(L); cam.add(L.target); }   // the lights ride with whichever camera draws
+  GL.curCam=cam; GL.curEyes=persp?GL.eyePCams:GL.eyeCams;
+  const setCam=(eye)=>{ const D=persp?pdist:dist, e=eye*D*Math.tan((view.stereoDeg||3.5)/2*PI/180);
+    cam.position.set(C[0]-CAMV.away[0]*D+CAMV.right[0]*e,C[1]-CAMV.away[1]*D+CAMV.right[1]*e,C[2]-CAMV.away[2]*D); cam.up.set(CAMV.up[0],CAMV.up[1],CAMV.up[2]); cam.lookAt(C[0],C[1],C[2]);
+    if(persp){ cam.fov=fov; cam.aspect=vw/h; cam.near=Math.max(1,D*0.01); cam.far=D+radius*40+10000; }   // near/far keep the whole stage, floor and room in view
+    else { cam.left=-vw/2/scale; cam.right=vw/2/scale; cam.top=h/2/scale; cam.bottom=-h/2/scale; cam.near=0.1; cam.far=dist*4; }
+    cam.updateProjectionMatrix(); };
   setCam(0);
   const ex=view.explode*1.1, M=new THREE.Matrix4(), Tm=new THREE.Matrix4();
   for(const ob of GL.objs){ const s=ob.s;
@@ -1176,7 +1187,7 @@ function renderGL(){
       GL.r.setViewport(i*vw,0,vw,h);
       GL.r.setScissor(i*vw,0,vw,h);
       GL.r.render(GL.sc,cam);
-      GL.eyeCams[i].copy(cam,false);
+      GL.curEyes[i].copy(cam,false);
     });
     GL.r.setScissorTest(false); GL.r.setViewport(0,0,w,h); setCam(0);
   }
@@ -1265,7 +1276,7 @@ function rayFromEvent(e){
   const stereo=stereoActive(), pane=x<0.5?0:1;
   const ndc=new THREE.Vector2((stereo?x*2-pane:x)*2-1,1-y*2);
   const rc=new THREE.Raycaster();
-  rc.setFromCamera(ndc,stereo?GL.eyeCams[pane]:GL.cam);
+  rc.setFromCamera(ndc,stereo?(GL.curEyes||GL.eyeCams)[pane]:(GL.curCam||GL.cam));
   GL.root.updateMatrixWorld(true);
   return rc;
 }
@@ -1445,6 +1456,15 @@ $('#previewExitMax').addEventListener('click',()=>setMax(false));
 })();
 addEventListener('keydown',e=>{ if(e.key==='Escape' && maximizedView()){ e.preventDefault(); setMax(false); } });
 addEventListener('orientationchange',()=>setTimeout(render,200));
+// The projection the 3D view draws with. The 2D fallback painter is orthographic only.
+const cameraProjection=()=>view.projection==='perspective'&&GL?'perspective':'ortho';
+const cameraFov=()=>Math.max(5,Math.min(120,+view.fov||30));
+function syncProjectionControls(){
+  $$('[data-projection]').forEach(select=>{ select.disabled=!GL; select.value=cameraProjection(); });
+  $$('[data-fov]').forEach(input=>{ input.value=cameraFov(); input.parentElement.classList.toggle('hidden',cameraProjection()!=='perspective'); });
+}
+$$('[data-projection]').forEach(select=>select.addEventListener('change',()=>{ view.projection=select.value; syncProjectionControls(); render(); }));
+$$('[data-fov]').forEach(input=>input.addEventListener('input',()=>{ view.fov=+input.value; render(); }));
 function syncStereoControls(){
   document.body.classList.toggle('stereo-on',stereoActive());
   $$('[data-stereo-mode]').forEach(select=>{
@@ -1746,7 +1766,7 @@ Boxsmith.browser={
   saveAssembly:downloadBoxLayout
 };
 initGL();
-syncStereoControls();
+syncStereoControls(); syncProjectionControls();
 initBoxLayout();
 update(true);
 if(document.fonts && document.fonts.ready){ const fams=['Bebas Neue','Caveat','Pacifico','Playfair Display','Rye','Stardos Stencil']; Promise.all(fams.map(f=>document.fonts.load('40px "'+f+'"').catch(()=>{}))).then(()=>{ _textCache.clear(); update(); }); }

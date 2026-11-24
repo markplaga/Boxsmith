@@ -228,7 +228,7 @@ The **📱 Remote** button in Arrange boxes links a second screen to the one sho
 | `dup`, `hide`, `remove` | `{ inPlace? }` for `dup` | The Boxes buttons. |
 | `color`, `nocolor` | `{ hex: '#rrggbb' }` | Colors the selected box or part. |
 | `design`, `add` | `{ index, settings }` / `{ settings }` | Replaces a box's design in place, or adds a new box. |
-| `view` | `{ yaw?, pitch?, zoom?, pan? }` | Sets the camera (degrees). |
+| `view` | `{ yaw?, pitch?, zoom?, pan?, projection?, fov? }` | Sets the camera (degrees). `projection` is `'ortho'` or `'perspective'`; `fov` is the perspective lens, 5–120° vertical. |
 | `fit`, `top`, `place`, `maximize`, `stereo`, `units`, `save`, `open`, `clear` | `{ mode }` for `stereo`, `{ unit }` for `units`, `{ json }` for `open` | The Layout & view controls. |
 | `batch` | `{ cmds: [{ op, args }, …] }` (up to 500) | Runs them all, then sends one state. No need to pace commands for the relay's 60 messages a second. |
 | `animate` | see below | Loads an animation and plays it (unless `autoplay: false`). Positions are in the display unit, the same as `set`. |
@@ -237,13 +237,13 @@ The **📱 Remote** button in Arrange boxes links a second screen to the one sho
 | `capture` | see below | Pictures of the view or the animation. |
 | `export` | `{ format: 'webm' \| 'gif', fps?, width?, height? }` | Records the animation from start to finish. The host also shows a Download button. |
 
-**State** (`{"t":"state",…}`) includes `boxes` (label, position, rotation, colors, hidden), `sel`, `part`, `parts`, `unit`, `stereo`, `view` (`yaw`, `pitch` in degrees, `zoom`, `pan`), `anim` (`playing`, `t`, `duration`, `loop`, or `null`) and `exporting`.
+**State** (`{"t":"state",…}`) includes `boxes` (label, position, rotation, colors, hidden), `sel`, `part`, `parts`, `unit`, `stereo`, `view` (`yaw`, `pitch` in degrees, `zoom`, `pan`, `projection`, `fov`), `anim` (`playing`, `t`, `duration`, `loop`, or `null`) and `exporting`.
 
 ### Animate
 
 ```json
 { "t": "cmd", "op": "animate", "args": {
-  "unit": "mm", "fps": 30, "easing": "easeInOut", "cameraInterp": "linear", "loop": false,
+  "unit": "mm", "fps": 30, "easing": "easeInOut", "cameraInterp": "linear", "projection": "ortho", "loop": false,
   "keyframes": [
     { "t": 0,   "boxes": { "0": { "position": [0, 0, 0],  "rotation": [0, 0, 0] } } },
     { "t": 0.5, "boxes": { "0": { "position": [0, 0, 60], "rotation": [0, 0, 60] } } },
@@ -273,7 +273,7 @@ That makes box 0 hop 60 mm three times while turning a full circle, tints box 1'
 
 ### Camera keys
 
-Each camera key has a time `t` and any of `yaw`, `pitch` (degrees), `zoom` and `pan` (`[x, y, z]` in the display unit, relative to the layout's centre). A field that a key leaves out is carried by the keys that do set it, so `yaw` and `zoom` can be keyed at different times.
+Each camera key has a time `t` and any of `yaw`, `pitch` (degrees), `zoom`, `fov` (perspective only) and `pan` (`[x, y, z]` in the display unit, relative to the layout's centre). A field that a key leaves out is carried by the keys that do set it, so `yaw` and `zoom` can be keyed at different times.
 
 - **Per-key ease.** A key may carry `ease`: `'linear'`, `'easeIn'`, `'easeOut'`, `'easeInOut'` or `'smoothstep'`. It shapes the span from that key to the next one, for every field that changes across that span. A key without `ease` uses the animation's `easing`. So holds, eased moves and constant-speed orbits can sit in one animation without dense keys:
 
@@ -282,6 +282,7 @@ Each camera key has a time `t` and any of `yaw`, `pitch` (degrees), `zoom` and `
   ```
 
   That eases from −35° to 0° over 2 seconds, then orbits at a steady 30° a second.
+- **Perspective.** `"projection": "perspective"` in the `animate` args draws the animation through a lens instead of orthographically, so near things look bigger and the scene has depth and parallax. The default is `"ortho"`, and an animation without `projection` always plays orthographic, whatever the view was set to, so existing files look exactly as before. Camera keys may then carry `fov`, the vertical field of view in degrees (5–120; the view starts at 30), which eases like the other fields. The camera keeps the same orbit, and `zoom` keeps its meaning: at the look-at point, perspective shows exactly what orthographic shows at the same zoom. To do that the camera stands at distance = visible height ÷ (2·tan(fov/2)), which is a base distance divided by `zoom`. So `fov` sets how strong the perspective is (about 25–40° looks like a normal camera lens; wider is more dramatic), and animating `fov` while `zoom` holds is a dolly zoom: the subject stays the same size while the background stretches or flattens. To push in, animate `zoom`. The near and far planes follow the camera, so the stage, the floor and tall layouts (a 6.7 m tower) never clip. Stop puts the view's own projection back.
 - **Yaw is never wrapped.** Camera angles are plain numbers and go straight from one key's value to the next, never the shortest way round. 350 → 10 swings back 340° through 180°; write 350 → 370 to cross 0 the short way. 0 → 720 makes two whole orbits. (Box turns follow the different rule under Turns, above.)
 - Before a field's first key, the view the animation started from holds and eases in, using the animation's `easing`.
 - **Smooth paths: `"cameraInterp": "catmullRom"`** (in the `animate` args; the default is `"linear"`). Yaw, pitch, zoom and pan then follow a Catmull-Rom spline through the keys, so the camera's speed carries smoothly through every key instead of changing abruptly there. Every key is still reached exactly at its time, endpoints included. The spline's knots are the key times (so a key's timing is never moved), and the slope at each key is the time-weighted average of the slopes on either side. Two neighbouring keys with the same value make a true hold: the camera stays still between them, with no overshoot, and slows into and out of it smoothly. With `catmullRom` the animation's `easing` is not applied to the camera, because the spline sets the speed; a key's own `ease` still reshapes its span (an `easeInOut` key brings the camera to rest at both ends of that span). Yaw is not wrapped here either.

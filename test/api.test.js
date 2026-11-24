@@ -440,3 +440,14 @@ test('camera keys: catmullRom passes every key with no jump in speed; linear sta
   // and a bad value is refused
   assert.match(Anim.validateAnimation({ keyframes: keys, cameraInterp: 'bezier' }, 1).error, /cameraInterp/);
 });
+
+test('camera keys: projection defaults to ortho, and fov keys ease like the other fields', () => {
+  const keys = [{ t: 0, boxes: { 0: { position: [0, 0, 0] } } }];
+  assert.equal(Anim.validateAnimation({ keyframes: keys }, 1).anim.projection, 'ortho');
+  const a = Anim.validateAnimation({ keyframes: keys, projection: 'perspective', camera: [{ t: 0, fov: 20, ease: 'linear' }, { t: 2, fov: 60 }] }, 1).anim;
+  assert.equal(a.projection, 'perspective');
+  const fov = t => Anim.sampleAt(a, t, {}, { yaw: 0, pitch: 0, zoom: 1, pan: [0, 0, 0], fov: 30 }).camera.fov;
+  assert.equal(fov(0), 20); assert.equal(fov(1), 40); assert.equal(fov(2), 60);
+  assert.match(Anim.validateAnimation({ keyframes: keys, projection: 'fisheye' }, 1).error, /projection/);
+  assert.match(Anim.validateAnimation({ keyframes: keys, camera: [{ t: 0, fov: 200 }] }, 1).error, /fov/);
+});

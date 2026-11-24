@@ -203,8 +203,13 @@ const Remote=(()=>{
         sel.value=a.mode; sel.dispatchEvent(new Event('change')); return;
       }
       case 'view': {
-        for(const f of ['yaw','pitch','zoom']) if(a[f]!==undefined&&!finite(a[f])) return f+' must be a finite number.';
+        for(const f of ['yaw','pitch','zoom','fov']) if(a[f]!==undefined&&!finite(a[f])) return f+' must be a finite number.';
         if(a.pan!==undefined&&!(Array.isArray(a.pan)&&a.pan.length===3&&a.pan.every(finite))) return 'pan must be three finite numbers.';
+        if(a.projection!==undefined&&a.projection!=='ortho'&&a.projection!=='perspective') return "projection must be 'ortho' or 'perspective'.";
+        if(a.fov!==undefined&&(a.fov<5||a.fov>120)) return 'fov must be from 5 to 120 degrees.';
+        if(a.projection!==undefined) view.projection=a.projection;
+        if(a.fov!==undefined) view.fov=a.fov;
+        if(a.projection!==undefined||a.fov!==undefined) syncProjectionControls();
         if(a.yaw!==undefined) view.yaw=a.yaw*PI/180;
         if(a.pitch!==undefined) view.pitch=Math.max(-90,Math.min(90,a.pitch))*PI/180;
         if(a.zoom!==undefined) view.zoom=Math.max(0.05,Math.min(20,a.zoom));
@@ -236,7 +241,9 @@ const Remote=(()=>{
   const Anim=window.BoxsmithAnim;
   let anim=null;   // {spec, duration, fps, loop, t, playing, raf, wall0, t0, lastFrameT, originals, view0, variants, onFrame, onDone}
   const poseOf=box=>({position:box.position.slice(),rotation:box.rotation.slice(),colors:box.settings.colors?JSON.parse(JSON.stringify(box.settings.colors)):undefined,hidden:!!box.hidden,settings:box.settings});
-  const viewDeg=()=>({yaw:view.yaw*180/PI,pitch:view.pitch*180/PI,zoom:view.zoom,pan:view.pan.slice()});
+  const viewDeg=()=>({yaw:view.yaw*180/PI,pitch:view.pitch*180/PI,zoom:view.zoom,pan:view.pan.slice(),projection:view.projection||'ortho',fov:view.fov||30});
+  // put back a view saved with viewDeg()
+  const setViewDeg=v=>{ view.yaw=v.yaw*PI/180; view.pitch=v.pitch*PI/180; view.zoom=v.zoom; view.pan=v.pan.slice(); view.projection=v.projection; view.fov=v.fov; if(typeof syncProjectionControls==='function') syncProjectionControls(); };
   /* Fast, exact pose for playback. A box's lowest point (and its bounds) can only be at a corner of
      the convex outline of one of its panels, so each panel's outline is reduced once to its convex
      hull (a finger-jointed panel goes from hundreds of points to a handful). The result is the same
@@ -302,7 +309,7 @@ const Remote=(()=>{
     const start={}; for(const i of Object.keys(originals)) start[i]=originals[i].pose;
     anim={spec,unit:spec.unit,start,duration:spec.duration,fps:spec.fps,loop:spec.loop,t:0,playing:false,raf:0,originals,variants,view0:viewDeg(),lastFrameT:-1};
     if(curView!=='layout') document.querySelector('#tabs [data-v="layout"]')?.click();
-    applyFrame(0);
+    applyFrame(0); syncProjectionControls();
     if(a.autoplay!==false) playAnim();
   }
   // Pose every animated box (and the camera) for time t, then draw. Transforms only: meshes are
@@ -326,7 +333,9 @@ const Remote=(()=>{
       if(!swapped) fastTransform(box);
     }
     if(swapped) relayoutNoFit();
+    view.projection=anim.spec.projection;   // the animation's own projection, put back on stop
     if(s.camera){
+      if(finite(s.camera.fov)) view.fov=s.camera.fov;
       if(finite(s.camera.yaw)) view.yaw=s.camera.yaw*PI/180;
       if(finite(s.camera.pitch)) view.pitch=s.camera.pitch*PI/180;
       if(finite(s.camera.zoom)) view.zoom=s.camera.zoom;
@@ -423,7 +432,7 @@ const Remote=(()=>{
       transformLayoutBox(box);
     }
     if(swapped) relayoutNoFit();
-    const v=anim.view0; view.yaw=v.yaw*PI/180; view.pitch=v.pitch*PI/180; view.zoom=v.zoom; view.pan=v.pan.slice();
+    setViewDeg(anim.view0);
     if(forget) anim=null; else { anim.t=0; anim.lastFrameT=-1; }
     exitCinema(); render(); syncBoxLayout(); renderAnimBar();
   }
@@ -463,7 +472,7 @@ const Remote=(()=>{
     try{ times.forEach((t,k)=>{ applyFrame(t); use(k,t); }); }
     finally{
       applyFrame(keepT,false);
-      view.yaw=keepView.yaw*PI/180; view.pitch=keepView.pitch*PI/180; view.zoom=keepView.zoom; view.pan=keepView.pan;
+      setViewDeg(keepView);
       anim.onFrame=onFrame; render();
     }
   }
@@ -799,6 +808,8 @@ const Remote=(()=>{
         '<button type="button" class="btn'+(st.placing?' on':'')+'" data-rm="place"'+dis+'>'+(st.placing?'Placing: tap the model screen…':'Place in top view')+'</button>'+
         '<button type="button" class="btn'+(st.maximized?' on':'')+'" data-rm="max">'+(st.maximized?'✕ Exit maximize':'⤢ Maximize')+'</button></div>'+
         '<div class="rm-row"><label>Viewing <select data-rm="stereo">'+[['off','Normal view'],['cross','Stereo · cross-eyed'],['parallel','Stereo · parallel']].map(([v,l])=>'<option value="'+v+'"'+(st.stereo===v?' selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
+        '<label>Projection <select data-rm="projection">'+[['ortho','Orthographic'],['perspective','Perspective']].map(([v,l])=>'<option value="'+v+'"'+(((st.view&&st.view.projection)||'ortho')===v?' selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
+        ((st.view&&st.view.projection)==='perspective'?'<label>Lens <input type="number" data-rm="fov" min="5" max="120" step="1" value="'+Math.round(st.view.fov||30)+'" style="width:4.5em">°</label>':'')+
         '<label>Units <select data-rm="units"><option value="mm"'+(u==='mm'?' selected':'')+'>mm</option><option value="in"'+(u==='in'?' selected':'')+'>in</option></select></label></div></section>'+
         '<section><h4>Layout file</h4><div class="rm-row"><button type="button" class="btn" data-rm="save">Save layout (downloads on the model screen)</button>'+
         '<button type="button" class="btn" data-rm="openfile">Open a layout file from this device</button><input type="file" id="rmFile" accept=".json,application/json" hidden>'+
@@ -872,6 +883,8 @@ const Remote=(()=>{
     p.addEventListener('change',e=>{
       const t=e.target;
       if(t.dataset.rm==='select') return cmd('select',{index:+t.value});
+      if(t.dataset.rm==='projection') return cmd('view',{projection:t.value});
+      if(t.dataset.rm==='fov'&&+t.value>=5&&+t.value<=120) return cmd('view',{fov:+t.value});
       if(t.dataset.rm==='part') return cmd('part',{name:t.value||null});
       if(t.dataset.rm==='color') return cmd('color',{hex:t.value,final:true});
       if(t.dataset.rm==='units') return cmd('units',{unit:t.value});
