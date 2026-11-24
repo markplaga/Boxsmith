@@ -45,6 +45,23 @@ aside{border-right:1px solid var(--line);background:var(--panel);overflow-y:auto
 .type svg{width:30px;height:30px;flex:none}
 .type b{display:block;font-size:12.5px;font-weight:600;line-height:1.2}
 .type span{display:block;font-size:11px;color:var(--muted);line-height:1.25}
+.typesHd{grid-column:1/-1;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:6px 0 -2px}
+.type.lab{border-style:dashed}
+#typeParams .full,#typeParams .chk{grid-column:1/-1}
+.typeLab{position:fixed;top:0;right:0;bottom:0;width:min(460px,100vw);background:#fbf9f5;border-left:1px solid var(--line2);box-shadow:-8px 0 24px rgba(0,0,0,.08);z-index:60;display:flex;flex-direction:column;gap:8px;padding:12px 14px;overflow:auto}
+.typeLab .labHd{display:flex;justify-content:space-between;align-items:center;font-size:16px}
+.typeLab .hint{font-size:12px;color:var(--muted);margin:0;line-height:1.4}
+.typeLab .labRow{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.typeLab select{border:1px solid var(--line2);border-radius:6px;padding:5px 6px;background:#fff;font-family:var(--sans);font-size:12.5px}
+.typeLab textarea{flex:1 1 auto;min-height:260px;width:100%;box-sizing:border-box;font-family:var(--mono);font-size:12px;line-height:1.45;border:1px solid var(--line2);border-radius:6px;padding:8px;background:#fff;resize:vertical;tab-size:2}
+.typeLab h3{font-size:14px;margin:8px 0 0}
+.labStatus{font-weight:600;font-size:13px;padding:6px 8px;border-radius:6px}
+.labStatus.ok{background:#e6f2ea;color:var(--ok)}.labStatus.bad{background:var(--warn-soft);color:var(--warn)}
+.labErr,.labWarn{margin:6px 0 0;padding-left:18px;font-size:12px;line-height:1.4}.labWarn{color:var(--muted)}
+.labErr code,.labWarn code{font-family:var(--mono);font-size:11px;background:#efe9df;padding:0 3px;border-radius:3px}
+.labMine{display:flex;gap:5px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
+.labMine>div{flex:1;min-width:0}.labMine b{display:block;font-size:13px}.labMine span{font-size:11px;color:var(--muted)}
+@media (min-width:900px){ body.lab-open main{margin-right:460px} }
 .type:hover{border-color:#b9b0a2}
 .type.on{border-color:var(--accent);background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px}
@@ -322,6 +339,13 @@ body.max3d .lamp-ctl{top:190px}
   <div class="sec">
     <h2>Box style</h2>
     <div class="types" id="types"></div>
+  </div>
+
+  <div class="sec hidden" id="typeParamsSec">
+    <h2>Style settings</h2>
+    <p class="hint" id="typeParamsAbout" style="margin:0 0 8px"></p>
+    <div class="grid2" id="typeParams"></div>
+    <button class="btn sm" id="typeParamsEdit" type="button" style="margin-top:10px">Edit in the Type lab</button>
   </div>
 
   <div class="sec" data-hide="kerftest">
@@ -903,11 +927,14 @@ Boxsmith.browser.showBox(tray);</code></pre>
 
 <h3 id="h-types">Make your own box styles</h3>
 <p>A <b>box type file</b> describes a new style of box in JSON: which flat parts it has, how big each one is, where it sits, and which edges join with fingers. It holds only numbers and short formulas such as <code>W - 2*t</code>, never code, so a type file from someone else (or written by an AI) is safe to try. Edges are <code>"e"</code> (plain), <code>"f"</code> (fingers) and <code>"F"</code> (the matching gaps), and Boxsmith adds the finger spacing, corners, kerf and screw holes for you.</p>
-<p>Boxsmith checks a type in three steps and tells you where each problem is: the file itself, then building it at your size, then fitting the parts together in 3D (every finger needs a partner, and no two parts may run into each other).</p>
-<pre style="overflow-x:auto"><code>const report = Boxsmith.types.check(myType, { W: 160, D: 100, H: 60 });
-console.log(report.ok ? 'Fits' : Boxsmith.types.explain(report.errors));
-Boxsmith.types.register(myType);   // then use it like any style</code></pre>
-<p>To have an AI write one, give it the format reference and describe your box, then paste back any problems Boxsmith reports. <a href="https://github.com/markplaga/Boxsmith/blob/main/BOX-TYPES.md">Box type format</a> · <a href="https://github.com/markplaga/Boxsmith/tree/main/types">Example types</a> · <a href="https://github.com/markplaga/markplaga-boxsmith-type">Shared types</a></p>
+<ol>
+<li>Click <b>Type lab</b> at the end of the <b>Box style</b> list.</li>
+<li>Paste a type file, use <b>Open file…</b>, or pick an example under <b>Start from…</b> to change.</li>
+<li>Click <b>Check</b> (or press Ctrl+Enter / ⌘+Enter). Boxsmith checks the file, builds it at the size and material in the sidebar, and fits the parts together in 3D: every finger needs a partner, and no two parts may run into each other. Each problem says where in the file it is.</li>
+<li><b>Try it</b> shows the style in the preview and cut sheets without keeping it. <b>Save to My types</b> keeps it in this browser and adds it to the style list. Its own settings appear under <b>Style settings</b>.</li>
+</ol>
+<p>Settings files and layouts that use one of your types carry the type file with them, so they open on any computer; opening one adds the type to My types. <b>Download file</b> saves the type itself, to share or back up. Remove a type from the list in the Type lab.</p>
+<p>To have an AI write one, give it the format reference and describe your box, then paste its answer into the Type lab. If Boxsmith finds problems, <b>Copy problems for an AI</b> and paste them back. <a href="https://github.com/markplaga/Boxsmith/blob/main/BOX-TYPES.md">Box type format</a> · <a href="https://github.com/markplaga/Boxsmith/tree/main/types">Example types</a> · <a href="https://github.com/markplaga/markplaga-boxsmith-type">Shared types</a></p>
 
 <h2 id="h-kerftest">16. Dialing in fit with the kerf test</h2>
 <ol>
@@ -965,6 +992,7 @@ Boxsmith.types.register(myType);   // then use it like any style</code></pre>
 <script src="app.js"></script>
 <script src="mosaic.js"></script>
 <script src="boxsmith-engine.js"></script>
+<script src="type-lab.js"></script>
 <script src="remote-anim.js"></script>
 <script src="remote.js"></script>
 <script>

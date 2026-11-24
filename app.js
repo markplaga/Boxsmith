@@ -1,9 +1,16 @@
 'use strict';
 /* ================= STATE ================= */
-const TYPES=Boxsmith.boxes.list();
+const TYPES=Boxsmith.boxes.list().filter(t=>!t.custom);
 const DEFAULTS=Boxsmith.boxes.defaults();
+/* My types: box type files the user saved (Type lab), loaded before anything is built */
+const MYTYPES_KEY='boxsmith-types';
+function myTypes(){ try{ const v=JSON.parse(localStorage.getItem(MYTYPES_KEY)||'[]'); return Array.isArray(v)?v:[]; }catch(e){ return []; } }
+function saveMyTypes(list){ try{ localStorage.setItem(MYTYPES_KEY,JSON.stringify(list)); return true; }catch(e){ return false; } }
+for(const def of myTypes()){ try{ Boxsmith.types.register(def); }catch(e){} }
+const knownType=id=>Boxsmith.boxes.list().some(t=>t.id===id);
 let S = Object.assign({}, DEFAULTS);
 try{ const saved = JSON.parse(localStorage.getItem('boxsmith-v1')||'null'); if(saved) S = Object.assign({}, DEFAULTS, saved);}catch(e){}
+if(!knownType(S.type)) S.type='closed';
 function save(){ if(window.BOX && window.BOX.noSave) return; try{ localStorage.setItem('boxsmith-v1', JSON.stringify(S)); }catch(e){} }
 
 /* ================= GEOMETRY HELPERS ================= */
@@ -1521,7 +1528,17 @@ const ICONS={
   display:'<rect x="2" y="24" width="28" height="4" fill="#b3330f"/><rect x="6" y="7" width="20" height="17" fill="#c4e4ee" stroke="#5f9fb3"/><circle cx="16" cy="18" r="4" fill="#e2461b"/>',
   kerftest:'<path d="M3 10h4v6h2v-6h4v6h2v-6h4v6h2v-6h8v14H3z" fill="#e2461b"/><rect x="11" y="4" width="2" height="12" fill="#3a2b22"/>'
 };
-$('#types').innerHTML=TYPES.map(t=>'<button class="type" data-type="'+t.id+'"><svg viewBox="0 0 32 32">'+ICONS[t.ic]+'</svg><div><b>'+t.name+'</b><span>'+t.d+'</span></div></button>').join('');
+function renderTypeList(){
+  const btn=t=>'<button class="type'+(t.custom?' custom':'')+'" data-type="'+esc(t.id)+'"><svg viewBox="0 0 32 32">'+(ICONS[t.ic]||ICONS.closed)+'</svg><div><b>'+esc(t.name)+'</b><span>'+esc(t.d)+'</span></div></button>';
+  const mine=Boxsmith.types.list().map(x=>typeInfo(x.id));
+  $('#types').innerHTML=TYPES.map(btn).join('')
+    +'<div class="typesHd">My types</div>'+mine.map(btn).join('')
+    +'<button class="type lab" id="openLab" type="button"><svg viewBox="0 0 32 32"><path d="M12 4h8M14 4v9L7 25a2 2 0 0 0 2 3h14a2 2 0 0 0 2-3L18 13V4" fill="none" stroke="#2a2a2e" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 21h12l2 4H8z" fill="#e2461b"/></svg><div><b>Type lab</b><span>'+(mine.length?'Make or open a box style':'Open or make your own box style')+'</span></div></button>';
+  $$('#types .type').forEach(b=>{ const on=b.dataset.type===S.type; b.classList.toggle('on',on); b.setAttribute('aria-pressed',String(on)); });
+}
+// keep type files that came in a file the user opened, so the design still opens after a reload
+function keepTypes(ids){ if(!ids||!ids.length) return; const list=myTypes().filter(d=>!ids.includes(d.id)); for(const id of ids){ const d=Boxsmith.types.get(id); if(d) list.push(d); } saveMyTypes(list); renderTypeList(); }
+renderTypeList();
 $('#tcReset').addEventListener('click',()=>{ S.textColor='#000000'; update(); });
 $('#frameSel').innerHTML='<option value="none">None</option>'+Object.entries(FRAMES).map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('');
 $('#accentSel').innerHTML='<option value="none">None</option>'+Object.entries(ACCENTS).map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('');
@@ -1540,6 +1557,7 @@ function syncInputs(){
   $$('#cornerSeg button').forEach(b=>b.classList.toggle('on',b.dataset.c===S.corners));
   $('#cornerHint').textContent={pinwheel:'Top and bottom have no corners; each wall owns one top corner and the diagonally opposite bottom corner, spiralling around the box. Square boxes get four identical walls.',edge:'Top and bottom have no corners; each wall owns both corners of one vertical edge, rotating around the box.',classic:'Front and back own all eight corners; top, bottom and sides have none.'}[S.corners]||'';
   $$('[data-show]').forEach(el=>el.classList.toggle('hidden',!el.dataset.show.split(' ').includes(S.type)));
+  if(typeof syncTypeParams==='function') syncTypeParams();
   $$('[data-hide]').forEach(el=>el.classList.toggle('hidden',el.dataset.hide.split(' ').includes(S.type)));
   const hc=$('#hwLbl'); if(hc) hc.classList.toggle('hidden', S.tslot==='off');
   const ph=$('#pullHVal'); if(ph) ph.textContent=fmt(+S.pullH||0); const pw=$('#pullHWrap'); if(pw) pw.classList.toggle('hidden',S.pull!=='slot');
@@ -1571,7 +1589,7 @@ $$('[data-k]').forEach(el=>{
     else S[k]=el.value;
     update(); });
 });
-$('#types').addEventListener('click',e=>{ const b=e.target.closest('.type'); if(!b) return; S.type=b.dataset.type; update(true); if(curView==='3d') playDemo(false); });
+$('#types').addEventListener('click',e=>{ const b=e.target.closest('.type'); if(!b) return; if(b.id==='openLab'){ openTypeLab(); return; } S.type=b.dataset.type; update(true); if(curView==='3d') playDemo(false); });
 function setMeasurementUnit(unit){
   if(S.unit===unit) return;
   S.unit=unit;
@@ -1739,7 +1757,7 @@ const baseName=()=>{ const ty=typeInfo(S.type).name.toLowerCase().replace(/[^a-z
 $('#dlPop').addEventListener('click',async e=>{ const b=e.target.closest('button'); if(!b||!LAST) return; const k=b.dataset.dl; const sh=LAST.sheets, nm=baseName();
   if(k==='svg'){ if(sh.length===1) await saveFile(nm+'.svg', sheetSVG(sh[0])); else await saveFile(nm+'-svg.zip', makeZip(sh.map((s,i)=>({name:nm+'-sheet'+(i+1)+'.svg',data:sheetSVG(s)})))); }
   if(k==='dxf'){ await saveFile(nm+'-dxf.zip', makeZip(sh.map((s,i)=>({name:nm+'-sheet'+(i+1)+'.dxf',data:sheetDXF(s)})))); }
-  if(k==='json'){ await saveFile(nm+'.json', JSON.stringify(S,null,2)); }
+  if(k==='json'){ const used=Boxsmith.types.used(S); await saveFile(nm+'.json', JSON.stringify(Object.keys(used).length?Object.assign({},S,{types:used}):S,null,2)); }
 });
 $$('.openSettings,#layoutFile').forEach(input=>input.addEventListener('change',async()=>{
   const file=input.files[0];
@@ -1752,9 +1770,11 @@ $$('.openSettings,#layoutFile').forEach(input=>input.addEventListener('change',a
       if(data?.format!==Boxsmith.assemblies.format) throw new Error('Unexpected file format');
       openBoxLayout(data);
     } else {
-      S=Object.assign({},DEFAULTS,data);
+      const {types,...settings}=data||{};
+      const added=Boxsmith.types.adopt(types); keepTypes(added);
+      S=Object.assign({},DEFAULTS,settings);
       update(true);
-      toast('Settings loaded');
+      toast(added.length?'Settings loaded, with the box style '+added.map(id=>typeInfo(id).name).join(', '):'Settings loaded');
     }
   }catch(error){
     toast(openingLayout?'That file is not a valid Boxsmith layout':'That file is not a Boxsmith settings file');
@@ -1872,6 +1892,7 @@ function confirmTwice(btn,armedText,action){
   btn._armT=setTimeout(()=>{ btn.dataset.armed=''; btn.textContent=btn.dataset.label; },4000);
 }
 function update(resetView){
+  if(!knownType(S.type)){ toast('That box style isn\'t loaded here, so it was switched to Closed box. Open its type file in the Type lab to use it.'); S.type='closed'; }
   save(); syncInputs(); syncBoxLayout();
   G=geometryContext();
   let res;

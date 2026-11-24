@@ -74,8 +74,12 @@ A box type file is JSON that describes a new style of box: its parts, their size
 | `types.unregister(id)` | Removes it. |
 | `types.get(id)`, `types.list()` | A registered type file, or all of them. |
 | `types.explain(errors)` | The problems as plain lines, ready to show or paste back to an AI. |
+| `types.used(...settings)` | The type files these settings use, `{id: type}`: what to save alongside them. Layout files do this for you, under `types`. |
+| `types.adopt(types)` | Loads the type files a file carries (`{id: type}`), checking each; one already loaded with the same id is kept. Returns the ids added. `assemblies.parse` and `assemblies.create` call it for a layout's `types`. |
 | `types.parts(settings)` | The parts any style makes, in a form you can compare: name, outline, holes, circles, 3D placement and text, plus the warnings and notes. |
 | `types.formula(src, env)`, `types.template(text, env)` | The formula language on its own: `types.formula('2*t + W/2', {t: 3, W: 100})` → `56`. |
+
+In the page, the **Type lab** (at the end of the Box style list) does all of this: paste or open a file, check it, try it, and save it to My types, which are kept in the browser.
 
 A type's own settings go in `typeParams`, keyed by type id, so they can't clash with Boxsmith's settings or another type's:
 

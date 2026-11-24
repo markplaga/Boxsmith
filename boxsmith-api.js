@@ -161,9 +161,28 @@
     return [...byId.values()];
   }
 
-  function createAssembly({boxes=[],unit='mm',groups}={}){
+  /** Type files a layout or settings file carries: each one that isn't loaded yet is checked and loaded,
+      so the file opens anywhere. A loaded type with the same id is kept. Returns the ids that were added. */
+  function adoptTypes(types){
+    if(types===undefined) return [];
+    if(!isRecord(types)) throw new TypeError('types must be an object like {"my-type": {…type file…}}');
+    const added=[];
+    for(const [id,def] of Object.entries(types)){
+      if(!isRecord(def)||def.id!==id) throw new TypeError('types.'+id+' must be the type file whose id is '+id);
+      if(CUSTOM.has(id)||TYPES.some(t=>t.id===id)) continue;
+      const res=validateTypeDef(def);
+      if(!res.ok){ const e=new TypeError('The box type "'+id+'" in this file has problems:\n'+BoxTypes.explain(res.errors)); e.errors=res.errors; throw e; }
+      CUSTOM.set(id,clone(def)); added.push(id);
+    }
+    return added;
+  }
+  // the type files a list of settings uses, keyed by id
+  function typesUsed(list){ const out={}; for(const s of list){ const def=s&&CUSTOM.get(s.type); if(def) out[def.id]=clone(def); } return out; }
+
+  function createAssembly({boxes=[],unit='mm',groups,types}={}){
     if(!Array.isArray(boxes)) throw new TypeError('boxes must be an array');
     if(unit!=='mm'&&unit!=='in') throw new RangeError('unit must be mm or in');
+    adoptTypes(types);
     const placed=boxes.map(box=>{
       if(!isRecord(box)) throw new TypeError('Each placement must be an object');
       const rotation=box.rotation??[0,0,box.angle??0];
@@ -172,6 +191,8 @@
     const grouped=normalizeGroups(groups,boxes);
     const file={format:FORMAT,version:VERSION,unit,boxes:placed};
     if(grouped.length) file.groups=grouped;
+    const used=typesUsed(placed.map(b=>b.settings));
+    if(Object.keys(used).length) file.types=used;
     return file;
   }
 
@@ -245,6 +266,10 @@
       get:id=>CUSTOM.has(id)?clone(CUSTOM.get(id)):null,
       list:()=>[...CUSTOM.values()].map(typeEntry),
       explain:list=>BoxTypes.explain(list),
+      /** Load the type files a layout or settings file carries ({id: type}); returns the ids added. */
+      adopt:types=>adoptTypes(types),
+      /** The type files these settings use ({id: type}), to save alongside them. */
+      used:(...settings)=>typesUsed(settings.flat()),
       /** The formula language on its own: formula('2*t + W/2', {t:3, W:100}) → 56; template('Strip {k}', {k:'A'}) → 'Strip A'. */
       formula:(src,env={})=>clone(BoxTypes.formula(String(src),Object.assign({},env),{})),
       template:(text,env={})=>BoxTypes.template(String(text),Object.assign({},env),{},{})

@@ -216,7 +216,7 @@ Try a type with a few different settings (small and large, inside measurements, 
 
 ## Writing a type with an AI
 
-Give the AI this page and describe the box. Paste its JSON into Boxsmith, or check it from code:
+Give the AI this page and describe the box. Paste its JSON into the **Type lab** (at the end of the Box style list) and click **Check**; if there are problems, **Copy problems for an AI** and paste them back. From code:
 
 ```js
 const result = Boxsmith.types.check(JSON.parse(text), { W: 160, D: 100, H: 60 });
@@ -232,5 +232,7 @@ Reply with the JSON only. I will paste back any problems Boxsmith finds.
 ```
 
 ## Sharing types
+
+A type you save in the Type lab is kept in that browser. Settings files and layouts that use it carry the type file with them (under `"types"`), so they open on another computer, which then adds the type to its own My types.
 
 Shared types live in [markplaga/markplaga-boxsmith-type](https://github.com/markplaga/markplaga-boxsmith-type), one file per type. A type's `id` is how Boxsmith tells types apart, so pick one that is unlikely to clash, and raise `typeVersion` when you change a shared type.

@@ -286,11 +286,14 @@ Boxsmith.browser.showBox(tray);</code></pre>
 
 <h3 id="h-types">Make your own box styles</h3>
 <p>A <b>box type file</b> describes a new style of box in JSON: which flat parts it has, how big each one is, where it sits, and which edges join with fingers. It holds only numbers and short formulas such as <code>W - 2*t</code>, never code, so a type file from someone else (or written by an AI) is safe to try. Edges are <code>"e"</code> (plain), <code>"f"</code> (fingers) and <code>"F"</code> (the matching gaps), and Boxsmith adds the finger spacing, corners, kerf and screw holes for you.</p>
-<p>Boxsmith checks a type in three steps and tells you where each problem is: the file itself, then building it at your size, then fitting the parts together in 3D (every finger needs a partner, and no two parts may run into each other).</p>
-<pre style="overflow-x:auto"><code>const report = Boxsmith.types.check(myType, { W: 160, D: 100, H: 60 });
-console.log(report.ok ? 'Fits' : Boxsmith.types.explain(report.errors));
-Boxsmith.types.register(myType);   // then use it like any style</code></pre>
-<p>To have an AI write one, give it the format reference and describe your box, then paste back any problems Boxsmith reports. <a href="https://github.com/markplaga/Boxsmith/blob/main/BOX-TYPES.md">Box type format</a> · <a href="https://github.com/markplaga/Boxsmith/tree/main/types">Example types</a> · <a href="https://github.com/markplaga/markplaga-boxsmith-type">Shared types</a></p>
+<ol>
+<li>Click <b>Type lab</b> at the end of the <b>Box style</b> list.</li>
+<li>Paste a type file, use <b>Open file…</b>, or pick an example under <b>Start from…</b> to change.</li>
+<li>Click <b>Check</b> (or press Ctrl+Enter / ⌘+Enter). Boxsmith checks the file, builds it at the size and material in the sidebar, and fits the parts together in 3D: every finger needs a partner, and no two parts may run into each other. Each problem says where in the file it is.</li>
+<li><b>Try it</b> shows the style in the preview and cut sheets without keeping it. <b>Save to My types</b> keeps it in this browser and adds it to the style list. Its own settings appear under <b>Style settings</b>.</li>
+</ol>
+<p>Settings files and layouts that use one of your types carry the type file with them, so they open on any computer; opening one adds the type to My types. <b>Download file</b> saves the type itself, to share or back up. Remove a type from the list in the Type lab.</p>
+<p>To have an AI write one, give it the format reference and describe your box, then paste its answer into the Type lab. If Boxsmith finds problems, <b>Copy problems for an AI</b> and paste them back. <a href="https://github.com/markplaga/Boxsmith/blob/main/BOX-TYPES.md">Box type format</a> · <a href="https://github.com/markplaga/Boxsmith/tree/main/types">Example types</a> · <a href="https://github.com/markplaga/markplaga-boxsmith-type">Shared types</a></p>
 
 <h2 id="h-kerftest">16. Dialing in fit with the kerf test</h2>
 <ol>

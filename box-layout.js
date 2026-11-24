@@ -283,7 +283,9 @@ function downloadBoxLayout(assembly=currentBoxLayout(),filename='boxsmith-layout
 
 function openBoxLayout(input){
   if(!GL) throw new Error('Opening a box layout requires WebGL');
-  const file=Boxsmith.assemblies.parse(input);
+  const data=typeof input==='string'?JSON.parse(input):input;
+  keepTypes(Boxsmith.types.adopt(data&&data.types));   // box styles the layout brings with it
+  const file=Boxsmith.assemblies.parse(data);
   const boxes=file.boxes.map(entry=>{ if(!MATS[entry.settings.look]) entry.settings.look=view.mat; return restoreLayoutBox(entry); });
   adoptGroups(file.groups,boxes);
   layoutBoxes=boxes;

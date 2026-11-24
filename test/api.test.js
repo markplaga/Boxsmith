@@ -597,3 +597,24 @@ test('box types: the JSON Schema accepts the example type files', () => {
   for (const f of ['closed-box', 'open-tray', 'cube-frame']) assert.equal(validate(typeFile(f)), true, f + ': ' + JSON.stringify(validate.errors));
   assert.equal(validate({ format: 'boxsmith-type', version: 1, id: 'x', name: 'X', parts: [] }), false);
 });
+
+test('box types: layouts carry the type files they use, so they open anywhere', () => {
+  const def = typeFile('open-tray'); def.id = 'carried-tray';
+  B.types.register(def);
+  let text;
+  try {
+    const box = B.assemblies.place(B.boxes.create('carried-tray', { W: 150 }));
+    text = B.assemblies.serialize(B.assemblies.create({ boxes: [box, B.assemblies.place(B.boxes.create('closed'))] }));
+    assert.deepEqual(Object.keys(JSON.parse(text).types), ['carried-tray'], 'only custom types are embedded');
+    assert.deepEqual(Object.keys(B.types.used({ type: 'carried-tray' }, { type: 'closed' })), ['carried-tray']);
+  } finally { B.types.unregister('carried-tray'); }
+  assert.throws(() => B.boxes.create('carried-tray'), /Unknown box type/);
+  const file = B.assemblies.parse(text);            // brings the type back
+  assert.equal(file.boxes[0].settings.type, 'carried-tray');
+  assert.ok(B.types.get('carried-tray'));
+  assert.deepEqual(B.types.adopt(JSON.parse(text).types), [], 'an already loaded type is kept, not replaced');
+  B.types.unregister('carried-tray');
+  const bad = JSON.parse(text); bad.types['carried-tray'].parts = [];
+  assert.throws(() => B.assemblies.parse(bad), e => /has problems/.test(e.message) && e.errors.length > 0);
+  assert.equal(B.types.get('carried-tray'), null);
+});
