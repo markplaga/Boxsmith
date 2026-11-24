@@ -241,7 +241,9 @@
   const size=s=>s.length;   // JSON text is what the relay counts; capture data is ASCII
   // A capture with several images is split into several capture messages {part, of}. Anything still
   // too big is cut into {t:'chunk', id, part, of, data} pieces that joinParts puts back together.
-  function splitMessage(msg,limit=LIMIT){
+  // chunkId: the id the chunk pieces carry (default: the message's own id), so two copies of one
+  // message cut at different sizes don't mix their pieces.
+  function splitMessage(msg,limit=LIMIT,chunkId){
     const text=JSON.stringify(msg);
     if(size(text)<=limit) return [msg];
     const out=[];
@@ -254,10 +256,10 @@
         cur.images.push(img); cur.times.push(msg.times?msg.times[k]:undefined); used+=add;
       });
       groups.push(cur);
-      groups.forEach((g,k)=>{ for(const m of splitMessage(Object.assign({},msg,{images:g.images,times:g.times,part:k+1,of:groups.length}),limit)) out.push(m); });
+      groups.forEach((g,k)=>{ for(const m of splitMessage(Object.assign({},msg,{images:g.images,times:g.times,part:k+1,of:groups.length}),limit,chunkId&&chunkId+'.'+(k+1))) out.push(m); });
       return out;
     }
-    const id=msg.id||('m'+Date.now().toString(36)+Math.random().toString(36).slice(2,6));
+    const id=chunkId||msg.id||('m'+Date.now().toString(36)+Math.random().toString(36).slice(2,6));
     const room=limit-512, n=Math.ceil(size(text)/room);
     for(let k=0;k<n;k++) out.push({t:'chunk',id,kind:msg.t,part:k+1,of:n,data:text.slice(k*room,(k+1)*room)});
     return out;

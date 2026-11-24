@@ -63,6 +63,8 @@ for piece in chunks({"t": "cmd", "op": "animate", "args": animation}):
     ws.send(json.dumps(piece))
 ```
 
+**Slow connections.** A big message sent as one huge frame can take minutes on a slow upload, and nothing else (not even the answer to the relay's keep-alive ping) can get through meanwhile. Pieces of about 1 MiB, sent as the socket's buffer drains, avoid that; Boxsmith does this itself. The relay also treats bytes still arriving as a sign that the sender is alive. If a host does drop, its room is kept for 10 minutes: remotes get `{"t":"hostgone"}`, stay connected, and get `{"t":"hostback"}` when the host reconnects with the same code (`{"t":"hostgone","final":true}` if it never does).
+
 For an animation that's already in a zip open on the model screen, nothing needs sending at all:
 `{"t":"cmd","op":"libraryPlay","args":{"name":"Tower crash"}}` plays it from there.
 

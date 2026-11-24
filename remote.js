@@ -18,14 +18,31 @@ const Remote=(()=>{
   const full=s=>stable(Object.assign({},DEFAULTS,s));
 
   /* ---------- the link: BroadcastChannel + relay WebSocket, messages de-duplicated ---------- */
+  /* Big messages go to the relay in 1 MiB pieces, a few at a time (backpressure on the socket's
+     buffer), so a slow upload never holds one huge frame in the pipe: the relay's keep-alive pings
+     get answered between pieces, small messages (state, progress) slip in between, and progress can be
+     reported. If the connection drops mid-message, the whole message is sent again after it
+     reconnects; pieces that already arrived are recognised and skipped. */
+  const RELAY_PIECE=1024*1024, RELAY_BUFFER=2*1024*1024, PIECES_PER_SEC=40;
   function Link(room,role,onMessage,onStatus){
-    const seen=[], me=Math.random().toString(36).slice(2), pieces={};
+    const seen=[], me=Math.random().toString(36).slice(2), pieces={}, wholeSeen=[];
+    const outbox=[];   // big messages for the relay: {wid, texts, i, onProgress, bytes, sent}
+    const unacked=[];  // big messages fully handed to the socket but not yet confirmed: {wid, texts, bytes, doneAt}
+    let joinedOnce=false;
+    let tokens=PIECES_PER_SEC, lastTok=performance.now(), pumpTimer=0;
     let bc=null, ws=null, closed=false, retry=0, timer=null, relayState='connecting';
     const deliver=msg=>{
       if(!msg||msg.from===role||msg.src===me) return;
       if(msg.mid){ if(seen.includes(msg.mid)) return; seen.push(msg.mid); if(seen.length>500) seen.shift(); }   // same packet by both routes
       const whole=window.BoxsmithAnim?BoxsmithAnim.joinParts(pieces,msg):msg;                                     // big messages arrive in chunks
-      if(whole) onMessage(whole);
+      if(!whole) return;
+      if(whole.t==='got'){ const i=unacked.findIndex(m=>m.wid===whole.wid); if(i>=0) unacked.splice(i,1); return; }   // the other side has it all
+      if(whole.wid){
+        const k=whole.wid+'#'+(whole.part||'');
+        if(!whole.part||whole.part===whole.of) sendNow({t:'got',wid:whole.wid});   // confirm (also for repeats, in case the first confirmation was lost)
+        if(wholeSeen.includes(k)) return; wholeSeen.push(k); if(wholeSeen.length>400) wholeSeen.shift();
+      }   // whole message by both routes
+      onMessage(whole);
     };
     try{ bc=new BroadcastChannel('boxsmith-remote-'+room); bc.onmessage=e=>deliver(e.data); }catch(e){}
     const status=s=>{ relayState=s; onStatus(s); };
@@ -34,10 +51,15 @@ const Remote=(()=>{
       let sock;
       try{ sock=new WebSocket(relayURL()); }catch(e){ status('offline'); return; }
       ws=sock;
-      sock.onopen=()=>{ retry=0; sock.send(JSON.stringify({t:'join',room,role})); };
+      sock.onopen=()=>{ retry=0; sock.send(JSON.stringify({t:'join',room,role})); for(const m of outbox){ m.i=0; m.sent=0; } pump(); };
       sock.onmessage=e=>{
         let msg; try{ msg=JSON.parse(e.data); }catch(err){ return; }
-        if(msg.t==='joined'){ status('relay'); if(role==='host') onMessage({t:'peers',remotes:msg.remotes}); return; }
+        if(msg.t==='joined'){
+          status('relay'); if(role==='host') onMessage({t:'peers',remotes:msg.remotes});
+          // back after a drop: anything big that wasn't confirmed in the last 5 minutes goes again
+          if(joinedOnce){ const now=Date.now(); for(const m of unacked.splice(0)) if(now-m.doneAt<300000&&!outbox.some(o=>o.wid===m.wid)) outbox.push(Object.assign(m,{i:0,sent:0})); }
+          joinedOnce=true; pump(); return;
+        }
         if(msg.t==='nohost'){ status('nohost'); return; }
         if(msg.t==='error'&&msg.code){ onMessage({t:'relayError',code:msg.code,text:msg.msg||msg.code}); return; }   // a message was refused; the link is fine
         if(msg.t==='error'){ status('error:'+msg.msg); closed=role==='host'; return; }
@@ -55,15 +77,33 @@ const Remote=(()=>{
     };
     open();
     let n=0;
+    const stamp=p=>Object.assign({},p,{mid:me+'.'+(n++),src:me,from:role});
+    function pump(){
+      clearTimeout(pumpTimer);
+      while(outbox.length&&ws&&ws.readyState===1&&relayState==='relay'){
+        const now=performance.now(); tokens=Math.min(PIECES_PER_SEC,tokens+(now-lastTok)/1000*PIECES_PER_SEC); lastTok=now;
+        if(ws.bufferedAmount>RELAY_BUFFER||tokens<1) break;
+        const m=outbox[0], text=m.texts[m.i++]; tokens--;
+        ws.send(text); m.sent+=text.length;
+        if(m.onProgress) m.onProgress(m.i,m.texts.length,m.sent,m.bytes);
+        if(m.i>=m.texts.length){ outbox.shift(); m.doneAt=Date.now(); unacked.push(m); if(unacked.length>8) unacked.shift(); }
+      }
+      if(outbox.length) pumpTimer=setTimeout(pump,25);
+    }
+    function sendNow(obj){ const m=stamp(obj); if(bc) bc.postMessage(m); if(ws&&ws.readyState===1&&relayState==='relay') ws.send(JSON.stringify(m)); }
     return {
-      send(obj){
-        const packets=window.BoxsmithAnim?BoxsmithAnim.splitMessage(obj):[obj];
-        for(const p of packets){
-          const msg=Object.assign({},p,{mid:me+'.'+(n++),src:me,from:role});
-          if(bc) bc.postMessage(msg);
-          if(ws&&ws.readyState===1) ws.send(JSON.stringify(msg));
-        }
+      // opts.onProgress(piecesSent, pieces, bytesSent, bytes) for a big message going to the relay
+      send(obj,opts={}){
+        const big=window.BoxsmithAnim&&JSON.stringify(obj).length>RELAY_PIECE;
+        if(big) obj=Object.assign({},obj,{wid:me+'.w'+(n++)});
+        if(bc) for(const p of (window.BoxsmithAnim?BoxsmithAnim.splitMessage(obj):[obj])) bc.postMessage(stamp(p));   // same browser: no pacing needed
+        if(!big){ if(ws&&ws.readyState===1&&relayState==='relay') ws.send(JSON.stringify(stamp(obj))); return; }
+        // the relay copy is cut separately, with its own chunk id
+        const parts=BoxsmithAnim.splitMessage(obj,RELAY_PIECE,(obj.id||'m')+'~r'+me+(n++)).map(p=>JSON.stringify(stamp(p)));
+        outbox.push({wid:obj.wid,texts:parts,i:0,sent:0,bytes:parts.reduce((a,t)=>a+t.length,0),onProgress:opts.onProgress});
+        pump();
       },
+      get sending(){ return outbox.length||unacked.length?{queued:outbox.length,pieces:outbox[0]?outbox[0].texts.length:0,sent:outbox[0]?outbox[0].i:0,unconfirmed:unacked.length}:null; },
       close(){ closed=true; clearTimeout(timer); if(bc) bc.close(); if(ws) ws.close(); },
       get relay(){ return relayState; }
     };
@@ -140,7 +180,14 @@ const Remote=(()=>{
     sendState(true);   // one fresh state after every command (or batch)
   }
   const note=text=>{ if(host) host.send({t:'note',text:String(text).slice(0,2000)}); };
-  const sendBig=msg=>{ if(host) host.send(msg); };   // Link.send splits anything over the relay limit
+  // Big replies (exports, captures): Link.send cuts them up and paces them; remotes get
+  // {t:'progress', id, of:msg.t, phase:'sending', percent, bytes, total} as the pieces go out.
+  const sendBig=msg=>{
+    if(!host) return;
+    let last=-1;
+    host.send(msg,{onProgress:(i,n,sent,total)=>{ if(i===1) last=-1; const pc=Math.floor(sent/total*100); if(pc>=last+5||i===n){ last=pc; host.send({t:'progress',id:msg.id,of:msg.t,phase:'sending',percent:pc,bytes:sent,total}); } }});
+  };
+  const progress=(id,of,phase,done,total)=>{ if(host) host.send({t:'progress',id,of,phase,percent:Math.floor(done/total*100),done,total}); };
   const finite=v=>typeof v==='number'&&Number.isFinite(v);
   const needBox=()=>layoutBoxes[layoutSelection]?'':'Select a box first.';
   // Runs one command. Returns an error message, or nothing when it worked. Never throws on bad input.
@@ -682,7 +729,7 @@ const Remote=(()=>{
       setTimeout(step,0);
       return;
     }
-    if(typeof VideoEncoder!=='undefined'&&typeof VideoFrame!=='undefined'){ exportCFR(a,c,ctx,w,h,fps,finish); return; }
+    if(typeof VideoEncoder!=='undefined'&&typeof VideoFrame!=='undefined'){ exportCFR(Object.assign({},a,{id}),c,ctx,w,h,fps,finish); return; }
     // no WebCodecs (older browsers): record playback in real time; the frame rate then follows the device
     if(typeof MediaRecorder==='undefined'||!c.captureStream){ exporting=false; return 'This browser cannot record video. Try format "gif".'; }
     const type=['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'].find(t=>MediaRecorder.isTypeSupported(t));
@@ -771,6 +818,7 @@ const Remote=(()=>{
         const batch=times.slice(k,k+4), k0=k; k+=batch.length;
         try{ atTimes(batch,(j)=>{ drawInto(ctx,0,0,w,h); E.addFrame(c,k0+j); }); }catch(err){ return fail(err); }
         busy.firstChild.textContent='Recording video… '+Math.round(k/times.length*100)+'%';
+        if(Math.floor(k/times.length*20)>Math.floor(k0/times.length*20)||k>=times.length) progress(a.id||null,'export','rendering',k,times.length);
         if(k<times.length) return setTimeout(step,0);
         // the soundtrack goes in too, unless audio:false, cut to exactly the video's length
         const want=a.audio!==false&&anim.sound&&anim.sound.buf, seconds=times.length/fps;
@@ -1105,7 +1153,13 @@ const Remote=(()=>{
     if(msg.t==='anim'){ setRemoteStatus(msg.state==='playing'?'Animation playing…':'Animation finished.'); return; }
     if(msg.t==='capture'){ shots.unshift(...msg.images.map((src,k)=>({src,label:(msg.mode==='sheet'?'Contact sheet':msg.mode==='still'?'View':'t = '+(+msg.times[k]).toFixed(2)+' s')+(msg.of>1?' ('+msg.part+'/'+msg.of+')':''),name:'boxsmith-'+msg.mode+'-'+(k+1)+(src.startsWith('data:image/jpeg')?'.jpg':'.png')}))); shots=shots.slice(0,24); renderRemote(); setRemoteStatus('Capture received.'); return; }
     if(msg.t==='export'){ shots.unshift({src:msg.data,label:'Recording ('+msg.format.toUpperCase()+', '+(msg.bytes/1048576).toFixed(1)+' MB)',name:'boxsmith-animation.'+msg.format,video:msg.format==='webm'}); renderRemote(); setRemoteStatus('Recording received.'); return; }
-    if(msg.t==='hostgone'||msg.t==='bye'){ st=null; renderRemote(); setRemoteStatus('The model screen stopped the session.'); return; }
+    if(msg.t==='bye'||(msg.t==='hostgone'&&msg.final)){ st=null; renderRemote(); setRemoteStatus('The model screen stopped the session.'); return; }
+    if(msg.t==='hostgone'){ setRemoteStatus('The model screen lost its connection. Waiting for it to come back; anything it was sending will be sent again.'); return; }
+    if(msg.t==='progress'){
+      const what=msg.of==='export'?'Video':msg.of==='capture'?'Pictures':'Reply', mb=b=>(b/1048576).toFixed(1);
+      setRemoteStatus(msg.phase==='rendering'?what+': rendering '+msg.percent+'%':what+': sending '+mb(msg.bytes)+' of '+mb(msg.total)+' MB ('+msg.percent+'%)');
+      return;
+    }
     if(msg.t==='hostback'&&link){ link.send({t:'hello'}); }
   }
   const cmd=(op,args)=>{ if(link) link.send({t:'cmd',op,args}); };
@@ -1282,6 +1336,6 @@ const Remote=(()=>{
     if(q.has('remote')) remoteMode(q.get('remote'));
     window.addEventListener('pagehide',()=>{ if(host) host.send({t:'bye'}); });
   }
-  return {record:a=>startRecording(a||{}),recordStop:()=>stopRecording(),get recording(){ return !!recording; },init,hostStart,hostStop,remoteMode,animationFromFile,importAnimationFile,playLibrary,get library(){ return library&&{title:library.title,current:library.current,animations:library.animations.map(x=>x.name),designs:library.designs.map(x=>x.name)}; },run:(op,args)=>{ let e; try{ e=op==='batch'?Anim.runBatch(args&&args.cmds,runCmd).errors.join(' '):runCmd(op,args||{}); }catch(err){ e=err.message; } sendState(true); return e||null; },get anim(){ return anim&&{playing:anim.playing,t:anim.t,duration:anim.duration,soundtrack:anim.sound?{name:anim.sound.name,state:anim.sound.state,error:anim.sound.error,clock:anim.sound.src&&!anim.sound.stalled?'audio':'system'}:null}; },get code(){ return hostCode; }};
+  return {get sending(){ return host&&host.sending; },get relayState(){ return host&&host.relay; },record:a=>startRecording(a||{}),recordStop:()=>stopRecording(),get recording(){ return !!recording; },init,hostStart,hostStop,remoteMode,animationFromFile,importAnimationFile,playLibrary,get library(){ return library&&{title:library.title,current:library.current,animations:library.animations.map(x=>x.name),designs:library.designs.map(x=>x.name)}; },run:(op,args)=>{ let e; try{ e=op==='batch'?Anim.runBatch(args&&args.cmds,runCmd).errors.join(' '):runCmd(op,args||{}); }catch(err){ e=err.message; } sendState(true); return e||null; },get anim(){ return anim&&{playing:anim.playing,t:anim.t,duration:anim.duration,soundtrack:anim.sound?{name:anim.sound.name,state:anim.sound.state,error:anim.sound.error,clock:anim.sound.src&&!anim.sound.stalled?'audio':'system'}:null}; },get code(){ return hostCode; }};
 })();
 Remote.init();
