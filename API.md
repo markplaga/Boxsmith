@@ -243,7 +243,7 @@ The **📱 Remote** button in Arrange boxes links a second screen to the one sho
 
 ```json
 { "t": "cmd", "op": "animate", "args": {
-  "unit": "mm", "fps": 30, "easing": "easeInOut", "loop": false,
+  "unit": "mm", "fps": 30, "easing": "easeInOut", "cameraInterp": "linear", "loop": false,
   "keyframes": [
     { "t": 0,   "boxes": { "0": { "position": [0, 0, 0],  "rotation": [0, 0, 0] } } },
     { "t": 0.5, "boxes": { "0": { "position": [0, 0, 60], "rotation": [0, 0, 60] } } },
@@ -284,6 +284,7 @@ Each camera key has a time `t` and any of `yaw`, `pitch` (degrees), `zoom` and `
   That eases from −35° to 0° over 2 seconds, then orbits at a steady 30° a second.
 - **Yaw is never wrapped.** Camera angles are plain numbers and go straight from one key's value to the next, never the shortest way round. 350 → 10 swings back 340° through 180°; write 350 → 370 to cross 0 the short way. 0 → 720 makes two whole orbits. (Box turns follow the different rule under Turns, above.)
 - Before a field's first key, the view the animation started from holds and eases in, using the animation's `easing`.
+- **Smooth paths: `"cameraInterp": "catmullRom"`** (in the `animate` args; the default is `"linear"`). Yaw, pitch, zoom and pan then follow a Catmull-Rom spline through the keys, so the camera's speed carries smoothly through every key instead of changing abruptly there. Every key is still reached exactly at its time, endpoints included. The spline's knots are the key times (so a key's timing is never moved), and the slope at each key is the time-weighted average of the slopes on either side. Two neighbouring keys with the same value make a true hold: the camera stays still between them, with no overshoot, and slows into and out of it smoothly. With `catmullRom` the animation's `easing` is not applied to the camera, because the spline sets the speed; a key's own `ease` still reshapes its span (an `easeInOut` key brings the camera to rest at both ends of that span). Yaw is not wrapped here either.
 
 ### Capture
 

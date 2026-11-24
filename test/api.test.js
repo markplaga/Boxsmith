@@ -407,3 +407,36 @@ test('camera keys: per-key ease, falling back to the animation easing; yaw is ne
   const bad = Anim.validateAnimation({ keyframes: keys, camera: [{ t: 0, yaw: 0, ease: 'bouncy' }] }, 1);
   assert.equal(bad.ok, false); assert.match(bad.error, /camera\[0\]\.ease/);
 });
+
+test('camera keys: catmullRom passes every key with no jump in speed; linear stays the default', () => {
+  const keys = [{ t: 0, boxes: { 0: { position: [0, 0, 0] } } }];
+  const view = { yaw: 0, pitch: 30, zoom: 1, pan: [0, 0, 0] };
+  const cam = [{ t: 0, yaw: -40, zoom: 1, pan: [0, 0, 0] }, { t: 1, yaw: 10, pan: [100, 0, 50] }, { t: 1.5, yaw: 90, zoom: 2 },
+    { t: 3, yaw: 100, pan: [0, 300, 0] }, { t: 4, yaw: 400, zoom: 1.2 }, { t: 6, yaw: 380, pan: [0, 0, 0] }];
+  const spl = Anim.validateAnimation({ keyframes: keys, camera: cam, cameraInterp: 'catmullRom' }, 1).anim;
+  const lin = Anim.validateAnimation({ keyframes: keys, camera: cam, easing: 'linear' }, 1).anim;
+  assert.equal(Anim.validateAnimation({ keyframes: keys, camera: cam }, 1).anim.cameraInterp, 'linear');
+  const at = (a, t) => Anim.sampleAt(a, t, {}, view).camera;
+  // every key is hit exactly, endpoints included
+  for (const k of cam) for (const f of ['yaw', 'zoom', 'pan']) if (k[f] !== undefined) assert.deepEqual(at(spl, k.t)[f], k[f], f + ' at ' + k.t);
+  // speed just before and just after each interior key is the same (it is not for linear)
+  const h = 1e-6, vel = (a, f, t, side) => side < 0 ? (at(a, t)[f] - at(a, t - h)[f]) / h : (at(a, t + h)[f] - at(a, t)[f]) / h;
+  for (const t of [1, 1.5, 3, 4]) {
+    const l = vel(spl, 'yaw', t, -1), r = vel(spl, 'yaw', t, 1);
+    assert.ok(Math.abs(l - r) < 1e-3 * Math.max(1, Math.abs(l)), 'yaw speed at ' + t + ': ' + l + ' vs ' + r);
+    assert.ok(Math.abs(vel(lin, 'yaw', t, -1) - vel(lin, 'yaw', t, 1)) > 1, 'linear has a kink at ' + t);
+  }
+  for (const t of [1, 3]) {          // pan is keyed at 0, 1, 3, 6
+    const pan = (a, t) => at(a, t).pan, l = pan(spl, t).map((v, i) => (v - pan(spl, t - h)[i]) / h), r = pan(spl, t + h).map((v, i) => (v - pan(spl, t)[i]) / h);
+    l.forEach((v, i) => assert.ok(Math.abs(v - r[i]) < 1e-2 * Math.max(1, Math.abs(v)), 'pan speed at ' + t));
+  }
+  // yaw is never wrapped: 100 -> 400 passes through 250, and 400 -> 380 stays above 360
+  assert.ok(at(spl, 3.5).yaw > 150 && at(spl, 3.5).yaw < 350);
+  assert.ok(at(spl, 5).yaw > 370);
+  // a hold (two keys with the same value) stays still, with no overshoot
+  const hold = Anim.validateAnimation({ keyframes: keys, cameraInterp: 'catmullRom', camera: [{ t: 0, yaw: 0 }, { t: 1, yaw: 90 }, { t: 2, yaw: 90 }, { t: 3, yaw: 0 }] }, 1).anim;
+  for (let t = 1; t <= 2; t += 0.1) assert.ok(Math.abs(at(hold, t).yaw - 90) < 1e-9);
+  for (let t = 0; t <= 3; t += 0.05) assert.ok(at(hold, t).yaw <= 90 + 1e-9);
+  // and a bad value is refused
+  assert.match(Anim.validateAnimation({ keyframes: keys, cameraInterp: 'bezier' }, 1).error, /cameraInterp/);
+});

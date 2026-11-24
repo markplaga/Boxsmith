@@ -119,8 +119,10 @@
       camera.sort((a,b)=>a.t-b.t);
       if(camera.length) duration=Math.max(duration,camera[camera.length-1].t);
     }
+    const cameraInterp=args.cameraInterp===undefined?'linear':args.cameraInterp;
+    if(cameraInterp!=='linear'&&cameraInterp!=='catmullRom') return bad("cameraInterp must be 'linear' or 'catmullRom'.");
     for(const list of Object.values(tracks)) list.sort((a,b)=>a.t-b.t);
-    return {ok:true,anim:{tracks,camera,duration,fps,easing,loop:!!args.loop,unit}};
+    return {ok:true,anim:{tracks,camera,cameraInterp,duration,fps,easing,loop:!!args.loop,unit}};
   }
 
   /* ---------- sampling ---------- */
@@ -169,14 +171,41 @@
   // Angles are plain numbers: yaw is never wrapped to the shortest way round, so 350 -> 10 turns
   // back through 180 and 0 -> 720 makes two full orbits.
   const CAM_FIELDS=['yaw','pitch','zoom','pan'];
+  const same=(a,b)=>Array.isArray(a)?Array.isArray(b)&&a.every((v,i)=>v===b[i]):a===b;
   function camKeys(cam,field,startVal){
     const cache=cam._by||(Object.defineProperty(cam,'_by',{value:{},enumerable:false}),cam._by);
     const keys=cache[field]||(cache[field]=cam.filter(k=>k[field]!==undefined).map(k=>({t:k.t,v:k[field],ease:k.ease})));
-    if(!keys.length) return keys;
-    return keys[0].t>0&&startVal!==undefined?[{t:0,v:startVal,implicit:true}].concat(keys):keys;
+    if(!keys.length||!(keys[0].t>0)||startVal===undefined) return keys;
+    const sk=field+'@0', hit=cache[sk];                 // with the starting view in front, kept while it stays the same
+    if(hit&&same(hit[0].v,startVal)) return hit;
+    return (cache[sk]=[{t:0,v:Array.isArray(startVal)?startVal.slice():startVal,implicit:true}].concat(keys));
+  }
+  // Catmull-Rom through a field's keys, with the key times as the knots, so each key is reached at
+  // exactly its time and the speed is the same just before and just after it (a cubic Hermite curve
+  // whose slope at each key is the time-weighted average of the slopes on either side). Where two
+  // neighbouring keys hold the same value the slope there is 0, so a hold stays still, without
+  // overshoot, and the camera still starts and stops smoothly around it.
+  function slopes(pts){
+    if(pts._m) return pts._m;
+    const n=pts.length, d=k=>{ const a=pts[k], b=pts[k+1], dt=b.t-a.t; return dt>0?(Array.isArray(a.v)?a.v.map((v,i)=>(b.v[i]-v)/dt):(b.v-a.v)/dt):null; };
+    const zero=v=>Array.isArray(v)?v.map(()=>0):0, m=[];
+    for(let k=0;k<n;k++){
+      const L=k>0?d(k-1):null, R=k<n-1?d(k):null, v=pts[k].v;
+      if((k>0&&same(pts[k-1].v,v))||(k<n-1&&same(pts[k+1].v,v))||(!L&&!R)) { m.push(zero(v)); continue; }
+      if(!L||!R){ m.push(L||R); continue; }                       // ends, and keys either side of a jump
+      const tl=pts[k].t-pts[k-1].t, tr=pts[k+1].t-pts[k].t, wl=tr/(tl+tr), wr=tl/(tl+tr);
+      m.push(Array.isArray(v)?v.map((_,i)=>L[i]*wl+R[i]*wr):L*wl+R*wr);
+    }
+    Object.defineProperty(pts,'_m',{value:m,enumerable:false});
+    return m;
+  }
+  function hermite(a,b,ma,mb,span,u){
+    const u2=u*u, u3=u2*u, h00=2*u3-3*u2+1, h10=u3-2*u2+u, h01=-2*u3+3*u2, h11=u3-u2;
+    if(Array.isArray(a)) return a.map((v,i)=>h00*v+h10*span*ma[i]+h01*b[i]+h11*span*mb[i]);
+    return h00*a+h10*span*ma+h01*b+h11*span*mb;
   }
   function cameraAt(anim,t,view){
-    const global=EASE[anim.easing]||EASE.easeInOut, out={};
+    const global=EASE[anim.easing]||EASE.easeInOut, spline=anim.cameraInterp==='catmullRom', out={};
     for(const f of CAM_FIELDS){
       const pts=camKeys(anim.camera,f,view[f]);
       if(!pts.length){ out[f]=view[f]; continue; }
@@ -186,6 +215,11 @@
       let lo=1, hi=pts.length-1;
       while(lo<hi){ const mid=(lo+hi)>>1; if(t<=pts[mid].t) hi=mid; else lo=mid+1; }
       const a=pts[lo-1], b=pts[lo], span=b.t-a.t;
+      if(spline){   // the spline sets the speed; a key's own ease still reshapes its span
+        if(!(span>0)){ out[f]=b.v; continue; }
+        const m=slopes(pts), u=(EASE[a.ease]||EASE.linear)((t-a.t)/span);
+        out[f]=hermite(a.v,b.v,m[lo-1],m[lo],span,u); continue;
+      }
       const u=span>0?(EASE[a.ease]||global)((t-a.t)/span):1;
       out[f]=Array.isArray(a.v)?lerp3(a.v,b.v,u):a.v+(b.v-a.v)*u;
     }
