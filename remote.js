@@ -112,13 +112,14 @@ const Remote=(()=>{
     return {t:'state',unit:S.unit,scale:layoutCoordinateScale(),sel:box?layoutSelection:-1,part:layoutPart,
       design:withDesign?box.settings:undefined,designKey:design.length+':'+hash(design),
       placing:placingBox,maximized:document.body.classList.contains('max3d'),stereo:stereo?stereo.value:view.stereo,boxCount:layoutBoxes.length,
-      library:library?{title:library.title,current:library.current,animations:library.animations.map(x=>({name:x.name,duration:x.duration,boxes:x.boxes})),designs:library.designs.map(x=>({name:x.name,boxes:x.boxes}))}:null,
+      library:librarySummary(),
       view:viewDeg(),camera:typeof cameraInfo==='function'?cameraInfo():null,anim:anim?{playing:anim.playing,t:Math.round(anim.t*1000)/1000,duration:anim.duration,loop:anim.loop}:null,exporting,
       boxes:layoutBoxes.map((b,i)=>({label:layoutBoxLabel(b,i),hidden:!!b.hidden,clash:clash.has(i),position:b.position,rotation:b.rotation,colors:b.settings.colors||{}})),
       parts:partNames(box),acrylic:!!box&&boxHasAcrylic(box),
       sides:[...$('#layoutSnapSide').options].map(o=>[o.value,o.textContent]),
       status:$('#layoutStatus').textContent};
   }
+  const librarySummary=()=>library?{title:library.title,current:library.current,animations:library.animations.map((x,index)=>({index,name:x.name,duration:x.duration,boxes:x.boxes})),designs:library.designs.map((x,index)=>({index,name:x.name,boxes:x.boxes}))}:null;
   function sendState(now){ clearTimeout(stateTimer); if(now===true){ if(host) host.send(state()); return; } stateTimer=setTimeout(()=>{ if(host) host.send(state()); },40); }
   const press=sel=>{ const el=$(sel); if(el&&!el.disabled&&!el.hidden) el.click(); };
   function hostMessage(msg){
@@ -237,7 +238,13 @@ const Remote=(()=>{
         if(!anim) return 'No animation is loaded.';
         if(!finite(a.t)) return 't must be a finite number of seconds.';
         seekAnim(a.t); return;
+      case 'libraryPlay': return libraryOp('animation',a);
+      case 'libraryLoadDesign': return libraryOp('design',a);
       case 'library':
+        if(a.kind===undefined&&a.index===undefined){   // no arguments: just list what's in it
+          if(host) host.send({t:'library',library:librarySummary()});
+          return library?undefined:'No library is open. Import a zip of animations on the model screen first.';
+        }
         if(a.kind!=='animation'&&a.kind!=='design') return "kind must be 'animation' or 'design'.";
         if(!Number.isInteger(a.index)) return 'index must be a whole number.';
         { const r=playLibrary(a.kind,a.index,true); return typeof r==='string'?r:undefined; }
@@ -634,6 +641,39 @@ const Remote=(()=>{
       if(err) toast('Could not play '+item.name+': '+err); else { library.owns=true; library.current=kind+':'+index; }
       renderLibrary(); renderAnimBar(); sendState(true); done(err);
     },60));
+  }
+  // Find a library item by index or by name (case, spaces, dashes and underscores ignored).
+  function findLibraryItem(kind,a){
+    if(!library) return {error:'No library is open. Import a zip of animations on the model screen first.'};
+    const list=kind==='design'?library.designs:library.animations, names=list.map((x,i)=>i+': '+x.name).join(', ');
+    if(a.index!==undefined){
+      if(!Number.isInteger(a.index)||!list[a.index]) return {error:'There is no '+kind+' '+a.index+'. The library has '+(names||'none')+'.'};
+      return {index:a.index};
+    }
+    if(typeof a.name!=='string') return {error:'Give index (a whole number) or name. The library has '+(names||'none')+'.'};
+    const key=v=>String(v).toLowerCase().replace(/[\s_-]+/g,'');
+    const index=list.findIndex(x=>key(x.name)===key(a.name));
+    return index<0?{error:'No '+kind+' is called "'+a.name+'". The library has '+(names||'none')+'.'}:{index};
+  }
+  // libraryPlay / libraryLoadDesign: load straight from the zip already open on this screen, so the
+  // remote sends a name instead of the whole file. Runs now, so the reply state shows it loaded.
+  function libraryOp(kind,a){
+    const f=findLibraryItem(kind,a); if(f.error) return f.error;
+    if(a.autoplay!==undefined&&typeof a.autoplay!=='boolean') return 'autoplay must be true or false.';
+    if(a.loop!==undefined&&typeof a.loop!=='boolean') return 'loop must be true or false.';
+    const item=(kind==='design'?library.designs:library.animations)[f.index];
+    let err;
+    try{
+      if(kind==='design'){ stopAnim(true); openBoxLayout(item.json); }
+      else {
+        const args=Object.assign({},item.args,{autoplay:a.autoplay!==false});
+        if(a.loop!==undefined) args.loop=a.loop;
+        err=runCmd('animate',args); if(!err&&anim) anim.name=item.name;
+      }
+    }catch(e){ err=e.message; }
+    if(err) return 'Could not load '+item.name+': '+err;
+    library.owns=true; library.current=kind+':'+f.index;
+    renderLibrary(); renderAnimBar();
   }
   function showLibraryVideo(index){
     const item=library&&library.animations[index]; if(!item||!item.videoURL) return;
