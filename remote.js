@@ -156,7 +156,7 @@ const Remote=(()=>{
       library:librarySummary(),
       recording:recording?{fps:recording.fps,width:recording.w,height:recording.h,seconds:recording.E?Math.round(recording.slot/recording.fps*10)/10:0}:null,
       view:viewDeg(),camera:typeof cameraInfo==='function'?cameraInfo():null,anim:anim?{playing:anim.playing,t:Math.round(anim.t*1000)/1000,duration:anim.duration,loop:anim.loop,soundtrack:anim.sound?{name:anim.sound.name,state:anim.sound.state,seconds:anim.sound.seconds,error:anim.sound.error}:null}:null,exporting,
-      boxes:layoutBoxes.map((b,i)=>({label:layoutBoxLabel(b,i),hidden:!!b.hidden,clash:clash.has(i),position:b.position,rotation:b.rotation,colors:b.settings.colors||{}})),
+      boxes:layoutBoxes.map((b,i)=>({label:layoutBoxLabel(b,i),hidden:!!b.hidden,noFrame:!!b.settings.noFrame,clash:clash.has(i),position:b.position,rotation:b.rotation,colors:b.settings.colors||{}})),
       parts:partNames(box),acrylic:!!box&&boxHasAcrylic(box),
       sides:[...$('#layoutSnapSide').options].map(o=>[o.value,o.textContent]),
       status:$('#layoutStatus').textContent};
@@ -267,9 +267,15 @@ const Remote=(()=>{
         if(a.pan!==undefined) view.pan=a.pan.slice();
         render(); return;
       }
+      case 'noFrame': {   // {value: true|false, index?}: ground/backdrop boxes don't count for camera framing
+        const i=a.index===undefined?layoutSelection:a.index;
+        if(!Number.isInteger(i)||!layoutBoxes[i]) return 'Select a box first, or give index.';
+        if(typeof a.value!=='boolean') return 'value must be true or false.';
+        setLayoutNoFrame(i,a.value); return;
+      }
       case 'frame': {
         let list;
-        if(a.boxes===undefined||a.boxes==='all') list=layoutBoxes.filter(b=>!b.hidden);
+        if(a.boxes===undefined||a.boxes==='all') list=layoutBoxes.filter(b=>!b.hidden&&!b.settings.noFrame);
         else if(Array.isArray(a.boxes)&&a.boxes.length&&a.boxes.every(i=>Number.isInteger(i)&&layoutBoxes[i])) list=a.boxes.map(i=>layoutBoxes[i]);
         else return "boxes must be 'all' or a list of box indexes from 0 to "+(layoutBoxes.length-1)+'.';
         for(const f of ['margin','yaw','pitch']) if(a[f]!==undefined&&!finite(a[f])) return f+' must be a finite number.';

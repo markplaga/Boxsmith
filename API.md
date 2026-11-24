@@ -229,7 +229,8 @@ The **📱 Remote** button in Arrange boxes links a second screen to the one sho
 | `color`, `nocolor` | `{ hex: '#rrggbb' }` | Colors the selected box or part. |
 | `design`, `add` | `{ index, settings }` / `{ settings }` | Replaces a box's design in place, or adds a new box. |
 | `view` | `{ yaw?, pitch?, zoom?, pan?, projection?, fov? }` | Sets the camera (degrees). `projection` is `'ortho'` or `'perspective'`; `fov` is the perspective lens, 5–120° vertical. |
-| `frame` | `{ boxes?: [i, …] \| 'all', margin?, yaw?, pitch? }` | Zooms and pans so those boxes (default: every box not hidden) fill the view, leaving `margin` (default 0.1, a fraction of their size) free on each side. `yaw` and `pitch` (degrees) turn the view first. Works in either projection. |
+| `noFrame` | `{ value: true \| false, index? }` | Marks a box (default: the selected one) as ground or backdrop: it still draws, but the camera's framing ignores it. See *Ground and backdrop boxes*. |
+| `frame` | `{ boxes?: [i, …] \| 'all', margin?, yaw?, pitch? }` | Zooms and pans so those boxes (default: every box not hidden and not marked `noFrame`) fill the view, leaving `margin` (default 0.1, a fraction of their size) free on each side. `yaw` and `pitch` (degrees) turn the view first. Works in either projection. |
 | `fit`, `top`, `place`, `maximize`, `stereo`, `units`, `save`, `open`, `clear` | `{ mode }` for `stereo`, `{ unit }` for `units`, `{ json }` for `open` | The Layout & view controls. |
 | `state` | none | Does nothing but answer with a fresh `state` (as every command does), with no note. `{"t":"hello"}` does the same. |
 | `batch` | `{ cmds: [{ op, args }, …] }` (up to 500) | Runs them all, then sends one state. No need to pace commands for the relay's 60 messages a second. |
@@ -257,6 +258,14 @@ An animation can name a soundtrack, and the model screen plays it live, in step 
 - **Sync.** While the sound plays, the animation takes its time from the audio clock, less the device's output latency, so it shows what you're hearing and the two can't drift apart over any number of loops. Each frame is drawn for the moment it will be on screen. If the audio clock stalls or the browser suspends audio, the animation carries on by the system clock and the sound restarts at the animation's time. Measured in Chrome over three loops of a 40.36 s reel, a sound at 2.93 s was heard within about one frame (33 ms at 30 fps) of the frame showing 2.93 s on every loop, with no drift.
 - Browsers only allow sound after a tap, click or key press on that page. The model screen's first tap enables it; if an animation started from a remote before then, its sound joins in, in step, at that first tap. While it waits, the state says `blocked`.
 - The state's `anim.soundtrack` is `{name, state, seconds}`, where `state` is `loading`, `ready`, `playing`, `blocked` or `error` (with `error` saying why, e.g. the file wasn't found), or `null`.
+
+### Ground and backdrop boxes
+
+A box whose settings include `"noFrame": true` still draws (and is cut, priced and saved like any other), but it doesn't count toward the layout's framing: the centre and radius the camera works from, and so `layoutCenter`, `visible`, `zoom` and every camera key, come from the other boxes. So a big ground slab or backdrop can be added under an existing shot without reframing it. In a test, a 20-box tower framed with radius 3357 mm; adding a 29 × 22 m slab made it 18613 mm and shrank the shot about 5.5×, and with `noFrame` on the slab it was 3357 mm again, exactly. Set it with the **Ground (camera ignores)** checkbox in Arrange boxes, the Remote `noFrame` op, or by putting `"noFrame": true` in a box's `settings` in a layout or an animation's `base`; it's kept when layouts and animations are saved and opened again. If every box is marked, they all count. Layouts without it frame exactly as before.
+
+```json
+{ "settings": { "type": "closed", "W": 29000, "D": 22000, "H": 40, "noFrame": true }, "position": [-14500, -11000, -40] }
+```
 
 ### Camera framing in the state
 

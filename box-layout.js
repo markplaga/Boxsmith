@@ -160,9 +160,20 @@ function snapLayoutBox(targetIndex,side,gap){
   return true;
 }
 
+// The camera's framing (centre and radius) comes from every box except those marked
+// settings.noFrame (a big ground slab, a backdrop): they still draw, but don't move or shrink the shot.
+// If every box is marked, all of them count.
+const framesCamera=box=>!box.settings.noFrame;
+// Mark a box as ground/backdrop (true) or part of the subject (false). Re-frames the layout.
+function setLayoutNoFrame(index,on){
+  const box=layoutBoxes[index]; if(!box) return false;
+  if(on) box.settings.noFrame=true; else delete box.settings.noFrame;
+  fitBoxLayout(); saveBoxLayout(); render(); syncBoxLayout();
+  return true;
+}
 function fitBoxLayout(){
-  const bounds=new THREE.Box3();
-  for(const box of layoutBoxes) bounds.union(box.bounds);
+  const bounds=new THREE.Box3(), counted=layoutBoxes.some(framesCamera)?layoutBoxes.filter(framesCamera):layoutBoxes;
+  for(const box of counted) bounds.union(box.bounds);
   boxLayoutScene.ctr=bounds.getCenter(new THREE.Vector3()).toArray();
   boxLayoutScene.R=Math.max(10,bounds.getSize(new THREE.Vector3()).length()/2||100);
 }
@@ -279,6 +290,7 @@ function syncBoxLayout(){
   $('#layoutColorClear').disabled=!own;
   $('#layoutColorClear').textContent=layoutPart&&(colors['*']||(layoutPart!=='acrylic'&&colors.acrylic))?'Use box color':'No color';
   $('#layoutHide').textContent=box?.hidden?'Show box':'Hide box';
+  const nf=$('#layoutNoFrame'); if(nf){ nf.disabled=!box; nf.checked=!!box?.settings.noFrame; }
   $('#layoutTop').disabled=!layoutBoxes.length;
   $('#layoutFit').disabled=!layoutBoxes.length;
   $('#layoutPlace').setAttribute('aria-pressed',String(placingBox));
@@ -534,6 +546,7 @@ function initBoxLayout(){
     syncBoxLayout();
     render();
   });
+  $('#layoutNoFrame')?.addEventListener('change',e=>{ setLayoutNoFrame(layoutSelection,e.target.checked); });
   $('#layoutHide').addEventListener('click',()=>{
     const box=layoutBoxes[layoutSelection];
     box.hidden=!box.hidden;
