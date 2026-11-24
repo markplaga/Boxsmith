@@ -92,7 +92,8 @@ function labEl(){
   el.innerHTML='<div class="labHd"><b>Type lab</b><button class="btn sm" id="labClose" type="button" aria-label="Close the Type lab">✕</button></div>'
    +'<p class="hint">A box type file describes a new box style in JSON: its parts, their sizes and where they go, with formulas but no code. Paste one, open a file, or start from an example. <a href="https://github.com/markplaga/Boxsmith/blob/main/BOX-TYPES.md" target="_blank" rel="noopener">The format</a></p>'
    +'<div class="labRow"><label class="btn sm">Open file…<input type="file" class="hidden" id="labFile" accept=".json,application/json"></label>'
-   +'<select id="labExample" aria-label="Start from"><option value="">Start from…</option><option value="starter">A plain box</option>'+LAB_EXAMPLES.map(([f,n])=>'<option value="'+f+'">'+n+'</option>').join('')+'</select></div>'
+   +'<select id="labExample" aria-label="Start from"><option value="">Start from…</option><option value="starter">A plain box</option>'+LAB_EXAMPLES.map(([f,n])=>'<option value="'+f+'">'+n+'</option>').join('')+'</select>'
+   +'<button class="btn sm" id="labClear" type="button" title="Empty the box below">Clear</button></div>'
    +'<details class="labAi" id="labAi"><summary>Have an AI write one</summary>'
    +'<p class="hint">Describe the box. Boxsmith copies a prompt with the whole format, an example and your description; paste it into any chat AI (Claude, ChatGPT, Gemini…), then paste its answer below.</p>'
    +'<textarea id="labAsk" rows="3" placeholder="A tray with a sloped front and three compartments, and a lid that slides in from the back"></textarea>'
@@ -120,6 +121,11 @@ function labEl(){
     let text; try{ text=await typePrompt(ask,$('#labAskEdit').checked?$('#labText').value:''); }catch(e){ toast('Couldn\'t read the format reference — are you offline?'); return; }
     try{ await navigator.clipboard.writeText(text); toast('Prompt copied ('+Math.round(text.length/1000)+'k characters) — paste it into a chat AI'); }
     catch(e){ $('#labText').value=text; toast('Clipboard blocked: the prompt is in the box below; copy it from there'); } });
+  $('#labClear').addEventListener('click',e=>{
+    const clear=()=>{ $('#labText').value=''; labLast=null; $('#labReport').innerHTML=''; $('#labCopy').classList.add('hidden'); $('#labText').focus(); };
+    if(!$('#labText').value.trim()){ clear(); return; }
+    confirmTwice(e.currentTarget,'Click again to clear',clear);   // unsaved work is lost, so ask once
+  });
   $('#labText').addEventListener('keydown',e=>{ if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){ e.preventDefault(); labCheck(); } });
   $('#labCheck').addEventListener('click',()=>labCheck());
   $('#labTry').addEventListener('click',()=>{ const def=labCheck(); if(!def) return; Boxsmith.types.register(def); renderTypeList(); renderLabMine(); S.type=def.id; update(true); toast('Showing '+def.name+' (not saved yet)'); });
