@@ -524,7 +524,7 @@ const Remote=(()=>{
       const fitted=Anim.fitAudio(chans,buf.sampleRate,me.duration);
       const out=c.createBuffer(fitted.length,fitted[0].length,buf.sampleRate); fitted.forEach((ch,i)=>out.copyToChannel(ch,i));
       Object.assign(S0,{state:'ready',buf:out,original:buf,seconds:Math.round(buf.duration*1000)/1000});
-      if(me.playing) startSound(me.t);
+      if(me.playing) startSound(me.t,'follow');
       if(me.pendingPlay){ me.pendingPlay=false; playAnim(); }
       sendState();
     }).catch(err=>{
@@ -534,7 +534,10 @@ const Remote=(()=>{
       sendState();
     });
   }
-  function startSound(t){
+  // mode 'hold' (play, seek): the picture waits at t for the sound to begin, so they start together.
+  // mode 'follow' (joining a running animation, stall recovery): the picture keeps going on the system
+  // clock and the sound takes over once it is heard.
+  function startSound(t,mode='hold'){
     const S0=anim&&anim.sound; if(!S0) return;
     stopSound();
     if(S0.state!=='ready'&&S0.state!=='blocked'&&S0.state!=='playing') return;
@@ -545,7 +548,8 @@ const Remote=(()=>{
     src.connect(S0.gain);
     const when=c.currentTime+0.03, off=Math.max(0,Math.min(t,S0.buf.duration-1e-6));
     src.start(when,off);
-    Object.assign(S0,{src,when,off,state:'playing',stalled:false,lastCtx:c.currentTime,lastPerf:performance.now()});
+    Object.assign(S0,{src,when,off,state:'playing',stalled:false,lastCtx:c.currentTime,lastPerf:performance.now(),
+      starting:true,startPerf:performance.now(),startMode:mode});
   }
   function stopSound(){
     const S0=anim&&anim.sound; if(!S0||!S0.src) return;
@@ -553,9 +557,22 @@ const Remote=(()=>{
     if(S0.state==='playing') S0.state='ready';
   }
   // The animation time the listener is hearing now, or null when the sound isn't driving the clock.
+  // Start-up: output can take a few hundred ms to begin (an iPad, a context still resuming). Until the sound
+  // is actually heard, or for at most START_GRACE ms, a clock that hasn't moved is not a stall.
+  const START_GRACE=1000;
   function soundTime(now){
     const S0=anim&&anim.sound; if(!S0||!S0.src||S0.stalled) return null;
-    const c=actx; if(!c||c.state!=='running'){ S0.stalled=true; return null; }
+    const c=actx;
+    if(S0.starting){
+      const heard=c&&c.state==='running'&&c.currentTime!==S0.lastCtx?c.currentTime-latency(c)-S0.when:-1;
+      if(heard>=0){ S0.starting=false; S0.lastCtx=c.currentTime; S0.lastPerf=now; }
+      else if(now-S0.startPerf<START_GRACE){
+        if(c&&c.currentTime!==S0.lastCtx){ S0.lastCtx=c.currentTime; S0.lastPerf=now; }
+        return S0.startMode==='hold'?S0.off:null;    // wait for the sound, or let the system clock carry on
+      }
+      else { S0.starting=false; S0.lastPerf=Math.min(S0.lastPerf,now-251); }   // never started: a real stall
+    }
+    if(!c||c.state!=='running'){ S0.stalled=true; return null; }
     if(c.currentTime===S0.lastCtx){ if(now-S0.lastPerf>250){ S0.stalled=true; return null; } }
     else { S0.lastCtx=c.currentTime; S0.lastPerf=now; }
     const heard=c.currentTime-latency(c)-S0.when;
@@ -656,9 +673,9 @@ const Remote=(()=>{
       t=st; anim.t0=st; anim.wall0=now;          // keep the system clock in step, for when sound stops
       if(!anim.loop&&t>=anim.duration){ applyFrame(anim.duration); anim.playing=false; stopSound(); finishAnim(); return; }
     } else if(anim.sound&&anim.sound.state==='blocked'&&actx&&actx.state==='running'){
-      startSound(Math.min(t,anim.duration));     // a tap woke audio up: join in at the animation's time
+      startSound(Math.min(t,anim.duration),'follow');     // a tap woke audio up: join in at the animation's time
     } else if(anim.sound&&anim.sound.src&&anim.sound.stalled){
-      startSound(Math.min(t,anim.duration));     // the audio clock stalled: start it again at the animation's time
+      startSound(Math.min(t,anim.duration),'follow');     // the audio clock stalled: start it again at the animation's time
     }
     if(t>=anim.duration){
       if(anim.loop&&anim.duration>0){ t%=anim.duration; anim.t0=t; anim.wall0=now; }
