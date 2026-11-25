@@ -13,6 +13,24 @@
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <title>Boxsmith — Laser-Cut Box Generator</title>
+<meta name="description" content="Design finger-jointed laser-cut boxes in the browser. 18 styles, a 3D preview, kerf compensation, and SVG and DXF export. Free and open source.">
+<meta name="author" content="Mark Plaga">
+<link rel="canonical" href="https://markplaga.github.io/Boxsmith/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Boxsmith">
+<meta property="og:title" content="Boxsmith — Laser-Cut Box Generator">
+<meta property="og:description" content="Design finger-jointed laser-cut boxes in the browser. 18 styles, a 3D preview, kerf compensation, and SVG and DXF export.">
+<meta property="og:url" content="https://markplaga.github.io/Boxsmith/">
+<meta property="og:image" content="https://markplaga.github.io/Boxsmith/og.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Boxsmith, a laser-cut box generator, showing a finger-jointed wooden box">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Boxsmith — Laser-Cut Box Generator">
+<meta name="twitter:description" content="Design finger-jointed laser-cut boxes in the browser. 18 styles, a 3D preview, kerf compensation, and SVG and DXF export.">
+<meta name="twitter:image" content="https://markplaga.github.io/Boxsmith/og.png">
+<meta name="twitter:image:alt" content="Boxsmith, a laser-cut box generator, showing a finger-jointed wooden box">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=Bebas+Neue&family=Caveat:wght@600&family=Pacifico&family=Playfair+Display:wght@700&family=Rye&family=Stardos+Stencil:wght@700&display=swap" rel="stylesheet">
 <style>
@@ -302,7 +320,13 @@ body.remote-mode.rm-design aside{max-width:760px;margin:0 auto;border:1px solid 
 #selInfo span{color:var(--muted)}
 #costBox{display:block;font-size:12.5px;line-height:1.6;background:#f6f2ec;border-radius:8px;padding:8px 10px}
 #costBox b{font-family:var(--mono);font-weight:500}
-.foot{padding:14px 20px;color:var(--muted);font-size:11.5px;line-height:1.5}
+.foot{padding:14px 20px 18px;color:var(--muted);font-size:11.5px;line-height:1.5}
+.foot p{margin:0}
+.credit{margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+.credit a{color:var(--accent);font-weight:600;text-decoration:none}
+.credit a:hover{text-decoration:underline}
+.credit .links a{font-weight:500}
+.credit .links a::before{content:'·';margin:0 8px;color:var(--muted);font-weight:400}
 @media (max-width:860px){
   .app{grid-template-columns:1fr;height:auto}
   main{order:-1;height:72vh;position:sticky;top:0;z-index:5;border-bottom:1px solid var(--line)}
@@ -579,7 +603,11 @@ body.max3d .lamp-ctl{top:190px}
       <div class="f full"><div style="display:flex;gap:6px"><input type="text" id="recName" placeholder="Name this box, e.g. Gift box small" style="flex:1"><button class="btn sm" id="recSave">Save</button></div></div>
     </div>
   </div>
-  <div class="foot">Every cut line is pushed outward by half the kerf, so fingers come out kerf-wider and slots kerf-narrower and the joints press-fit. Settings, materials and recipes save in this browser. <a href="#" id="resetAll">Reset everything</a></div>
+  <div class="foot">
+    <p>Every cut line is pushed outward by half the kerf, so fingers come out kerf-wider and slots kerf-narrower and the joints press-fit. Settings, materials and recipes save in this browser. <a href="#" id="resetAll">Reset everything</a></p>
+    <!-- Follow and tip links: set links.instagram, links.youtube and links.kofi in site.config.js. Hidden while empty. -->
+    <p class="credit" id="siteCredit">Boxsmith by <a href="https://github.com/markplaga/Boxsmith">Mark Plaga</a><span id="siteLinks" class="links" hidden></span></p>
+  </div>
 </aside>
 
 
@@ -587,6 +615,7 @@ body.max3d .lamp-ctl{top:190px}
   <div class="topbar">
     <div class="tabs" id="tabs" role="tablist" aria-label="Main views"><button role="tab" aria-selected="true" class="on" data-v="3d">3D preview</button><button role="tab" aria-selected="false" data-v="sheets">Cut sheets</button><button role="tab" aria-selected="false" data-v="layout">Arrange boxes</button><button role="tab" aria-selected="false" data-v="guide">Assembly guide</button><button role="tab" aria-selected="false" data-v="help">Help</button></div>
     <div class="spacer"></div>
+    <button class="btn" id="shareBtn" type="button" title="Copy link to this design" aria-label="Copy link to this design">Share</button>
     <label class="btn" style="cursor:pointer">Open…<input type="file" class="hidden openSettings" accept=".json,application/json"></label>
     <button class="btn" id="copySvg">Copy SVG</button>
     <div class="menu"><button class="btn primary" id="dlBtn">Download ▾</button>
@@ -923,6 +952,7 @@ body.max3d .lamp-ctl{top:190px}
 <h2 id="h-saving">15. Saving your work</h2>
 <ul>
 <li>Your current box settings and active whole-box layout are remembered in this browser automatically.</li>
+<li><b>Share</b> (top of the page) copies a link to this design. Opening it rebuilds this exact box on any computer. A link without that design code still opens Boxsmith with the settings saved in that browser, or the standard box if there are none.</li>
 <li><b>Saved recipes</b>: type a name and press Save. Pick one and press Load to bring it back, or ✕ to delete it. Recipes stay in this browser on this device.</li>
 <li><b>Settings file</b>: <i>Download → Settings file (.json)</i> saves a file you can keep, back up or send to someone. Open it with the <b>Open…</b> button at the top, or with <i>Open a saved settings file</i> in the Saved recipes section.</li>
 <li><b>Layout file</b> <b>Save layout</b> downloads all box designs, positions, rotations, visibility and display units together. Open the file with <b>Open layout</b> or the main <b>Open…</b> button.</li>
@@ -998,6 +1028,7 @@ Boxsmith.browser.showBox(tray);</code></pre>
 
 <div id="remoteDialog" class="remote-dialog" role="dialog" aria-label="Remote" hidden></div>
 <div id="remotePanel" class="remote-panel" hidden></div>
+<script src="site.config.js"></script>
 <script src="three.min.js"></script>
 <script src="designs.js"></script>
 <script src="tools.js"></script>
@@ -1005,12 +1036,14 @@ Boxsmith.browser.showBox(tray);</code></pre>
 <script src="boxsmith-api.js"></script>
 <script src="box-layout.js"></script>
 <script src="mosaic-core.js"></script>
+<script src="share.js"></script>
 <script src="app.js"></script>
 <script src="mosaic.js"></script>
 <script src="boxsmith-engine.js"></script>
 <script src="type-lab.js"></script>
 <script src="remote-anim.js"></script>
 <script src="remote.js"></script>
+<script src="site.js"></script>
 <script>
 /* Offline / installable support */
 if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

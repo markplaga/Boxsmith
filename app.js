@@ -10,8 +10,43 @@ for(const def of myTypes()){ try{ Boxsmith.types.register(def); }catch(e){} }
 const knownType=id=>Boxsmith.boxes.list().some(t=>t.id===id);
 let S = Object.assign({}, DEFAULTS);
 try{ const saved = JSON.parse(localStorage.getItem('boxsmith-v1')||'null'); if(saved) S = Object.assign({}, DEFAULTS, saved);}catch(e){}
+/* A ?d= link is this exact design and wins over the saved settings. No ?d= keeps the old behaviour:
+   the saved box, or the defaults when this browser has none. */
+let shareBroken=false, sharedTypeIds=[];
+(function(){
+  if(!window.BoxsmithShare) return;
+  let raw='';
+  try{ raw=new URLSearchParams(location.search).get('d')||''; }catch(e){ return; }
+  if(!raw) return;
+  const parsed=BoxsmithShare.decode(DEFAULTS, raw);
+  if(!parsed){ shareBroken=true; return; }
+  if(parsed.types){ try{ sharedTypeIds=Boxsmith.types.adopt(parsed.types)||[]; }catch(e){ sharedTypeIds=[]; } }
+  S=Object.assign({}, DEFAULTS, parsed.settings);
+})();
 if(!knownType(S.type)) S.type='closed';
-function save(){ if(window.BOX && window.BOX.noSave) return; try{ localStorage.setItem('boxsmith-v1', JSON.stringify(S)); }catch(e){} }
+function designShare(){
+  if(!window.BoxsmithShare) return {d:'', omittedArt:false};
+  const used=Boxsmith.types&&Boxsmith.types.used?Boxsmith.types.used(S):{};
+  return BoxsmithShare.encode(DEFAULTS, S, used);
+}
+function syncShareUrl(){
+  if((window.BOX&&window.BOX.noSave)||!window.BoxsmithShare) return;
+  try{
+    const enc=designShare();
+    const url=new URL(location.href);
+    if((url.searchParams.get('d')||'')===enc.d) return;
+    if(enc.d) url.searchParams.set('d', enc.d); else url.searchParams.delete('d');
+    history.replaceState(null, '', url.pathname+url.search+url.hash);
+  }catch(e){}
+}
+function designLink(){
+  const enc=designShare();
+  const url=new URL(location.href);
+  url.hash=''; url.search='';
+  if(enc.d) url.searchParams.set('d', enc.d);
+  return {url:url.toString(), omittedArt:!!enc.omittedArt};
+}
+function save(){ if(window.BOX && window.BOX.noSave) return; try{ localStorage.setItem('boxsmith-v1', JSON.stringify(S)); }catch(e){} syncShareUrl(); }
 
 /* ================= GEOMETRY HELPERS ================= */
 const PI = Math.PI;
@@ -1551,6 +1586,7 @@ function renderTypeList(){
 // keep type files that came in a file the user opened, so the design still opens after a reload
 function keepTypes(ids){ if(!ids||!ids.length) return; const list=myTypes().filter(d=>!ids.includes(d.id)); for(const id of ids){ const d=Boxsmith.types.get(id); if(d) list.push(d); } saveMyTypes(list); renderTypeList(); }
 renderTypeList();
+if(sharedTypeIds.length) keepTypes(sharedTypeIds);
 $('#tcReset').addEventListener('click',()=>{ S.textColor='#000000'; update(); });
 $('#frameSel').innerHTML='<option value="none">None</option>'+Object.entries(FRAMES).map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('');
 $('#accentSel').innerHTML='<option value="none">None</option>'+Object.entries(ACCENTS).map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('');
@@ -1763,13 +1799,29 @@ $('#resetView').addEventListener('click',()=>{ view.yaw=-0.6; view.pitch=0.5; vi
 $('#dlBtn').addEventListener('click',e=>{ e.stopPropagation(); $('#dlPop').classList.toggle('hidden'); });
 document.addEventListener('click',()=>$('#dlPop').classList.add('hidden'));
 function toast(m){ const t=$('#toast'); t.textContent=m; t.classList.add('show'); clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove('show'),2200); }
+function trackEvent(name, props){ try{ if(typeof window.boxsmithTrack==='function') window.boxsmithTrack(name, props||{}); }catch(e){} }
+async function copyText(text){
+  if(navigator.clipboard&&window.isSecureContext){ await navigator.clipboard.writeText(text); return; }
+  const ta=document.createElement('textarea');
+  ta.value=text; ta.setAttribute('readonly',''); ta.style.cssText='position:fixed;left:-9999px;top:0';
+  document.body.appendChild(ta); ta.select();
+  const ok=document.execCommand('copy'); ta.remove();
+  if(!ok) throw new Error('copy');
+}
+$('#shareBtn').addEventListener('click',async()=>{
+  const link=designLink(); syncShareUrl();
+  try{
+    await copyText(link.url); trackEvent('share');
+    toast(link.omittedArt?'Link copied without the artwork images — they made it too long':'Link copied — it reopens this exact box');
+  }catch(err){ toast('Couldn\'t copy — the link is in the address bar'); }
+});
 
 let LAST=null;
 const baseName=()=>{ const ty=typeInfo(S.type).name.toLowerCase().replace(/[^a-z0-9]+/g,'-'); return 'boxsmith-'+ty+'-'+Math.round(S.W)+'x'+Math.round(S.D)+'x'+Math.round(S.H); };
 $('#dlPop').addEventListener('click',async e=>{ const b=e.target.closest('button'); if(!b||!LAST) return; const k=b.dataset.dl; const sh=LAST.sheets, nm=baseName();
-  if(k==='svg'){ if(sh.length===1) await saveFile(nm+'.svg', sheetSVG(sh[0])); else await saveFile(nm+'-svg.zip', makeZip(sh.map((s,i)=>({name:nm+'-sheet'+(i+1)+'.svg',data:sheetSVG(s)})))); }
-  if(k==='dxf'){ await saveFile(nm+'-dxf.zip', makeZip(sh.map((s,i)=>({name:nm+'-sheet'+(i+1)+'.dxf',data:sheetDXF(s)})))); }
-  if(k==='json'){ const used=Boxsmith.types.used(S); await saveFile(nm+'.json', JSON.stringify(Object.keys(used).length?Object.assign({},S,{types:used}):S,null,2)); }
+  if(k==='svg'){ if(sh.length===1) await saveFile(nm+'.svg', sheetSVG(sh[0])); else await saveFile(nm+'-svg.zip', makeZip(sh.map((s,i)=>({name:nm+'-sheet'+(i+1)+'.svg',data:sheetSVG(s)})))); trackEvent('download',{format:'svg'}); }
+  if(k==='dxf'){ await saveFile(nm+'-dxf.zip', makeZip(sh.map((s,i)=>({name:nm+'-sheet'+(i+1)+'.dxf',data:sheetDXF(s)})))); trackEvent('download',{format:'dxf'}); }
+  if(k==='json'){ const used=Boxsmith.types.used(S); await saveFile(nm+'.json', JSON.stringify(Object.keys(used).length?Object.assign({},S,{types:used}):S,null,2)); trackEvent('download',{format:'json'}); }
 });
 $$('.openSettings,#layoutFile').forEach(input=>input.addEventListener('change',async()=>{
   const file=input.files[0];
@@ -1795,7 +1847,7 @@ $$('.openSettings,#layoutFile').forEach(input=>input.addEventListener('change',a
   }
 }));
 $('#copySvg').addEventListener('click',async()=>{ if(!LAST) return; const txt=LAST.sheets.length===1?sheetSVG(LAST.sheets[0]):LAST.sheets.map(sheetSVG).join('\n\n');
-  try{ await navigator.clipboard.writeText(txt); toast(LAST.sheets.length>1?'Copied '+LAST.sheets.length+' sheets of SVG':'SVG copied — paste into LightBurn, Inkscape or a .svg file'); }catch(err){ toast('Clipboard blocked by the browser'); } });
+  try{ await navigator.clipboard.writeText(txt); trackEvent('download',{format:'svg-copy'}); toast(LAST.sheets.length>1?'Copied '+LAST.sheets.length+' sheets of SVG':'SVG copied — paste into LightBurn, Inkscape or a .svg file'); }catch(err){ toast('Clipboard blocked by the browser'); } });
 
 /* ================= LIBRARY: materials + recipes ================= */
 const MAT_KEY='boxsmith-materials', REC_KEY='boxsmith-recipes';
@@ -1923,7 +1975,7 @@ function update(resetView){
   const {ar,cutLen}=measureParts(fparts);
   $('#sheets').innerHTML=lay.sheets.map((sh,i)=>'<div class="sheet"><div class="cap"><span><b>Sheet '+(i+1)+' of '+lay.sheets.length+'</b> · '+esc(sheetLabel(sh))+' · '+sh.items.length+' parts · '+fmt(S.sheetW)+' × '+fmt(S.sheetH)+'</span><button class="btn" data-sheet="'+i+'" style="padding:4px 10px;font-size:12px">Download this sheet</button></div>'+sheetSVG(sh,{preview:true})+'</div>').join('')
     +'<p style="text-align:center;color:var(--muted);font-size:12.5px">Tap a part to find it in the 3D view.</p>';
-  $$('#sheets [data-sheet]').forEach(b=>b.addEventListener('click',()=>{ const i=+b.dataset.sheet; saveFile(baseName()+'-sheet'+(i+1)+'-'+sheetLabel(LAST.sheets[i]).replace(/[^a-z0-9]+/gi,'-')+'.svg', sheetSVG(LAST.sheets[i])); }));
+  $$('#sheets [data-sheet]').forEach(b=>b.addEventListener('click',()=>{ const i=+b.dataset.sheet; trackEvent('download',{format:'sheet'}); saveFile(baseName()+'-sheet'+(i+1)+'-'+sheetLabel(LAST.sheets[i]).replace(/[^a-z0-9]+/gi,'-')+'.svg', sheetSVG(LAST.sheets[i])); }));
   markSheetSel();
   const rows=fparts.map(f=>'<tr><td>'+esc(f.name)+'</td><td class="m">'+fmt(f.bb.w)+' × '+fmt(f.bb.h)+'</td></tr>').join('');
   const ty=typeInfo(S.type);
@@ -1934,7 +1986,7 @@ function update(resetView){
     +(S.cols>1||S.rows>1?(['open','liftoff','split','sliding','hinged','drawer','pencil'].includes(S.type)?'<li>Dividers slot together egg-crate style: the ↔ pieces drop onto the ↕ pieces. They sit loose so you can lift them out.</li>':''):'')
     +(S.holdTabs>0?'<li>Kit mode: parts are held in the sheet by small tabs. Snap them free and sand the nubs.</li>':'')
     +'<li>Glue: wood glue for ply/MDF, Weld-On or acrylic cement for acrylic. Tape corners while it sets.</li></ol><table><tr><th>Part</th><th>Cut size</th></tr>'+rows+'</table>';
-  $('#cardBtn').addEventListener('click',()=>saveFile(baseName()+'-assembly-card.html', cardHTML()));
+  $('#cardBtn').addEventListener('click',()=>{ trackEvent('download',{format:'card'}); saveFile(baseName()+'-assembly-card.html', cardHTML()); });
   const warns=[...res.warns,...lay.warns];
   $('#warns').innerHTML=warns.map(w=>'<div class="warn">'+esc(w)+'</div>').join('');
   const util=lay.sheets.length? ar*qtyOf()/(lay.sheets.length*S.sheetW*S.sheetH)*100:0;
@@ -2005,4 +2057,5 @@ initGL();
 syncStereoControls(); syncProjectionControls();
 initBoxLayout();
 update(true);
+if(shareBroken) toast('Couldn\'t read that design link, so the usual box was opened');
 if(document.fonts && document.fonts.ready){ const fams=['Bebas Neue','Caveat','Pacifico','Playfair Display','Rye','Stardos Stencil']; Promise.all(fams.map(f=>document.fonts.load('40px "'+f+'"').catch(()=>{}))).then(()=>{ _textCache.clear(); update(); }); }

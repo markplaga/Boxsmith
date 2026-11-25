@@ -2,6 +2,7 @@
   "name": "boxsmith",
   "version": "1.0.0",
   "description": "Laser-cut box generator: web app and JavaScript API",
+  "homepage": "https://markplaga.github.io/Boxsmith/",
   "main": "boxsmith-node.js",
   "scripts": {
     "test": "node --test"
