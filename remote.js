@@ -283,7 +283,7 @@ const Remote=(()=>{
         standardKeys:Object.keys(DEFAULTS).filter(k=>!['type','typeParams','assembly'].includes(k)),
         builtInStyles:TYPES.map(t=>t.id)};
       if(a.reference!==false) reply.reference=await get('BOX-TYPES.md');
-      if(a.examples) reply.examples=await Promise.all(['closed-box','open-tray','cube-frame','box-with-shelf'].map(f=>get('types/'+f+'.json',true)));
+      if(a.examples) reply.examples=await Promise.all(['closed-box','open-tray','cube-frame','box-with-shelf','jointed-arm'].map(f=>get('types/'+f+'.json',true)));
       sendBig(reply);
     }catch(e){ note('typeFormat: couldn\'t read the format files ('+e.message+').'); }
   }

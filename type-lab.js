@@ -78,7 +78,7 @@ function syncTypeParams(){
 
 /* ---------- the Type lab panel ---------- */
 const SHARED_REPO='markplaga/markplaga-boxsmith-type', SHARED_RAW='https://raw.githubusercontent.com/'+SHARED_REPO+'/main/';
-const LAB_EXAMPLES=[['closed-box','Closed box'],['open-tray','Open tray'],['cube-frame','Cube frame'],['box-with-shelf','Box with a shelf']];
+const LAB_EXAMPLES=[['closed-box','Closed box'],['open-tray','Open tray'],['cube-frame','Cube frame'],['box-with-shelf','Box with a shelf'],['jointed-arm','Jointed arm (moving joint)']];
 const LAB_STARTER={format:'boxsmith-type',version:1,id:'my-box',name:'My box',description:'',
   inside:{W:'2*t',D:'2*t',H:'2*t'},
   params:[],

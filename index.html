@@ -707,7 +707,7 @@ body.max3d .lamp-ctl{top:190px}
 <li><a href="#h-production">Production: batches, kits, cost</a></li>
 <li><a href="#h-saving">Saving your work</a></li>
 <li><a href="#h-api">Use the JavaScript API</a></li>
-<li><a href="#h-types">Make your own box styles</a></li>
+<li><a href="#h-types">Make your own box styles</a></li><li><a href="#h-joints">Moving joints (pivot crosses)</a></li>
 <li><a href="#h-kerftest">Dialing in fit with the kerf test</a></li>
 <li><a href="#h-trouble">Troubleshooting</a></li>
 <li><a href="#h-glossary">Glossary</a></li>
@@ -972,7 +972,7 @@ Boxsmith.browser.showBox(tray);</code></pre>
 
 <h3 id="h-types">Make your own box styles</h3>
 <p>A <b>box type file</b> describes a new style of box in JSON: which flat parts it has, how big each one is, where it sits, and which edges join with fingers. It holds only numbers and short formulas such as <code>W - 2*t</code>, never code, so a type file from someone else (or written by an AI) is safe to try. Edges are <code>"e"</code> (plain), <code>"f"</code> (fingers) and <code>"F"</code> (the matching gaps), and Boxsmith adds the finger spacing, corners, kerf and screw holes for you.</p>
-<p>A type can have <b>joints that move</b>. Box ends grow round tabs, and a flat <b>pivot cross</b> with square posts sits between two boxes' tabs, so the second box bends two ways like a universal joint. The joint angles can be settings, so you pose it in the sidebar. The <b>Robot</b> in Shared types is built this way.</p>
+<p>A type can have <b>joints that move</b>. Box ends grow round tabs, and a flat <b>pivot cross</b> with square posts sits between two boxes' tabs, so the second box bends two ways like a universal joint. The joint angles can be settings, so you pose it in the sidebar. The <b>Robot</b> in Shared types is built this way. See <a href="#h-joints">Moving joints</a> to use them in your own designs.</p>
 <p>A type can also have <b>dowels</b>: round rods you buy, for pivots and hinge pins. They show in 3D, are listed under <b>To buy</b> below the parts list and on the assembly card, and aren't cut. The check makes sure each one passes through a hole with room for it.</p>
 <ol>
 <li>Click <b>Type lab</b> at the end of the <b>Box style</b> list.</li>
@@ -983,6 +983,39 @@ Boxsmith.browser.showBox(tray);</code></pre>
 <p><b>Shared types</b> at the bottom of the Type lab lists styles other people made, with pictures; <b>Install</b> adds one to your list. To share one of yours, click <b>Share</b> next to it under My types: GitHub opens with the file ready to propose, and an automatic check builds it at many sizes before it joins the collection.</p>
 <p>Settings files and layouts that use one of your types carry the type file with them, so they open on any computer; opening one adds the type to My types. <b>Download file</b> saves the type itself, to share or back up. Remove a type from the list in the Type lab.</p>
 <p>To have an AI write one, open <b>Have an AI write one</b> in the Type lab, describe the box and click <b>Copy AI prompt</b>. The prompt holds the format, examples, your description and instructions to test the file with Boxsmith's own checker at many settings before giving it to you. Tick <b>Let the AI check on this screen</b> to start a Remote session and put its code in the prompt; an AI that can open a web connection then checks its file on your screen while the page stays open, and AIs with a browser tool check on the Boxsmith website. Paste the prompt into any chat AI (Claude, ChatGPT, Gemini…), then paste the file it gives you into the Type lab. If Boxsmith finds problems, <b>Copy problems for an AI</b> and paste them back. <a href="https://github.com/markplaga/Boxsmith/blob/main/BOX-TYPES.md">Box type format</a> · <a href="https://github.com/markplaga/Boxsmith/tree/main/types">Example types</a> · <a href="https://github.com/markplaga/markplaga-boxsmith-type">Shared types</a></p>
+
+<h3 id="h-joints">Moving joints (pivot crosses)</h3>
+<p>A pivot joint lets one box bend on the end of another, two ways at once, like a wrist. Each box end grows two round tabs with a hole. A small flat <b>pivot cross</b> sits between the two pairs of tabs, and its four square posts turn in the holes. The <b>Robot</b> in Shared types uses one at every neck, shoulder, elbow, hip and knee, and you can put them in your own designs: lamps, figures, cranes, arms, puppets.</p>
+<p><b>Try one first.</b></p>
+<ol>
+<li>Choose <b>Type lab</b> at the end of the <b>Box style</b> list.</li>
+<li>Under <b>Start from…</b>, pick <b>Jointed arm (moving joint)</b>. It is two boxes with one joint between them.</li>
+<li>Click <b>Check</b>, then <b>Try it</b>. Its <b>Bend</b> and <b>Swing</b> sliders appear in the sidebar. Move them and watch the upper box turn on the cross. <b>Thickness</b> and <b>Length</b> set the size of each box.</li>
+</ol>
+<p><b>Put joints in your own design (the easy way).</b> In the Type lab, open <b>Have an AI write one</b>, describe what you want, and say where the joints go and how far each should bend. For example:</p>
+<pre>A desk lamp: a square base box, a 150 mm upright box on top of it,
+and a 120 mm arm box. Pivot-cross joints between base and upright
+(bend 45° each way, no swing) and between upright and arm
+(bend 80° each way, swing 30° each way). Make every joint angle a slider.</pre>
+<p>Click <b>Copy AI prompt</b> and paste it into the AI. The prompt tells it how to build pivot joints and how to check its own file before handing it back. Paste the AI's file into the Type lab and click <b>Check</b>.</p>
+<p><b>By hand.</b> A joint takes three pieces in the type file:</p>
+<ul>
+<li><code>ends</code> on each box: which end grows tabs (<code>"tabs": "left-right"</code> on one box, <code>"front-back"</code> on the other, so the pairs cross at right angles) and how far the joint centre is past the end (<code>"reach"</code>).</li>
+<li>A <code>pivot</code> part at the joint centre, with <code>bendAngle</code> and <code>swingAngle</code> (usually your own settings) and a <code>child</code> name.</li>
+<li><code>"frame": "&lt;child name&gt;"</code> on every part beyond the joint, written where it sits when the joint is straight. Boxsmith turns it into the pose. A second pivot inside that frame chains joints: shoulder, then elbow, then wrist.</li>
+</ul>
+<p>The Jointed arm example is the shortest complete file to copy from. <a href="https://github.com/markplaga/Boxsmith/blob/main/BOX-TYPES.md#joints-that-move">BOX-TYPES.md, “Joints that move”</a> lists every field.</p>
+<p><b>Sizes that work.</b></p>
+<ul>
+<li>A box with tabs must be at least <code>pivotMinSide()</code> across: 22 mm in 3 mm material. Thinner boxes leave no wood around the holes.</li>
+<li>The posts are as thick as the material (3 × 3 mm in 3 mm material) and turn in <code>pivotHole()</code> holes (4.4 mm).</li>
+<li>Set each <code>reach</code> with <code>pivotReach(sideA, sideB, bendMax, swingMax)</code>, using the biggest angles you'll allow. Bigger angles push the boxes further apart so their corners clear.</li>
+<li>The check builds the pose on screen. Check each design with its angles at both ends, alone and together.</li>
+</ul>
+<p><b>Building it.</b> Before you close the second box of a joint, set the cross between the first box's tabs with its posts in the holes, then spring the other box's tabs over the other two posts. Don't glue the posts: they turn. A stiff joint loosens if you sand its posts a little rounder. A floppy one tightens with a drop of PVA on the post, left to dry before you turn it.</p>
+<p><b>Animating joints.</b> In an animation file (or a remote's <code>animate</code>), a keyframe can set a box's joint settings by name with <code>params</code>. Each one moves smoothly from key to key:</p>
+<pre>{ "t": 1, "boxes": { "0": { "params": { "bend": 40, "swing": -20 } } } }</pre>
+<p>For the robot, the names are <code>headNod</code>, <code>headTilt</code>, <code>armFwdL</code>/<code>R</code>, <code>armOutL</code>/<code>R</code>, <code>elbowL</code>/<code>R</code>, <code>legFwdL</code>/<code>R</code>, <code>legOutL</code>/<code>R</code> and <code>kneeL</code>/<code>R</code>. A wrong name stops the animation with a message listing the right ones. Values stay within each setting's limits, and when the animation stops the box goes back to its own pose. If the joints don't move but the camera does, the page is still running an older Boxsmith: reload it.</p>
 
 <h2 id="h-kerftest">16. Dialing in fit with the kerf test</h2>
 <ol>

@@ -1,0 +1,120 @@
+{
+  "format": "boxsmith-type",
+  "version": 1,
+  "id": "jointed-arm",
+  "name": "Jointed arm",
+  "description": "Two boxes joined by one pivot joint that bends two ways",
+  "author": "Boxsmith",
+  "typeVersion": "1.0.0",
+  "screws": false,
+  "params": [
+    {
+      "key": "thick",
+      "label": "Thickness",
+      "kind": "length",
+      "default": 40,
+      "min": 16,
+      "max": 100,
+      "help": "How thick each box is (square). Widened if the pivot tabs need more room."
+    },
+    {
+      "key": "len",
+      "label": "Length",
+      "kind": "length",
+      "default": 100,
+      "min": 30,
+      "max": 300,
+      "help": "How long each box is."
+    },
+    {
+      "key": "bend",
+      "label": "Bend",
+      "kind": "number",
+      "default": 0,
+      "min": -60,
+      "max": 60,
+      "step": 1
+    },
+    {
+      "key": "swing",
+      "label": "Swing",
+      "kind": "number",
+      "default": 0,
+      "min": -60,
+      "max": 60,
+      "step": 1
+    }
+  ],
+  "let": {
+    "side": "max(thick, pivotMinSide())",
+    "r": "pivotReach(side, side, 60, 60)"
+  },
+  "parts": [
+    {
+      "box": {
+        "prefix": "Lower ",
+        "size": [
+          "side",
+          "side",
+          "len"
+        ],
+        "at": [
+          0,
+          0,
+          0
+        ],
+        "ends": {
+          "top": {
+            "tabs": "left-right",
+            "reach": "r"
+          }
+        }
+      }
+    },
+    {
+      "pivot": {
+        "name": "Elbow cross",
+        "at": [
+          "side/2",
+          "side/2",
+          "len + r"
+        ],
+        "bend": "X",
+        "swing": "Y",
+        "size": [
+          "side",
+          "side"
+        ],
+        "bendAngle": "bend",
+        "swingAngle": "swing",
+        "child": "upper"
+      }
+    },
+    {
+      "frame": "upper",
+      "box": {
+        "prefix": "Upper ",
+        "size": [
+          "side",
+          "side",
+          "len"
+        ],
+        "at": [
+          0,
+          0,
+          "len + 2*r"
+        ],
+        "ends": {
+          "bottom": {
+            "tabs": "front-back",
+            "reach": "r"
+          }
+        }
+      }
+    }
+  ],
+  "notes": [
+    "Size in the sidebar isn't used: Thickness and Length set the boxes.",
+    "Before closing the second box, set the cross between the first box's tabs with its posts in their holes, then spring the other box's tabs over the other two posts. Don't glue the posts: they turn."
+  ]
+}

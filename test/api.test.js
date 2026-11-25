@@ -608,7 +608,7 @@ test('box types: a registered type works like a built-in, with its own parameter
 test('box types: the JSON Schema accepts the example type files', () => {
   const Ajv = require('ajv/dist/2020');
   const validate = new Ajv({ allErrors: true, strict: false }).compile(require('../boxsmith-type.schema.json'));
-  for (const f of ['closed-box', 'open-tray', 'cube-frame', 'box-with-shelf']) assert.equal(validate(typeFile(f)), true, f + ': ' + JSON.stringify(validate.errors));
+  for (const f of ['closed-box', 'open-tray', 'cube-frame', 'box-with-shelf', 'jointed-arm']) assert.equal(validate(typeFile(f)), true, f + ': ' + JSON.stringify(validate.errors));
   assert.equal(validate({ format: 'boxsmith-type', version: 1, id: 'x', name: 'X', parts: [] }), false);
 });
 
