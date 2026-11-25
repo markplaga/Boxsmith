@@ -39,7 +39,7 @@ function syncTypeParams(){
       if(p.kind==='choice') input='<select id="'+id+'">'+p.choices.map(c=>{ const v=c.value??c; return '<option value="'+esc(v)+'">'+esc(c.label??v)+'</option>'; }).join('')+'</select>';
       else if(p.kind==='color') input='<input type="color" id="'+id+'">';
       else if(p.kind==='text') input='<input type="text" id="'+id+'">';
-      else input='<input type="number" id="'+id+'">';
+      else input='<input type="number" id="'+id+'">'+(['number','integer'].includes(p.kind)&&p.min!==undefined&&p.max!==undefined?'<input type="range" class="tp-range" id="'+id+'-r" aria-label="'+esc(p.label)+'">':'');
       return '<div class="f'+(p.kind==='text'?' full':'')+'" data-p="'+esc(p.key)+'"><label for="'+id+'">'+esc(p.label)+(p.kind==='length'?' ('+(S.unit==='in'?'in':'mm')+')':'')+'</label>'+input+help+'</div>';
     }).join('')||'<p class="hint" style="margin:0">This style has no settings of its own.</p>';
     (def.params||[]).forEach((p,i)=>{
@@ -56,6 +56,9 @@ function syncTypeParams(){
         return el.value;
       };
       el.addEventListener(p.kind==='bool'||p.kind==='choice'?'change':'input',()=>{ const v=read(); if(v!==undefined) setTypeParam(def,p.key,v); });
+      const rg=$('#tp-'+i+'-r');   // a slider beside a number with a range: easier for poses, and on a touch screen
+      if(rg){ rg.min=p.min; rg.max=p.max; rg.step=p.step!==undefined?p.step:p.kind==='integer'?1:'any';
+        rg.addEventListener('input',()=>{ let v=parseFloat(rg.value); if(p.kind==='integer') v=Math.round(v); el.value=v; setTypeParam(def,p.key,v); }); }
       if(['length','number','integer'].includes(p.kind)){
         const k=p.kind==='length'&&S.unit==='in'?1/25.4:1;
         if(p.min!==undefined) el.min=+(p.min*k).toFixed(4); if(p.max!==undefined) el.max=+(p.max*k).toFixed(4);
@@ -70,6 +73,7 @@ function syncTypeParams(){
     const v=typeParamValue(def,p);
     if(p.kind==='bool') el.checked=!!v;
     else if(document.activeElement!==el) el.value=p.kind==='length'&&S.unit==='in'?+(v/25.4).toFixed(4):v;
+    const rg=$('#tp-'+i+'-r'); if(rg&&document.activeElement!==rg) rg.value=v;
     let show=true;
     if(p.showIf!==undefined){ try{ show=!!BoxTypes.formula(String(p.showIf),env,{}); }catch(e){ show=true; } }
     el.closest('[data-p]').classList.toggle('hidden',!show);

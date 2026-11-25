@@ -1389,10 +1389,14 @@ const Remote=(()=>{
     clearTimeout(sendTimer);
     sendTimer=setTimeout(()=>cmd('design',{index,settings:copy}),250);
   }
+  // On the remote, a custom style's own settings (a robot's pose) go above the long style list, so they're in reach.
+  function stylesFirst(on){ const sec=$('#typeParamsSec'), list=$('#types'), styleSec=list&&list.closest('.sec'); if(!sec||!styleSec) return;
+    if(on) styleSec.before(sec); else styleSec.after(sec); }
   function remoteMode(code){
     if(!ownS){ ownS=JSON.parse(JSON.stringify(S)); window.BOX=Object.assign({},window.BOX,{noSave:true}); }
     const panel=$('#remotePanel'); document.body.insertBefore(panel,document.body.firstChild);
     document.body.classList.add('remote-mode');
+    stylesFirst(true);
     closeDialog();
     $('#remotePanel').hidden=false;
     renderRemote();
@@ -1521,7 +1525,7 @@ const Remote=(()=>{
       const r=b.dataset.rm;
       if(r==='join') return remoteJoin($('#rmCode').value);
       if(r==='leave') return remoteLeave();
-      if(r==='exit'){ remoteLeave(); document.body.classList.remove('remote-mode','rm-design'); p.hidden=true; history.replaceState(null,'',location.pathname);
+      if(r==='exit'){ remoteLeave(); document.body.classList.remove('remote-mode','rm-design'); stylesFirst(false); p.hidden=true; history.replaceState(null,'',location.pathname);
         if(ownS){ if(window.BOX) window.BOX.noSave=false; S=ownS; ownS=null; designFor=-1; update(true); } return; }
       if(b.dataset.rmTab){ tab=b.dataset.rmTab; renderRemote(); return; }
       if(r==='adddesign') return cmd('add',{settings:JSON.parse(JSON.stringify(S))});
