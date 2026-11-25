@@ -122,6 +122,32 @@ function edgeProfile(e,L){
     const p=[]; for(let i=0;i<n;i++){ const d=((i%2===0)===e.tabStart)?0:t; p.push([b[i],d],[b[i+1],d]); } return p; }
   return [[0,0],[L,0]];
 }
+/* A shape whose sides run back over each other (a slot row: a fingers edge as deep as the hole is tall)
+   is really several shapes joined by zero-width lines. A laser cuts those lines, slicing the panel, so
+   they are removed here and each remaining loop becomes its own shape. Other shapes come back unchanged. */
+function splitBridges(poly){
+  const E=1e-6, key=q=>Math.round(q[0]/E)+','+Math.round(q[1]/E), n=poly.length, segs=[];
+  for(let i=0;i<n;i++){ const a=poly[i], b=poly[(i+1)%n], dx=b[0]-a[0], dy=b[1]-a[1], l=dx*dx+dy*dy; if(l<E*E) continue;
+    const cuts=[0,1];
+    for(const q of poly){ const k=((q[0]-a[0])*dx+(q[1]-a[1])*dy)/l; if(k<=E||k>=1-E) continue;
+      if(Math.abs((q[0]-a[0])*dy-(q[1]-a[1])*dx)/Math.sqrt(l)<1e-5) cuts.push(k); }
+    cuts.sort((x,y)=>x-y);
+    for(let j=0;j<cuts.length-1;j++){ if(cuts[j+1]-cuts[j]<E) continue; const P=k=>[a[0]+dx*k,a[1]+dy*k]; segs.push([P(cuts[j]),P(cuts[j+1])]); } }
+  const count=new Map(); for(const [a,b] of segs){ const k=key(a)+'>'+key(b); count.set(k,(count.get(k)||0)+1); }
+  let bridged=false; const keep=[];
+  for(const sg of segs){ const k=key(sg[0])+'>'+key(sg[1]), r=key(sg[1])+'>'+key(sg[0]);
+    if(count.get(r)>0&&count.get(k)>0){ count.set(r,count.get(r)-1); count.set(k,count.get(k)-1); bridged=true; continue; }
+    keep.push(sg); }
+  if(!bridged) return [poly];
+  // what was cancelled in pairs is gone; link what's left into loops
+  const used=new Array(keep.length).fill(false), from=new Map();
+  keep.forEach((sg,i)=>{ const k=key(sg[0]); if(!from.has(k)) from.set(k,[]); from.get(k).push(i); });
+  const loops=[];
+  for(let i=0;i<keep.length;i++){ if(used[i]) continue; const loop=[]; let j=i;
+    while(j!==undefined&&!used[j]){ used[j]=true; loop.push(keep[j][0]); const nx=(from.get(key(keep[j][1]))||[]).find(m=>!used[m]); j=nx; }
+    if(loop.length>2&&Math.abs(area(loop))>1e-4) loops.push(loop); }
+  return loops.length?loops:[poly];
+}
 // edges: [top(y=0), right(x=Lu), bottom(y=Lv), left(x=0)]
 function panelOutline(Lu,Lv,edges){
   const E=[{P:[0,0],u:[1,0],n:[0,1],L:Lu},{P:[Lu,0],u:[0,1],n:[-1,0],L:Lv},{P:[Lu,Lv],u:[-1,0],n:[0,-1],L:Lu},{P:[0,Lv],u:[0,-1],n:[1,0],L:Lv}];
@@ -273,7 +299,7 @@ function generateCustom(def){
       else if(h.circle){ const [x,y,r]=vecF(h.circle,env,p+'.circle',3); out.circles.push({x,y,r}); }
       else if(h.polygon){ const v=typeof h.polygon==='string'?F(h.polygon,env,p+'.polygon'):h.polygon.map((q,k)=>vecF(q,env,p+'.polygon['+k+']',2)); addPoly(v,p+'.polygon'); }
       else if(h.fingers){ const g=h.fingers, [w,hh]=vecF(g.size,env,p+'.fingers.size',2), [x,y]=g.at?vecF(g.at,env,p+'.fingers.at',2):[0,0];
-        out.holes.push(panelOutline(w,hh,g.edges.map((e,k)=>edge(e,env,p+'.fingers.edges['+k+']'))).map(q=>[q[0]+x,q[1]+y])); }
+        out.holes.push(...splitBridges(panelOutline(w,hh,g.edges.map((e,k)=>edge(e,env,p+'.fingers.edges['+k+']'))).map(q=>[q[0]+x,q[1]+y]))); }
     });
     return out;
   }
@@ -324,19 +350,24 @@ function generateCustom(def){
             if(rT<hd/2+0.75*t) throw new TypeBuildError(q,'the box is too narrow for pivot tabs: '+fmt(L)+' leaves room for a tab only '+fmt(2*rT)+' wide around a '+fmt(hd)+' hole. Make the box at least '+fmt(pivotMinSide(hd))+' across (pivotMinSide() gives this).');
             if(!(r>=rT*0.5)) throw new TypeBuildError(q+'.reach','must be at least '+fmt(rT*0.5)+' (the tab needs a neck below the hole); pivotReach(…) gives a safe value.');
             f[end]=0;
-            const ins=L/2-rT, cap=concatPts([[0,0],[ins,0],[ins,-r]],arcPts(L/2,-r,rT,PI,2*PI,24),[[L-ins,-r],[L-ins,0],[L,0]]);
+            // The end panel's tenons sit in notches beside the tab, never under it, so the tab's root stays solid wall.
+            const ins=L/2-rT, ten=ins-Math.max(1,t/2)-t, nt=ten>=1?ten:0;
+            const notch=nt?[[t,0],[t,t],[t+nt,t],[t+nt,0]]:[], notch2=nt?[[L-t-nt,0],[L-t-nt,t],[L-t,t],[L-t,0]]:[];
+            const cap=concatPts([[0,0]],notch,[[ins,0],[ins,-r]],arcPts(L/2,-r,rT,PI,2*PI,24),[[L-ins,-r],[L-ins,0]],notch2,[[L,0]]);
             for(const w of walls){
               custom[w+'_'+end]={pts:cap};
               (circles[w]=circles[w]||[]).push({x:L/2,y:end==='top'?-r:bh+r,r:hd/2});
-              (holes[w]=holes[w]||[]).push(panelOutline(L-2*t,t,['M','plain','plain','plain']).map(q=>[q[0]+t,q[1]+(end==='top'?0:bh-t)]));
             }
-            plates.push({end,fb});
+            plates.push({end,fb,nt});
           }
           const pre=b.prefix?at(p+'.prefix',()=>T.template(b.prefix,e,host,counters)):'';
           const out=buildBox({W:bw,D:bd,H:bh,f,ox,oy,oz,pre,holes,custom});
-          for(const {end,fb} of plates){ const z=end==='top'?oz+bh-t:oz, nm=pre+(end==='top'?'Top':'Bottom');
-            parts.push(fb? part(nm,panelOutline(bw-2*t,bd,['M','plain','M','plain']),{map:mapOf([ox+t,oy,z],X,Y,Z),kind:'plate',role:end==='top'?'lid':'plate',size:[bw-2*t,bd]})
-                         : part(nm,panelOutline(bw,bd-2*t,['plain','M','plain','M']),{map:mapOf([ox,oy+t,z],X,Y,Z),kind:'plate',role:end==='top'?'lid':'plate',size:[bw,bd-2*t]})); }
+          for(const {end,fb,nt} of plates){ const z=end==='top'?oz+bh-t:oz, nm=pre+(end==='top'?'Top':'Bottom');
+            // between the two tab walls; a tenon at each end of the edges that meet them (see the notches above)
+            const Lc=fb?bw-2*t:bd-2*t, a=nt;
+            const tenons=(Lc,D)=>a?[[0,0],[a,0],[a,t],[Lc-a,t],[Lc-a,0],[Lc,0],[Lc,D],[Lc-a,D],[Lc-a,D-t],[a,D-t],[a,D],[0,D]]:[[0,t],[Lc,t],[Lc,D-t],[0,D-t]];
+            parts.push(fb? part(nm,tenons(Lc,bd),{map:mapOf([ox+t,oy,z],X,Y,Z),kind:'plate',role:end==='top'?'lid':'plate',size:[bw-2*t,bd]})
+                         : part(nm,tenons(Lc,bw).map(q=>[q[1],q[0]]).reverse(),{map:mapOf([ox,oy+t,z],X,Y,Z),kind:'plate',role:end==='top'?'lid':'plate',size:[bw,bd-2*t]})); }
           for(const face of Object.keys(circles)) if(out[face]&&circles[face].length) out[face].circles=out[face].circles.concat(circles[face]);
           if(b.text&&out[b.text.on]){ const q=out[b.text.on], [sw,sh]=q.size; addText(q,sw,sh,b.text.rot===180); const tx=q.texts[q.texts.length-1];
             if(tx){ if(b.text.x!==undefined) tx.x=numF(b.text.x,e,p+'.text.x'); if(b.text.y!==undefined) tx.y=numF(b.text.y,e,p+'.text.y'); } }

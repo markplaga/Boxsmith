@@ -260,6 +260,26 @@
         for(const p of res.parts){ const b=bbox(p.outline||[[0,0]]), s=[b.w,b.h].sort((a,c)=>c-a);
           if(!(b.w>0&&b.h>0)) errors.push({path:'',part:p.name,message:'"'+p.name+'" has no area.'});
           else if(s[0]>sizes[0]||s[1]>sizes[1]) warnings.push({path:'',part:p.name,message:'"'+p.name+'" ('+Math.round(b.w)+' × '+Math.round(b.h)+' mm) doesn\'t fit the '+sizes[0]+' × '+sizes[1]+' mm sheet.'}); }
+        // A hole that meets the part's edge in two separate places cuts a piece off (a pivot tab, say).
+        // Meeting it in one place is just a notch. A hole a hair from the edge leaves a sliver that burns away.
+        const segD=(q,a,b)=>{ const dx=b[0]-a[0], dy=b[1]-a[1], l=dx*dx+dy*dy, k=l?Math.max(0,Math.min(1,((q[0]-a[0])*dx+(q[1]-a[1])*dy)/l)):0; return Math.hypot(q[0]-a[0]-k*dx,q[1]-a[1]-k*dy); };
+        const segSeg=(a,b,c,d)=>Math.min(segD(a,c,d),segD(b,c,d),segD(c,a,b),segD(d,a,b));
+        for(const p of res.parts){ const o=p.outline||[], n=o.length; if(n<3) continue;
+          let split=false, near=false;
+          for(const h of (p.holes||[]).filter(h=>h.length>2)){
+            const d=o.map((a,i)=>{ const b=o[(i+1)%n]; let m=Infinity; for(let k=0;k<h.length;k++) m=Math.min(m,segSeg(a,b,h[k],h[(k+1)%h.length])); return m; });
+            const touch=d.map(x=>x<0.01), runs=touch.filter((x,i)=>x&&!touch[(i+n-1)%n]).length||(touch.every(Boolean)?1:0);
+            if(runs>=2){   // a piece comes loose when two stretches of edge outside the hole lie between the touches
+              let outside=0;
+              for(let i=0;i<n;i++){ if(touch[i]||!touch[(i+n-1)%n]) continue;   // the start of an untouched stretch
+                let j=i, len=0; while(!touch[j%n]&&len<n){ j++; len++; }
+                const m=(i+Math.floor(len/2))%n, a=o[m], b=o[(m+1)%n], mid=[(a[0]+b[0])/2,(a[1]+b[1])/2];
+                if(!pointIn(mid,h)) outside++; }
+              if(outside>=2) split=true; }
+            else if(!runs&&Math.min(...d)<0.25) near=true; }
+          for(const c of p.circles||[]){ const g=Math.min(...o.map((a,i)=>segD([c.x,c.y],a,o[(i+1)%n])))-c.r; if(g>-0.01&&g<0.25) near=true; }
+          if(split) errors.push({path:'',part:p.name,message:'A hole in "'+p.name+'" meets the part\'s edge in two places, so the cut would break a piece off. Move the hole, or split it so the material between stays joined.'});
+          else if(near) warnings.push({path:'',part:p.name,message:'A hole in "'+p.name+'" comes within a quarter millimetre of the edge, leaving a sliver the laser may burn through.'}); }
         if(options.joints!==false) errors.push(...jointReport(res.parts));
         if(options.dowels!==false){ const dr=dowelReport(res.parts); errors.push(...dr.errors); warnings.push(...dr.warnings); }
         for(const w of res.warns) warnings.push({path:'',message:w});

@@ -642,6 +642,25 @@ test('box types: a new style with a panel through slotted walls fits, and a misp
   assert.equal(r.ok, false); assert.ok(r.errors.some(e => /Right side/.test(e.message) && /Shelf/.test(e.message)));
 });
 
+test('box types: slot rows are separate slots, pivot tabs stay joined, and a hole that cuts a part in two is caught', () => {
+  // a fingers hole as tall as its fingers are deep is a row of separate slots, not one shape with a line through them
+  const shelf = typeFile('box-with-shelf');
+  B.types.register(shelf);
+  const side = B.types.parts({ type: 'box-with-shelf' }).find(p => p.name === 'Left side');
+  assert.ok(side.holes.length > 2, 'the shelf slot row is several holes');
+  for (const h of side.holes) assert.ok(new Set(h.map(q => q[1])).size <= 2, 'each slot is a plain rectangle');
+  B.types.unregister('box-with-shelf');
+  // the robot-style joint: every tab wall keeps its tab (no hole runs under it)
+  const arm = typeFile('jointed-arm');
+  const r = B.types.check(arm, { typeParams: { 'jointed-arm': { bend: 60, swing: -60 } } });
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+  // a hole straight across a panel cuts it in two
+  const cut = { format: 'boxsmith-type', version: 1, id: 'cut-in-two', name: 'Cut in two', parts: [
+    { panel: { name: 'Plate', size: [60, 40], edges: ['e', 'e', 'e', 'e'], holes: [{ rect: [0, 18, 60, 3] }] } }] };
+  const bad = B.types.check(cut);
+  assert.equal(bad.ok, false); assert.ok(bad.errors.some(e => /Plate/.test(e.message) && /break a piece off/.test(e.message)), JSON.stringify(bad.errors));
+});
+
 test('animate: freeCamera ignores camera keys and keeps the view\'s projection (#25)', () => {
   const keys = [{ t: 0, boxes: { 0: { position: [0, 0, 0] } } }, { t: 2, boxes: { 0: { position: [10, 0, 0] } } }];
   const cam = [{ t: 0, yaw: 10 }, { t: 2, yaw: 90 }];

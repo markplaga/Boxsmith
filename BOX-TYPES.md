@@ -223,7 +223,7 @@ Three pieces make it: `ends` on each box, a `pivot` part, and `frame` on everyth
 | `reach` | How far the pivot centre is beyond the end of the box. Use `pivotReach(…)` (below) so nothing collides. |
 | `hole` | The hole diameter. Default: `pivotHole()`, the hole a post as thick as the material turns in. |
 
-That end's face is replaced (whether or not it is in `faces`) by a panel that sits between the two tab walls, its fingers in a row of slots just inside the end. The tabs are narrower than the wall, so the other box's tabs clear them when the joint turns both ways.
+That end's face is replaced (whether or not it is in `faces`) by a panel that sits between the two tab walls. Its tenons fit notches cut into the end of each tab wall, one on each side of the tab, so the tab's root stays solid wall. The tabs are narrower than the wall, so the other box's tabs clear them when the joint turns both ways.
 
 ### `pivot`: the cross, and the frame that turns
 
@@ -256,6 +256,8 @@ Write the second box (and everything beyond it) where it is when the joint is st
 Pose settings can also be animated: an animation keyframe with `"params": { "bendAngle": 40 }` for a box made from your type moves the joint smoothly (see `animate` in API.md).
 
 The check builds the pose you are looking at. It tests every post: each must sit in a tab hole with room for its corners, otherwise it "runs into solid material" or "can't turn". It also tests the tabs, boxes and cross for collisions like any other parts. Test a type with its angle settings at their extremes, alone and together. [`robot`](https://github.com/markplaga/markplaga-boxsmith-type/tree/main/types/robot) in the shared collection is a full example: neck, shoulders, elbows, hips and knees.
+
+**Keep holes off the edge.** The check fails a part if one of its holes meets the part's edge in two places, because the cut would break a piece off. A hole that opens onto the edge in one place is just a notch, and is fine.
 
 **Slots for a panel's tabs.** A `fingers` hole that is one thickness tall with one `"f"` edge, like `{"fingers": {"size": [L, "t"], "edges": ["f", "e", "e", "e"], "at": [x, y]}}`, is exactly the row of finger tabs of an `"f"` edge of length `L`. So it is the slot row for a panel whose `"f"` edge of the same length passes through the wall there. [`box-with-shelf.json`](types/box-with-shelf.json) does this.
 
