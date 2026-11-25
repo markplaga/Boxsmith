@@ -1,6 +1,6 @@
 /* Boxsmith service worker: makes the app installable and usable offline.
    Bump VERSION whenever you change app files so installed copies refresh. */
-const VERSION='boxsmith-v42';
+const VERSION='boxsmith-v43';
 const CORE = [
   './', 'index.html', 'help.html', 'manifest.webmanifest',
   'three.min.js', 'designs.js', 'tools.js', 'box-types.js', 'boxsmith-api.js', 'box-layout.js',
