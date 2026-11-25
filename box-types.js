@@ -269,10 +269,11 @@
     function checkHoles(path,hs){ if(typeof hs==='string'){ checkF(path,hs); return; } if(!Array.isArray(hs)){ err(path,'must be a list of holes, or a formula.'); return; } hs.forEach((h,j)=>checkHole(path+'['+j+']',h)); }
     function checkAxis(path,a){ if(typeof a==='string'&&AXES[a]) return; vec(path,a,3); }
     function checkComponent(path,c){
-      if(!isRecord(c)){ err(path,'must be an object with one of: box, panel, dividers, dowel.'); return; }
-      const kinds=['box','panel','dividers','dowel'].filter(k=>c[k]!==undefined);
-      if(kinds.length!==1){ err(path,'must have exactly one of: box, panel, dividers, dowel.'); return; }
-      for(const k of Object.keys(c)) if(!['box','panel','dividers','dowel','when','for','let'].includes(k)) err(path+'.'+k,'is not allowed here (allowed: box, panel, dividers, dowel, when, for, let).');
+      if(!isRecord(c)){ err(path,'must be an object with one of: box, panel, dividers, dowel, pivot.'); return; }
+      const kinds=['box','panel','dividers','dowel','pivot'].filter(k=>c[k]!==undefined);
+      if(kinds.length!==1){ err(path,'must have exactly one of: box, panel, dividers, dowel, pivot.'); return; }
+      for(const k of Object.keys(c)) if(!['box','panel','dividers','dowel','pivot','when','for','let','frame'].includes(k)) err(path+'.'+k,'is not allowed here (allowed: box, panel, dividers, dowel, pivot, when, for, let, frame).');
+      if(c.frame!==undefined){ if(typeof c.frame!=='string'||!c.frame.trim()) err(path+'.frame','must be the name of a frame (a pivot\'s "child").'); else checkT(path+'.frame',c.frame); }
       if(c.when!==undefined) checkF(path+'.when',c.when);
       if(c.for!==undefined){ if(!isRecord(c.for)||!Object.keys(c.for).length) err(path+'.for','must be {"name": list or formula, …}.'); else for(const [k,v] of Object.entries(c.for)){ if(!KEY.test(k)) err(path+'.for.'+k,'is not a usable name.'); if(Array.isArray(v)) v.forEach((x,j)=>checkF(path+'.for.'+k+'['+j+']',x)); else checkF(path+'.for.'+k,v); } }
       if(c.let!==undefined){ if(!isRecord(c.let)) err(path+'.let','must be an object of name: formula.'); else for(const [k,v] of Object.entries(c.let)){ if(!KEY.test(k)) err(path+'.let.'+k,'is not a usable name.'); checkF(path+'.let.'+k,v); } }
@@ -280,7 +281,15 @@
       if(!isRecord(b)){ err(p,'must be an object.'); return; }
       const allow=(list)=>{ for(const kk of Object.keys(b)) if(!list.includes(kk)) err(p+'.'+kk,'is not part of a '+k+' (allowed: '+list.join(', ')+').'); };
       if(k==='box'){
-        allow(['size','at','faces','prefix','holes','topEdges','text']);
+        allow(['size','at','faces','prefix','holes','topEdges','text','ends']);
+        if(b.ends!==undefined){ if(!isRecord(b.ends)) err(p+'.ends','must be {"top"?: {…}, "bottom"?: {…}}.');
+          else for(const [end,en] of Object.entries(b.ends)){ const q=p+'.ends.'+end;
+            if(!['top','bottom'].includes(end)){ err(q,'only the top and bottom ends can have pivot tabs.'); continue; }
+            if(!isRecord(en)){ err(q,'must be {"tabs": "front-back" or "left-right", "reach": formula, "hole"?: formula}.'); continue; }
+            for(const kk of Object.keys(en)) if(!['tabs','reach','hole'].includes(kk)) err(q+'.'+kk,'is not part of a pivot end (allowed: tabs, reach, hole).');
+            if(!['front-back','left-right'].includes(en.tabs)) err(q+'.tabs','must be "front-back" or "left-right" (the two walls that grow tabs).');
+            checkF(q+'.reach',en.reach); if(en.hole!==undefined) checkF(q+'.hole',en.hole);
+            if(end==='top'&&b.topEdges) for(const w of (en.tabs==='front-back'?['front','back']:['left','right'])) if(b.topEdges[w]!==undefined) err(p+'.topEdges.'+w,'this wall\'s top edge is a pivot tab (ends.top).'); } }
         vec(p+'.size',b.size??['W','D','H'],3); if(b.at!==undefined) vec(p+'.at',b.at,3);
         if(b.faces!==undefined){ if(!Array.isArray(b.faces)||!b.faces.length||!b.faces.every(f=>FACES.includes(f))) err(p+'.faces','must list faces from: '+FACES.join(', ')+'.'); }
         if(b.prefix!==undefined) checkT(p+'.prefix',b.prefix);
@@ -312,6 +321,15 @@
         vec(p+(b.position!==undefined?'.position':'.at'),b.position??b.at??[0,0,0],3);
         checkAxis(p+'.axis',b.axis??'X');
         if(b.count!==undefined) checkF(p+'.count',b.count);
+      }
+      else if(k==='pivot'){
+        // the cross between two tabbed box ends; its "child" frame turns with the joint
+        allow(['name','at','bend','swing','size','bendAngle','swingAngle','child','postW','gap','over']);
+        if(b.name!==undefined) checkT(p+'.name',b.name);
+        vec(p+'.at',b.at??[0,0,0],3); checkAxis(p+'.bend',b.bend??'X'); checkAxis(p+'.swing',b.swing??'Y');
+        vec(p+'.size',b.size,2);
+        for(const kk of ['bendAngle','swingAngle','postW','gap','over']) if(b[kk]!==undefined) checkF(p+'.'+kk,b[kk]);
+        if(typeof b.child!=='string'||!b.child.trim()) err(p+'.child','must name the frame that turns with the joint (parts after it use "frame": that name).'); else checkT(p+'.child',b.child);
       }
       else {
         allow(['at','size','cols','rows','height','prefix']);

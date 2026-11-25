@@ -142,7 +142,8 @@
         {name:'bottom edge',L:bb.w,pt:(a,d)=>[bb.x+a,bb.y+bb.h-d]},{name:'left edge',L:bb.h,pt:(a,d)=>[bb.x+d,bb.y+a]}];
       for(const side of sides){
         let run=null;
-        const flush=()=>{ if(run&&run.len>=Math.max(0.9,t*0.3)) problems.push(run); run=null; };
+        // one sample on a finger boundary is not a clash: a run must cover at least two samples
+        const flush=()=>{ if(run&&run.len>=Math.max(0.9,t*0.3,1.5*step)) problems.push(run); run=null; };
         for(let a=t+step/2;a<side.L-t;a+=step){
           const q=side.pt(a,t*0.5), mid=s.th*0.5, P=s.world(q[0],q[1],mid);
           const mine=s.in2(q), other=others(P,s);
@@ -213,6 +214,32 @@
         else if(f.kind==='tight') errors.push({path:b.path,part:q.name,message:label+' won\'t go through "'+name+'": the hole there leaves room for only '+mm(2*f.room)+' mm. Make the hole bigger or the dowel smaller, or centre the dowel in the hole.'});
         else if(2*f.room>b.diameter+DOWEL_LOOSE) warnings.push({path:b.path,part:q.name,message:label+' is loose in "'+name+'": the hole is '+mm(2*f.room)+' mm across. Fine for a pivot that turns; make the hole smaller for a snug pin.'});
       }
+    }
+    // pivot posts: from the edge of the cross to the tip, each must sit in a tab hole with room for its corners
+    for(const q of parts){ if(!q.pins) continue;
+      q.pins.forEach((pn,j)=>{
+        const label='"'+q.name+'" post '+(j+1)+' ('+mm(pn.size)+' mm across its corners)', r=pn.size/2, seen=new Map();
+        const len=Math.hypot(...pn.to.map((x,k)=>x-pn.from[k])), steps=Math.max(6,Math.ceil(len/0.2));
+        for(let i=1;i<=steps;i++){ const P=pn.from.map((x,k)=>x+(pn.to[k]-x)*i/steps);
+          for(const sd of S3){ if(sd.p===q) continue;
+            if(P[0]<sd.lo[0]||P[1]<sd.lo[1]||P[2]<sd.lo[2]||P[0]>sd.hi[0]||P[1]>sd.hi[1]||P[2]>sd.hi[2]) continue;
+            const L3=sd.local(P); if(!(L3[2]>0&&L3[2]<sd.th)) continue;
+            const pt=[L3[0],L3[1]]; if(!pointIn(pt,sd.p.outline)) continue;
+            let room=null;
+            for(const c of sd.p.circles){ const dd=Math.hypot(pt[0]-c.x,pt[1]-c.y); if(dd<c.r) room=Math.max(room??0,c.r-dd); }
+            for(const h of sd.p.holes) if(pointIn(pt,h)){ let m=Infinity; for(let k=0;k<h.length;k++) m=Math.min(m,segDist(pt,h[k],h[(k+1)%h.length])); room=Math.max(room??0,m); }
+            const prev=seen.get(sd.p.name);
+            if(room===null) seen.set(sd.p.name,{kind:'solid'});
+            else if(room<r-DOWEL_TOL){ if(!prev||prev.kind==='ok') seen.set(sd.p.name,{kind:'tight',room}); }
+            else if(!prev) seen.set(sd.p.name,{kind:'ok'});
+          }
+        }
+        if(!seen.size) errors.push({path:pn.path,part:q.name,message:label+' doesn\'t reach a tab: nothing holds it. Check the pivot\'s "at" and "size" against the tabbed ends.'});
+        for(const [name,f] of seen){
+          if(f.kind==='solid') errors.push({path:pn.path,part:q.name,message:label+' runs into solid material in "'+name+'": the pivot hole isn\'t where the post is. Check the tabs\' "reach" and the pivot\'s "at".'});
+          else if(f.kind==='tight') errors.push({path:pn.path,part:q.name,message:label+' can\'t turn in "'+name+'": the hole leaves room for '+mm(2*f.room)+' mm. Use pivotHole() for the hole size.'});
+        }
+      });
     }
     return {errors,warnings};
   }

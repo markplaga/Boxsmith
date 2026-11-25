@@ -972,6 +972,7 @@ Boxsmith.browser.showBox(tray);</code></pre>
 
 <h3 id="h-types">Make your own box styles</h3>
 <p>A <b>box type file</b> describes a new style of box in JSON: which flat parts it has, how big each one is, where it sits, and which edges join with fingers. It holds only numbers and short formulas such as <code>W - 2*t</code>, never code, so a type file from someone else (or written by an AI) is safe to try. Edges are <code>"e"</code> (plain), <code>"f"</code> (fingers) and <code>"F"</code> (the matching gaps), and Boxsmith adds the finger spacing, corners, kerf and screw holes for you.</p>
+<p>A type can have <b>joints that move</b>. Box ends grow round tabs, and a flat <b>pivot cross</b> with square posts sits between two boxes' tabs, so the second box bends two ways like a universal joint. The joint angles can be settings, so you pose it in the sidebar. The <b>Robot</b> in Shared types is built this way.</p>
 <p>A type can also have <b>dowels</b>: round rods you buy, for pivots and hinge pins. They show in 3D, are listed under <b>To buy</b> below the parts list and on the assembly card, and aren't cut. The check makes sure each one passes through a hole with room for it.</p>
 <ol>
 <li>Click <b>Type lab</b> at the end of the <b>Box style</b> list.</li>

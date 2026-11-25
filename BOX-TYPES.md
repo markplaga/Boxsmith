@@ -88,6 +88,7 @@ A formula is a string such as `"W - 2*t"` or `"notch ? 20 : 0"`. A plain number 
   - lists: `count(xs)`, `sum(xs)`, `range(n)` or `range(a, b, step)`, `concat(a, b, …)`, `pick(xs, i)`;
   - 3D: `axis(i)` (0 → `X`, 1 → `Y`, 2 → `Z`), `vec(x, y, z)`;
   - shapes (lists of `[x, y]` points): `rect(x, y, w, h)`, `slot(cx, cy, w, h)` (rounded ends), `arc(cx, cy, rx, ry, a0, a1, n)` (`n` segments of an ellipse from angle `a0` to `a1`), `move(points, dx, dy)`;
+  - joints: `pivotHole(postW)`, `pivotReach(sideA, sideB, bendMax, swingMax)`, `pivotMinSide()` (see *Joints that move*);
   - Boxsmith: `fingers(w, h, [top, right, bottom, left])` (a finger-jointed rectangle, as points), `handleHoles(d, h)` (the hand-hold cutouts Boxsmith puts in tray ends), `fmt(x)` (a size written in the user's unit, for warnings and notes), `str(x)`.
 - A misspelled name is reported with a suggestion: `there is nothing called "Wd" (did you mean "W"?)`.
 
@@ -117,11 +118,12 @@ A param can reuse a standard Boxsmith setting by giving its key and a matching k
 
 ## Parts
 
-Each entry in `parts` holds exactly one of `box`, `panel`, `dividers` or `dowel`. It can also have:
+Each entry in `parts` holds exactly one of `box`, `panel`, `dividers`, `dowel` or `pivot`. It can also have:
 
 - `"when": formula`: the part is only made when this is true.
 - `"for": {"name": list, …}`: the part is made once for each value (for several names, once for each combination, the first name changing slowest). A list can be written out (`[0, 1, 2]`) or come from a formula (`"range(cols)"`). At most 2000 parts.
 - `"let": {…}`: names worked out for each copy, after `for` and before `when`.
+- `"frame": "name"`: place the part in a pivot's moving frame, so it turns with that joint (see *Joints that move*). Text with formulas, like `"knee{s}"`.
 
 ### `box`: a finger-jointed box
 
@@ -136,6 +138,7 @@ Up to six panels that already join each other correctly, including the corner st
 | `holes` | Cutouts per face: `{"front": [holes], "left": "formula"}` (see Holes). |
 | `topEdges` | A different top edge for a wall: `{"front": edge}`. The edge is `"e"`, `"f"`, `"F"`, or points (see Edges). |
 | `text` | Where the user's text goes: `{"on": face, "rot": 0 or 180, "x": formula, "y": formula}`. |
+| `ends` | Pivot tabs at the `top` and/or `bottom` end (see *Joints that move*). |
 
 Each face has its own `x`/`y` for holes and text:
 
@@ -197,6 +200,59 @@ A dowel, pin or rod that goes through holes in the parts: a pivot, an axle, a hi
 Identical dowels are counted together: `Dowel, 1/8" (3.2 mm) × 86 mm`, qty 2. Common inch sizes are named as fractions.
 
 The check follows each dowel along its axis. Wherever it is inside a part, it must be inside a hole (a `circle`, `slot`, `rect` or any other hole) with room for it, within 0.05 mm; if it passes through solid material or a hole that is too small, that is an error. A hole more than 0.5 mm wider than the dowel, or a dowel that passes through no part, is a warning. Dowels are left out of the finger-joint and overlap checks.
+
+## Joints that move
+
+A **pivot joint** connects the ends of two boxes so the second one can bend two ways, like a universal joint:
+- each box end grows two round-ended tabs, from two opposite walls, with a hole;
+- the two pairs of tabs sit at right angles;
+- a flat **pivot cross** sits between them, with a square post in the middle of each side;
+- the posts turn in the tab holes.
+
+Three pieces make it: `ends` on each box, a `pivot` part, and `frame` on everything that should move with the joint.
+
+### `ends`: tabs on a box end
+
+```json
+"box": { "size": ["limb", "limb", 60], "ends": { "top": { "tabs": "left-right", "reach": "r" }, "bottom": { "tabs": "front-back", "reach": "r2" } } }
+```
+
+| Field | What it is |
+| --- | --- |
+| `tabs` | Which two walls grow tabs: `"front-back"` or `"left-right"`. The posts go through those walls, so `"left-right"` means the joint turns about `X`. |
+| `reach` | How far the pivot centre is beyond the end of the box. Use `pivotReach(…)` (below) so nothing collides. |
+| `hole` | The hole diameter. Default: `pivotHole()`, the hole a post as thick as the material turns in. |
+
+That end's face is replaced (whether or not it is in `faces`) by a panel that sits between the two tab walls, its fingers in a row of slots just inside the end. The tabs are narrower than the wall, so the other box's tabs clear them when the joint turns both ways.
+
+### `pivot`: the cross, and the frame that turns
+
+```json
+{ "pivot": { "name": "Knee cross", "at": ["W/2", "D/2", "z"], "bend": "X", "swing": "Y", "size": ["limb", "limb"],
+             "bendAngle": "knee", "swingAngle": 0, "child": "shin" } }
+```
+
+| Field | What it is |
+| --- | --- |
+| `at` | The pivot centre: where the tab holes are. |
+| `bend` | The axis of the first box's posts (through its tab walls). Default `X`. |
+| `swing` | The axis of the second box's posts, at right angles to `bend`. Default `Y`. |
+| `size` | `[first box's width along bend, second box's width along swing]`: the outside widths across each pair of tab walls. |
+| `bendAngle`, `swingAngle` | The pose, in degrees: how far the second box is turned about each axis. Formulas, so they can be settings. |
+| `child` | The name of the frame that turns with the joint. Parts with `"frame": that name follow it, and so does any pivot placed in it, which chains joints: shoulder, then elbow, then wrist. |
+| `postW` | Post width, default the material thickness (square posts). The tab holes must be `pivotHole(postW)`. |
+| `gap`, `over` | Clearance between the cross and the tab walls (default 0.5 mm), and how far the posts stick out past the tabs (default 1 mm). |
+| `name` | The cross's name on the cut sheet, default `"Pivot cross"`. |
+
+Write the second box (and everything beyond it) where it is when the joint is straight (both angles 0), with `"frame": "<child>"`. Boxsmith turns it into the pose. Frames are in the same coordinates as everything else, so a part in a frame is placed exactly like one outside it.
+
+### Functions for joints
+
+- `pivotHole(postW)`: the hole a post `postW` wide (and as thick as the material) turns in, rounded up to 0.1 mm. 3 mm material: `pivotHole()` is 4.4 mm.
+- `pivotReach(sideA, sideB, bendMax, swingMax)`: how far each box's end must sit from the pivot (its `reach`) so the boxes, tabs and cross never touch while the joint turns up to `bendMax` and `swingMax` degrees either way. Larger angles need a longer reach.
+- `pivotMinSide()`: the narrowest box that has room for pivot tabs (22 mm for 3 mm material).
+
+The check builds the pose you are looking at. It tests every post: each must sit in a tab hole with room for its corners, otherwise it "runs into solid material" or "can't turn". It also tests the tabs, boxes and cross for collisions like any other parts. Test a type with its angle settings at their extremes, alone and together. [`robot`](https://github.com/markplaga/markplaga-boxsmith-type/tree/main/types/robot) in the shared collection is a full example: neck, shoulders, elbows, hips and knees.
 
 **Slots for a panel's tabs.** A `fingers` hole that is one thickness tall with one `"f"` edge, like `{"fingers": {"size": [L, "t"], "edges": ["f", "e", "e", "e"], "at": [x, y]}}`, is exactly the row of finger tabs of an `"f"` edge of length `L`. So it is the slot row for a panel whose `"f"` edge of the same length passes through the wall there. [`box-with-shelf.json`](types/box-with-shelf.json) does this.
 

@@ -551,6 +551,11 @@
           "required": [
             "dowel"
           ]
+        },
+        {
+          "required": [
+            "pivot"
+          ]
         }
       ],
       "properties": {
@@ -666,6 +671,57 @@
                   "$ref": "#/$defs/formula"
                 }
               }
+            },
+            "ends": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "top": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "tabs",
+                    "reach"
+                  ],
+                  "properties": {
+                    "tabs": {
+                      "enum": [
+                        "front-back",
+                        "left-right"
+                      ]
+                    },
+                    "reach": {
+                      "$ref": "#/$defs/formula"
+                    },
+                    "hole": {
+                      "$ref": "#/$defs/formula"
+                    }
+                  }
+                },
+                "bottom": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "tabs",
+                    "reach"
+                  ],
+                  "properties": {
+                    "tabs": {
+                      "enum": [
+                        "front-back",
+                        "left-right"
+                      ]
+                    },
+                    "reach": {
+                      "$ref": "#/$defs/formula"
+                    },
+                    "hole": {
+                      "$ref": "#/$defs/formula"
+                    }
+                  }
+                }
+              },
+              "description": "Pivot ends: two opposite walls grow round tabs with the pivot hole; the end panel sits between them."
             }
           }
         },
@@ -959,6 +1015,81 @@
               "$ref": "#/$defs/axis"
             },
             "count": {
+              "$ref": "#/$defs/formula"
+            }
+          }
+        },
+        "frame": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Place this part in a pivot's child frame, so it turns with the joint."
+        },
+        "pivot": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "size",
+            "child"
+          ],
+          "description": "A flat cross with a square post in the middle of each side, between two tabbed box ends (see box.ends). Its child frame turns with the joint.",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "at": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "items": {
+                    "$ref": "#/$defs/formula"
+                  }
+                }
+              ]
+            },
+            "bend": {
+              "$ref": "#/$defs/axis"
+            },
+            "swing": {
+              "$ref": "#/$defs/axis"
+            },
+            "size": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "$ref": "#/$defs/formula"
+                  }
+                }
+              ]
+            },
+            "bendAngle": {
+              "$ref": "#/$defs/formula"
+            },
+            "swingAngle": {
+              "$ref": "#/$defs/formula"
+            },
+            "child": {
+              "type": "string",
+              "minLength": 1
+            },
+            "postW": {
+              "$ref": "#/$defs/formula"
+            },
+            "gap": {
+              "$ref": "#/$defs/formula"
+            },
+            "over": {
               "$ref": "#/$defs/formula"
             }
           }

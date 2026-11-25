@@ -672,3 +672,33 @@ test('box types: dowels follow settings, are listed to buy, are never cut, and a
   const both = pin(); both.parts[1].dowel.position = [0, 0, 0];
   assert.equal(B.types.validate(both).ok, false, 'at or position, not both');
 });
+
+test('box types: pivot joints — tabbed ends, a post cross, frames that turn, and posts checked in their holes', () => {
+  const joint = (over = {}) => ({ format: 'boxsmith-type', version: 1, id: 'pivot-test', name: 'Pivot test', screws: false,
+    params: [{ key: 'bendA', label: 'Bend', kind: 'number', default: 0, min: -45, max: 45 }, { key: 'swingA', label: 'Swing', kind: 'number', default: 0, min: -45, max: 45 }],
+    let: { s: 30, r: 'pivotReach(s, s, 45, 45)', ...(over.let || {}) },
+    parts: [
+      { box: { prefix: 'A ', size: ['s', 's', 50], ends: { top: { tabs: 'left-right', reach: 'r', ...(over.holeA || {}) } } } },
+      { pivot: { name: 'Cross', at: ['s/2', 's/2', '50 + r' + (over.dz || '')], bend: 'X', swing: 'Y', size: ['s', 's'], bendAngle: 'bendA', swingAngle: 'swingA', child: 'B' } },
+      { frame: over.frame || 'B', box: { prefix: 'B ', size: ['s', 's', 50], at: [0, 0, '50 + 2*r'], ends: { bottom: { tabs: 'front-back', reach: 'r' } } } }] });
+  assert.equal(B.types.validate(joint()).ok, true);
+  for (const [a, b] of [[0, 0], [45, 45], [-45, 45], [45, -45], [-45, -45]]) {
+    const r = B.types.check(joint(), { typeParams: { 'pivot-test': { bendA: a, swingA: b } } });
+    assert.equal(r.ok, true, a + ',' + b + ': ' + B.types.explain(r.errors));
+    assert.equal(r.parts, 13);
+  }
+  // the pose turns B: its top plate's corner moves
+  B.types.register(joint());
+  try {
+    const at = (a) => B.types.parts({ type: 'pivot-test', typeParams: { 'pivot-test': { bendA: a } } }).find(p => p.name === 'B Front').map;
+    assert.notDeepEqual(at(0).v, at(30).v, 'bendAngle turns the child frame');
+    assert.deepEqual(at(0).v, [0, 0, -1]);
+  } finally { B.types.unregister('pivot-test'); }
+  assert.ok(B.types.check(joint({ dz: ' + 3' })).errors.length > 0, 'a cross off its holes is caught');
+  const small = B.types.check(joint({ holeA: { hole: 3.2 } }));
+  assert.ok(small.errors.some(e => /can't turn in "A (Left|Right) side"/.test(e.message)), B.types.explain(small.errors));
+  const tight = B.types.check(joint({ let: { r: 8 } }), { typeParams: { 'pivot-test': { bendA: -45 } } });
+  assert.equal(tight.ok, false, 'too short a reach collides at the extreme');
+  const nf = B.types.check(joint({ frame: 'nope' }));
+  assert.equal(nf.stage, 'build'); assert.match(nf.errors[0].message, /no frame called "nope".*B/);
+});

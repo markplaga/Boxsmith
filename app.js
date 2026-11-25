@@ -165,7 +165,7 @@ function buildBox(P){
   const fb=(name,key,y)=>{
     const eR= pin ? (key==='front'?'F':'M') : 'M', eL= pin ? (key==='front'?'M':'F') : 'M';
     const dR= key==='front'?fe(false,1):fe(true,1), dL= key==='front'?fe(true,3):fe(false,3);
-    const e=[c[key+'_top']||(f.top?'M':'plain'), f.right?(dia?dR:eR):'plain', f.bottom?'M':'plain', f.left?(dia?dL:eL):'plain'];
+    const e=[c[key+'_top']||(f.top?'M':'plain'), f.right?(dia?dR:eR):'plain', c[key+'_bottom']||(f.bottom?'M':'plain'), f.left?(dia?dL:eL):'plain'];
     out[key]=part(pre+name, panelOutline(W,H,e), {map:mapOf([ox,oy+y,oz+H],X,nZ,Y), holes:hl[key]||[], circles:(P.circles||{})[key]||[], role:'wall', size:[W,H]});
   };
   if(f.front) fb('Front','front',0);
@@ -173,7 +173,7 @@ function buildBox(P){
   const sd=(name,key,x)=>{
     const eB= pin ? (key==='left'?'M':'F') : 'F', eF= pin ? (key==='right'?'M':'F') : 'F';
     const dB= key==='left'?fe(true,1):fe(false,1), dF= key==='right'?fe(true,3):fe(false,3);
-    const e=[c[key+'_top']||(f.top?'M':'plain'), f.back?(dia?dB:eB):'plain', f.bottom?'M':'plain', f.front?(dia?dF:eF):'plain'];
+    const e=[c[key+'_top']||(f.top?'M':'plain'), f.back?(dia?dB:eB):'plain', c[key+'_bottom']||(f.bottom?'M':'plain'), f.front?(dia?dF:eF):'plain'];
     out[key]=part(pre+name, panelOutline(D,H,e), {map:mapOf([ox+x,oy,oz+H],Y,nZ,X), holes:hl[key]||[], circles:(P.circles||{})[key]||[], role:'wall', size:[D,H]});
   };
   if(f.left) sd('Left side','left',0);
@@ -243,7 +243,12 @@ function generateCustom(def){
     fmt:x=>fmt(+x),
     // a finger-jointed rectangle (as a hole or a shape): size w×h, edges top, right, bottom, left
     fingers:(w,h,edges)=>panelOutline(+w,+h,(edges||['e','e','e','e']).map(edgeSpec)),
-    handleHoles:(d,h)=>handleHoles(+d,+h)
+    handleHoles:(d,h)=>handleHoles(+d,+h),
+    // pivots: the hole a post of this width (and the material's thickness) turns in, and how far each box's
+    // end must sit from the pivot so nothing collides anywhere in the angle ranges
+    pivotHole:(postW)=>pivotHole(postW===undefined?t:+postW),
+    pivotMinSide:(postW)=>pivotMinSide(pivotHole(postW===undefined?t:+postW)),
+    pivotReach:(sideP,sideC,bendMax,swingMax,postW)=>pivotReach(+sideP,+sideC,+(bendMax||0),+(swingMax||0),postW===undefined?t:+postW)
   };
   function edgeSpec(e){
     if(typeof e==='string'&&EDGE_OF[e]) return EDGE_OF[e];
@@ -293,18 +298,45 @@ function generateCustom(def){
       }
       return out;
     };
+    // frames: a pivot's child frame turns with the joint; parts placed in it follow
+    const frames={};
+    const frameOf=(name,path)=>{ if(name===undefined) return null; const fr=frames[name];
+      if(!fr) throw new TypeBuildError(path,'there is no frame called "'+name+'". A frame comes from the "child" of a pivot earlier in parts'+(Object.keys(frames).length?' (there are: '+Object.keys(frames).join(', ')+')':'')+'.');
+      return fr; };
     (def.parts||[]).forEach((c,i)=>{ const path='parts['+i+']';
       for(const vars of combos(c,env,path)){
         const e=Object.assign({},env,vars);
         for(const [k,v] of Object.entries(c.let||{})) e[k]=F(v,e,path+'.let.'+k);
         if(!when(c.when,e,path+'.when')) continue;
+        const first=parts.length, inFrame=c.frame===undefined?null:frameOf(at(path+'.frame',()=>T.template(c.frame,e,host,{})),path+'.frame');
         if(c.box){ const b=c.box, p=path+'.box';
           const [bw,bd,bh]=vecF(b.size||['W','D','H'],e,p+'.size',3), [ox,oy,oz]=b.at?vecF(b.at,e,p+'.at',3):[0,0,0];
           const faces=b.faces||BoxTypes.FACES, f={}; for(const x of faces) f[x]=1;
           const holes={}, circles={}, custom={};
           for(const [face,hs] of Object.entries(b.holes||{})){ const r=holesOf(hs,e,p+'.holes.'+face); holes[face]=r.holes; circles[face]=r.circles; }
           for(const [wall,ed] of Object.entries(b.topEdges||{})){ const s=edge(ed,e,p+'.topEdges.'+wall); if(s!=='M') custom[wall+'_top']=s; }
-          const out=buildBox({W:bw,D:bd,H:bh,f,ox,oy,oz,pre:b.prefix?at(p+'.prefix',()=>T.template(b.prefix,e,host,counters)):'',holes,custom});
+          // pivot ends: two opposite walls grow round-ended tabs with the pivot hole; the end panel sits between them
+          const plates=[];
+          for(const end of ['top','bottom']){ const en=b.ends&&b.ends[end]; if(!en) continue; const q=p+'.ends.'+end;
+            const fb=en.tabs==='front-back', walls=fb?['front','back']:['left','right'], L=fb?bw:bd;
+            const r=numF(en.reach,e,q+'.reach'), hd=en.hole===undefined?pivotHole(t):numF(en.hole,e,q+'.hole');
+            const rT=pivotTabR(L,hd);
+            if(rT<hd/2+0.75*t) throw new TypeBuildError(q,'the box is too narrow for pivot tabs: '+fmt(L)+' leaves room for a tab only '+fmt(2*rT)+' wide around a '+fmt(hd)+' hole. Make the box at least '+fmt(pivotMinSide(hd))+' across (pivotMinSide() gives this).');
+            if(!(r>=rT*0.5)) throw new TypeBuildError(q+'.reach','must be at least '+fmt(rT*0.5)+' (the tab needs a neck below the hole); pivotReach(…) gives a safe value.');
+            f[end]=0;
+            const ins=L/2-rT, cap=concatPts([[0,0],[ins,0],[ins,-r]],arcPts(L/2,-r,rT,PI,2*PI,24),[[L-ins,-r],[L-ins,0],[L,0]]);
+            for(const w of walls){
+              custom[w+'_'+end]={pts:cap};
+              (circles[w]=circles[w]||[]).push({x:L/2,y:end==='top'?-r:bh+r,r:hd/2});
+              (holes[w]=holes[w]||[]).push(panelOutline(L-2*t,t,['M','plain','plain','plain']).map(q=>[q[0]+t,q[1]+(end==='top'?0:bh-t)]));
+            }
+            plates.push({end,fb});
+          }
+          const pre=b.prefix?at(p+'.prefix',()=>T.template(b.prefix,e,host,counters)):'';
+          const out=buildBox({W:bw,D:bd,H:bh,f,ox,oy,oz,pre,holes,custom});
+          for(const {end,fb} of plates){ const z=end==='top'?oz+bh-t:oz, nm=pre+(end==='top'?'Top':'Bottom');
+            parts.push(fb? part(nm,panelOutline(bw-2*t,bd,['M','plain','M','plain']),{map:mapOf([ox+t,oy,z],X,Y,Z),kind:'plate',role:end==='top'?'lid':'plate',size:[bw-2*t,bd]})
+                         : part(nm,panelOutline(bw,bd-2*t,['plain','M','plain','M']),{map:mapOf([ox,oy+t,z],X,Y,Z),kind:'plate',role:end==='top'?'lid':'plate',size:[bw,bd-2*t]})); }
           for(const face of Object.keys(circles)) if(out[face]&&circles[face].length) out[face].circles=out[face].circles.concat(circles[face]);
           if(b.text&&out[b.text.on]){ const q=out[b.text.on], [sw,sh]=q.size; addText(q,sw,sh,b.text.rot===180); const tx=q.texts[q.texts.length-1];
             if(tx){ if(b.text.x!==undefined) tx.x=numF(b.text.x,e,p+'.text.x'); if(b.text.y!==undefined) tx.y=numF(b.text.y,e,p+'.text.y'); } }
@@ -346,10 +378,38 @@ function generateCustom(def){
           const name=b.name!==undefined?at(p+'.name',()=>T.template(b.name,e,host,counters)):'Dowel';
           parts.push(part(name,outline,{noCut:true,noKerf:true,th:L,map:mapOf(o,u,v,ax),bought:{kind:'dowel',diameter:d,length:L,count,center:ctr,axis:ax,path:p}}));
         }
+        else if(c.pivot){ const b=c.pivot, p=path+'.pivot';
+          // the flat cross between two tabbed ends: a plate with a post in the middle of each side
+          const P0=vecF(b.at||[0,0,0],e,p+'.at',3), ub=axisF(b.bend||'X',e,p+'.bend'), us=axisF(b.swing||'Y',e,p+'.swing');
+          const one=a=>Math.abs(Math.hypot(...a)-1)<1e-6, dot=(a,c)=>a[0]*c[0]+a[1]*c[1]+a[2]*c[2];
+          if(!one(ub)||!one(us)||Math.abs(dot(ub,us))>1e-6) throw new TypeBuildError(p,'bend and swing must be one unit long and at right angles (like X and Y).');
+          const [sb,ss]=vecF(b.size,e,p+'.size',2), pw=b.postW===undefined?t:numF(b.postW,e,p+'.postW');
+          const gap=b.gap===undefined?0.5:numF(b.gap,e,p+'.gap'), over=b.over===undefined?1:numF(b.over,e,p+'.over');
+          const hb=sb/2-t-gap, hs=ss/2-t-gap, Lb=sb/2+over, Ls=ss/2+over;
+          if(!(pw>0)) throw new TypeBuildError(p+'.postW','must be bigger than 0.');
+          if(hb<pw/2+1||hs<pw/2+1) throw new TypeBuildError(p+'.size','is too small: the cross between the tabs would be '+fmt(2*hb)+' × '+fmt(2*hs)+', not enough around '+fmt(pw)+' posts.');
+          const ang=(k,d)=>b[k]===undefined?0:numF(b[k],e,p+'.'+k)*PI/180, aB=ang('bendAngle'), aS=ang('swingAngle');
+          const nn=[ub[1]*us[2]-ub[2]*us[1],ub[2]*us[0]-ub[0]*us[2],ub[0]*us[1]-ub[1]*us[0]];
+          const pts=[[-hb,-hs],[-pw/2,-hs],[-pw/2,-Ls],[pw/2,-Ls],[pw/2,-hs],[hb,-hs],[hb,-pw/2],[Lb,-pw/2],[Lb,pw/2],[hb,pw/2],[hb,hs],[pw/2,hs],[pw/2,Ls],[-pw/2,Ls],[-pw/2,hs],[-hb,hs],[-hb,pw/2],[-Lb,pw/2],[-Lb,-pw/2],[-hb,-pw/2]].map(q=>[q[0]+Lb,q[1]+Ls]);
+          const o=P0.map((x,k)=>x-ub[k]*Lb-us[k]*Ls-nn[k]*t/2);
+          const name=b.name!==undefined?at(p+'.name',()=>T.template(b.name,e,host,counters)):'Pivot cross';
+          const pin=(dir,from,to)=>({from:P0.map((x,k)=>x+dir[k]*from),to:P0.map((x,k)=>x+dir[k]*to),size:Math.hypot(pw,t),path:p});
+          const neg=a=>a.map(x=>-x);
+          const cross=part(name,pts,{map:mapOf(o,ub,us,nn),role:'pivot',size:[2*Lb,2*Ls],
+            pins:[pin(ub,hb,Lb),pin(neg(ub),hb,Lb),pin(us,hs,Ls),pin(neg(us),hs,Ls)]});
+          const parent=inFrame||IDENT, local=(R)=>({R,p:sub(P0,matVec(R,P0))});
+          const Rb=rotAxis(ub,aB), Rs=rotAxis(us,aS);
+          placeIn(compose(parent,local(Rb)),[cross]); parts.push(cross);
+          const child=at(p+'.child',()=>T.template(b.child,e,host,{}));
+          if(frames[child]) throw new TypeBuildError(p+'.child','there is already a frame called "'+child+'".');
+          frames[child]=compose(parent,local(matMul(Rb,Rs)));
+          continue;   // already placed
+        }
         else if(c.dividers){ const b=c.dividers, p=path+'.dividers';
           const [ox,oy,oz]=vecF(b.at,e,p+'.at',3), [wi,di,hi]=vecF(b.size,e,p+'.size',3);
           parts.push(...makeDividers(ox,oy,oz,wi,di,hi,b.cols===undefined?1:numF(b.cols,e,p+'.cols'),b.rows===undefined?1:numF(b.rows,e,p+'.rows'),b.height===undefined?100:numF(b.height,e,p+'.height'),b.prefix?at(p+'.prefix',()=>T.template(b.prefix,e,host,counters)):''));
         }
+        if(inFrame) placeIn(inFrame,parts.slice(first));
       }
     });
     (def.notes||[]).forEach((x,i)=>{ const o=typeof x==='string'?{text:x}:x; if(when(o.when,env,'notes['+i+'].when')) notes.push(at('notes['+i+'].text',()=>T.template(o.text,env,host,{}))); });
@@ -359,6 +419,37 @@ function generateCustom(def){
     return {parts,warns,notes,info};
   } finally { G.ts=savedTs; }
 }
+/* Frames and pivots for type files. A frame is {R (3×3 rows), p}: a point x goes to R·x + p. */
+const IDENT={R:[[1,0,0],[0,1,0],[0,0,1]],p:[0,0,0]};
+const matVec=(R,v)=>R.map(r=>r[0]*v[0]+r[1]*v[1]+r[2]*v[2]);
+const matMul=(A,B)=>A.map(r=>[0,1,2].map(j=>r[0]*B[0][j]+r[1]*B[1][j]+r[2]*B[2][j]));
+const compose=(F1,F2)=>({R:matMul(F1.R,F2.R),p:matVec(F1.R,F2.p).map((x,k)=>x+F1.p[k])});
+function rotAxis(a,th){ const [x,y,z]=a, c=Math.cos(th), s=Math.sin(th), C=1-c;
+  return [[c+x*x*C, x*y*C-z*s, x*z*C+y*s],[y*x*C+z*s, c+y*y*C, y*z*C-x*s],[z*x*C-y*s, z*y*C+x*s, c+z*z*C]]; }
+// move parts (and their dowels and posts) into a frame
+function placeIn(Fr,list){
+  const P=v=>matVec(Fr.R,v).map((x,k)=>x+Fr.p[k]), V=v=>matVec(Fr.R,v);
+  for(const q of list){
+    if(q.map) q.map={o:P(q.map.o),u:V(q.map.u),v:V(q.map.v),n:V(q.map.n)};
+    if(q.bought&&q.bought.center){ q.bought.center=P(q.bought.center); q.bought.axis=V(q.bought.axis); }
+    if(q.pins) q.pins=q.pins.map(x=>Object.assign({},x,{from:P(x.from),to:P(x.to)}));
+  }
+}
+// the hole a post (postW × the material) turns in, rounded up to 0.1 mm
+const pivotHole=postW=>Math.ceil((Math.hypot(postW,G.t)+0.15)*10)/10;
+// tab radius around the pivot hole on a wall L long: room for material, narrow enough to clear the other box's tabs
+// (turning about both axes at once swings the tab's round end sideways by up to √2 × its radius)
+const pivotTabR=(L,hd)=>Math.min(hd/2+1.25*G.t, (L/2-G.t-Math.max(1,G.t/2))/Math.SQRT2);
+// the narrowest box side that still has room for pivot tabs around this hole
+const pivotMinSide=hd=>Math.ceil(2*(Math.SQRT2*(hd/2+0.75*G.t)+G.t+Math.max(1,G.t/2)));
+// how far each box's end must sit from the pivot centre so tabs, cross and boxes never touch within the ranges (degrees)
+function pivotReach(sideP,sideC,bendMax,swingMax,postW){
+  const t=G.t, s=Math.max(sideP,sideC), hd=pivotHole(postW), rT=pivotTabR(Math.min(sideP,sideC),hd), over=1, clr=Math.max(0.5,+S.clr||0);
+  const th=Math.min(80,Math.abs(bendMax))*PI/180, ph=Math.min(80,Math.abs(swingMax))*PI/180, sn=Math.sin, cs=Math.cos;
+  return Math.round((clr+Math.max(rT, s/2*sn(th)+rT, (s/2+over)*sn(th)+t/2, s/2*sn(ph)+rT, (s/2+over)*sn(ph)+t/2, s/2*(sn(th)+sn(ph))/(1+cs(th)*cs(ph))))*10)/10;
+}
+const arcPts=(cx,cy,r,a0,a1,n)=>Array.from({length:n+1},(_,k)=>{ const a=a0+(a1-a0)*k/n; return [cx+r*Math.cos(a),cy+r*Math.sin(a)]; });
+const concatPts=(...l)=>l.flat();
 /* Things to buy rather than cut (dowels): identical ones are counted together.
    → [{kind, name, diameter, length, qty, label}] with sizes in mm and label in the display unit. */
 function inchFraction(mm){

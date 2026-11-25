@@ -69,7 +69,7 @@ A box type file is JSON that describes a new style of box: its parts, their size
 | Method | Result |
 | --- | --- |
 | `types.validate(type)` | `{ok, errors, warnings}`. Checks the file without building it. Each problem is `{path, message}`, where `path` is the place in the file (`parts[2].panel.edges[1]`). |
-| `types.check(type, settings = {})` | Validates, builds with these settings, and tests the parts in 3D: every finger meets a partner's gap, no two parts run into each other or overlap, and each part fits the sheet. It also follows each `dowel` through the holes it passes (see BOX-TYPES.md). Returns `{ok, stage, errors, warnings, parts, size, notes, bought}` (`parts` counts the cut parts); `stage` is `'format'`, `'build'`, `'fit'` or `'done'`. Nothing stays registered. |
+| `types.check(type, settings = {})` | Validates, builds with these settings, and tests the parts in 3D: every finger meets a partner's gap, no two parts run into each other or overlap, and each part fits the sheet. It also follows each `dowel` through the holes it passes, and checks that each pivot post sits in a tab hole with room to turn (see BOX-TYPES.md). Returns `{ok, stage, errors, warnings, parts, size, notes, bought}` (`parts` counts the cut parts); `stage` is `'format'`, `'build'`, `'fit'` or `'done'`. Nothing stays registered. |
 | `types.register(type)` | Adds the type (or replaces one with the same `id`). It then lists in `boxes.list()` and works everywhere a built-in style does: `boxes.create`, `design.compute`, layouts. Throws a `TypeError` with an `errors` list if the file has problems. |
 | `types.unregister(id)` | Removes it. |
 | `types.get(id)`, `types.list()` | A registered type file, or all of them. |
