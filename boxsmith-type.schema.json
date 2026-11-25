@@ -546,6 +546,11 @@
           "required": [
             "dividers"
           ]
+        },
+        {
+          "required": [
+            "dowel"
+          ]
         }
       ],
       "properties": {
@@ -893,6 +898,69 @@
           },
           "additionalProperties": {
             "$ref": "#/$defs/formula"
+          }
+        },
+        "dowel": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "diameter",
+            "length"
+          ],
+          "description": "A round rod you buy (a dowel or pin): drawn in 3D, listed under To buy, never cut.",
+          "not": {
+            "required": [
+              "at",
+              "position"
+            ]
+          },
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "diameter": {
+              "$ref": "#/$defs/formula"
+            },
+            "length": {
+              "$ref": "#/$defs/formula"
+            },
+            "at": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "items": {
+                    "$ref": "#/$defs/formula"
+                  }
+                }
+              ]
+            },
+            "position": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "items": {
+                    "$ref": "#/$defs/formula"
+                  }
+                }
+              ]
+            },
+            "axis": {
+              "$ref": "#/$defs/axis"
+            },
+            "count": {
+              "$ref": "#/$defs/formula"
+            }
           }
         }
       }

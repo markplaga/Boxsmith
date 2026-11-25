@@ -63,6 +63,8 @@
         inside:info.inner?{...size(info.inner),label:info.inner.label||''}:null,
         warnings:[...res.warns,...lay.warns],
         notes:[...res.notes],
+        // bought, not cut (dowels): [{kind, name, diameter, length, qty, label}], sizes in mm, qty for one box
+        bought:boughtItems(res.parts).map(b=>({...b})),
         parts:fparts.map(f=>({
           name:f.name,
           material:f.mat,
@@ -177,6 +179,43 @@
       ? {path:'',part:x.part,message:where(x)+': '+(x.also?'"'+x.also+'" and "'+x.with+'" both fill the same place.':'it runs into "'+x.with+'". Both edges have fingers in the same places; one of them should be "F" (or check where the parts are placed).')}
       : {path:'',part:x.part,message:'"'+x.part+'" and "'+x.with+'" overlap through the middle of a panel; check their "at", "u", "v" and "n", and their sizes.'});
   }
+  /* Dowels: follow each one along its axis. Wherever it is inside a part, it must be inside a hole of that
+     part wide enough for it (a 0.05 mm tolerance). A hole more than LOOSE wider than the dowel is a warning, and
+     so is a dowel that passes through no part at all. → {errors, warnings} */
+  const DOWEL_TOL=0.05, DOWEL_LOOSE=0.5;
+  function dowelReport(parts){
+    const S3=solidsOf(parts), errors=[], warnings=[], mm=x=>Math.round(x*100)/100;
+    const segDist=(q,a,b)=>{ const dx=b[0]-a[0], dy=b[1]-a[1], l=dx*dx+dy*dy, k=l?Math.max(0,Math.min(1,((q[0]-a[0])*dx+(q[1]-a[1])*dy)/l)):0; return Math.hypot(q[0]-a[0]-k*dx,q[1]-a[1]-k*dy); };
+    for(const q of parts){ const b=q.bought; if(!b||b.kind!=='dowel') continue;
+      const r=b.diameter/2, label='"'+q.name+'" ('+mm(b.diameter)+' mm dowel)';
+      const seen=new Map();   // part name → what we found there
+      const steps=Math.max(8,Math.ceil(b.length/0.25));
+      for(let i=0;i<=steps;i++){
+        const tt=-b.length/2+b.length*i/steps, P=b.center.map((c,k)=>c+b.axis[k]*tt);
+        for(const sd of S3){
+          if(P[0]<sd.lo[0]||P[1]<sd.lo[1]||P[2]<sd.lo[2]||P[0]>sd.hi[0]||P[1]>sd.hi[1]||P[2]>sd.hi[2]) continue;
+          const L3=sd.local(P); if(!(L3[2]>0&&L3[2]<sd.th)) continue;
+          const pt=[L3[0],L3[1]];
+          if(!pointIn(pt,sd.p.outline)) continue;               // beside the part, not through it
+          const name=sd.p.name; if(seen.has(name)&&seen.get(name).kind!=='ok') continue;
+          // room around the axis inside the hole it is in (nothing means solid material)
+          let room=null;
+          for(const c of sd.p.circles){ const dd=Math.hypot(pt[0]-c.x,pt[1]-c.y); if(dd<c.r) room=Math.max(room??0,c.r-dd); }
+          for(const h of sd.p.holes) if(pointIn(pt,h)){ let m=Infinity; for(let k=0;k<h.length;k++) m=Math.min(m,segDist(pt,h[k],h[(k+1)%h.length])); room=Math.max(room??0,m); }
+          if(room===null) seen.set(name,{kind:'solid'});
+          else if(room<r-DOWEL_TOL) seen.set(name,{kind:'tight',room});
+          else { const prev=seen.get(name); seen.set(name,{kind:'ok',room:Math.min(room,prev&&prev.room!==undefined?prev.room:Infinity)}); }
+        }
+      }
+      if(!seen.size) warnings.push({path:b.path,part:q.name,message:label+' doesn\'t pass through any part. Check its "at" and "axis".'});
+      for(const [name,f] of seen){
+        if(f.kind==='solid') errors.push({path:b.path,part:q.name,message:label+' runs into solid material in "'+name+'": there is no hole where it passes. Move the dowel, or add a hole for it.'});
+        else if(f.kind==='tight') errors.push({path:b.path,part:q.name,message:label+' won\'t go through "'+name+'": the hole there leaves room for only '+mm(2*f.room)+' mm. Make the hole bigger or the dowel smaller, or centre the dowel in the hole.'});
+        else if(2*f.room>b.diameter+DOWEL_LOOSE) warnings.push({path:b.path,part:q.name,message:label+' is loose in "'+name+'": the hole is '+mm(2*f.room)+' mm across. Fine for a pivot that turns; make the hole smaller for a snug pin.'});
+      }
+    }
+    return {errors,warnings};
+  }
   const builtInTypes=API.boxes.list().filter(x=>!x.custom).map(x=>x.id);
   API.types.check=function(def,settings={},options={}){
     const v=API.types.validate(def);
@@ -195,9 +234,10 @@
           if(!(b.w>0&&b.h>0)) errors.push({path:'',part:p.name,message:'"'+p.name+'" has no area.'});
           else if(s[0]>sizes[0]||s[1]>sizes[1]) warnings.push({path:'',part:p.name,message:'"'+p.name+'" ('+Math.round(b.w)+' × '+Math.round(b.h)+' mm) doesn\'t fit the '+sizes[0]+' × '+sizes[1]+' mm sheet.'}); }
         if(options.joints!==false) errors.push(...jointReport(res.parts));
+        if(options.dowels!==false){ const dr=dowelReport(res.parts); errors.push(...dr.errors); warnings.push(...dr.warnings); }
         for(const w of res.warns) warnings.push({path:'',message:w});
         const info=res.info||{};
-        return {ok:!errors.length,stage:errors.length?'fit':'done',errors,warnings,parts:res.parts.length,size:{W:round(info.W),D:round(info.D),H:round(info.H)},notes:res.notes};
+        return {ok:!errors.length,stage:errors.length?'fit':'done',errors,warnings,parts:res.parts.filter(p=>!p.noCut).length,bought:boughtItems(res.parts).map(b=>({...b})),size:{W:round(info.W),D:round(info.D),H:round(info.H)},notes:res.notes};
       });
     } finally { if(prev) API.types.register(prev); else API.types.unregister(def.id); }
   };

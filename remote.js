@@ -421,7 +421,7 @@ const Remote=(()=>{
         if(a.settings!==undefined&&(!a.settings||typeof a.settings!=='object')) return 'settings must be an object of box settings.';
         const settings=Object.assign({},a.settings||{}); delete settings.type;
         let r; try{ r=Boxsmith.types.check(a.type,settings); }catch(e){ r={ok:false,stage:'build',errors:[{path:'',message:e.message}],warnings:[]}; }
-        const reply={t:'typeCheck',op,id:a.type.id,tag:a.tag===undefined?undefined:String(a.tag).slice(0,100),settings:a.settings||{},ok:r.ok,stage:r.stage,errors:r.errors,warnings:r.warnings,parts:r.parts,size:r.size,text:Boxsmith.types.explain((r.errors||[]).concat(r.warnings||[]))};
+        const reply={t:'typeCheck',op,id:a.type.id,tag:a.tag===undefined?undefined:String(a.tag).slice(0,100),settings:a.settings||{},ok:r.ok,stage:r.stage,errors:r.errors,warnings:r.warnings,parts:r.parts,size:r.size,bought:r.bought,text:Boxsmith.types.explain((r.errors||[]).concat(r.warnings||[]))};
         if(op==='typeAdd'){
           if(r.stage==='format') reply.added=false;
           else if(!r.ok&&!a.force) { reply.added=false; reply.text=(reply.text?reply.text+'\n':'')+'Not added because the parts don\'t fit together. Fix the problems, or send force: true to add it anyway.'; }

@@ -117,7 +117,7 @@ A param can reuse a standard Boxsmith setting by giving its key and a matching k
 
 ## Parts
 
-Each entry in `parts` holds exactly one of `box`, `panel` or `dividers`. It can also have:
+Each entry in `parts` holds exactly one of `box`, `panel`, `dividers` or `dowel`. It can also have:
 
 - `"when": formula`: the part is only made when this is true.
 - `"for": {"name": list, …}`: the part is made once for each value (for several names, once for each combination, the first name changing slowest). A list can be written out (`[0, 1, 2]`) or come from a formula (`"range(cols)"`). At most 2000 parts.
@@ -176,6 +176,27 @@ Slotted dividers that fit inside a space, the same as the built-in Dividers opti
 | `cols`, `rows` | How many compartments across and front to back (default 1). |
 | `height` | Divider height as a percentage of `h` (default 100). |
 | `prefix` | Text before each divider name. |
+
+### `dowel`: a round rod you buy
+
+A dowel, pin or rod that goes through holes in the parts: a pivot, an axle, a hinge pin. It is drawn in 3D as a cylinder (it moves apart with the others in the exploded view) and listed under **To buy** on the page, on the assembly card, in `design.compute` and in the check result. It is never cut, so it isn't on the sheets or in the SVG and DXF files.
+
+| Field | What it is |
+| --- | --- |
+| `diameter` | Required. A formula like any other size, so it can follow a setting: `"holeD - 0.1"`. |
+| `length` | Required. `"W + 2*t"`, say. |
+| `at` | Its centre point, default `[0, 0, 0]`. (`position` means the same.) |
+| `axis` | The way it points: `X`, `-X`, `Y`, `-Y`, `Z`, `-Z`, or a formula giving a list (it needn't be one unit long). Default `X`. |
+| `name` | What it is called in the To buy list, default `"Dowel"`. Text with formulas, like `"Pin {i+1}"`. |
+| `count` | How many to list under To buy for this one (default 1), for spares or ones you don't draw. Use `for` to draw several. |
+
+```json
+{ "dowel": { "name": "Pivot", "diameter": "holeD - 0.1", "length": "W + 2*t", "at": ["W/2", "D/2", "H/2"], "axis": "X" } }
+```
+
+Identical dowels are counted together: `Dowel, 1/8" (3.2 mm) × 86 mm`, qty 2. Common inch sizes are named as fractions.
+
+The check follows each dowel along its axis. Wherever it is inside a part, it must be inside a hole (a `circle`, `slot`, `rect` or any other hole) with room for it, within 0.05 mm; if it passes through solid material or a hole that is too small, that is an error. A hole more than 0.5 mm wider than the dowel, or a dowel that passes through no part, is a warning. Dowels are left out of the finger-joint and overlap checks.
 
 **Slots for a panel's tabs.** A `fingers` hole that is one thickness tall with one `"f"` edge, like `{"fingers": {"size": [L, "t"], "edges": ["f", "e", "e", "e"], "at": [x, y]}}`, is exactly the row of finger tabs of an `"f"` edge of length `L`. So it is the slot row for a panel whose `"f"` edge of the same length passes through the wall there. [`box-with-shelf.json`](types/box-with-shelf.json) does this.
 

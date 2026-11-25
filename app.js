@@ -328,6 +328,24 @@ function generateCustom(def){
           if(b.text&&S.text){ const bb=bbox(outline); q.texts.push({x:b.text.x!==undefined?numF(b.text.x,e,p+'.text.x'):bb.x+bb.w/2,y:b.text.y!==undefined?numF(b.text.y,e,p+'.text.y'):bb.y+bb.h/2,size:S.textSize,text:S.text,rot:b.text.rot===180?180:0,main:true}); }
           parts.push(q);
         }
+        else if(c.dowel){ const b=c.dowel, p=path+'.dowel';
+          // a round rod you buy: a round outline stretched along its axis, so it draws as a cylinder everywhere
+          const d=numF(b.diameter,e,p+'.diameter'), L=numF(b.length,e,p+'.length');
+          if(!(d>0)) throw new TypeBuildError(p+'.diameter','must be bigger than 0 (it works out to '+Math.round(d*100)/100+').');
+          if(!(L>0)) throw new TypeBuildError(p+'.length','must be bigger than 0 (it works out to '+Math.round(L*100)/100+').');
+          const cp=b.position!==undefined?'.position':'.at', ctr=vecF(b.position??b.at??[0,0,0],e,p+cp,3);
+          let ax=axisF(b.axis||'X',e,p+'.axis'); const len=Math.hypot(...ax);
+          if(!(len>1e-9)) throw new TypeBuildError(p+'.axis','must point somewhere (it works out to [0, 0, 0]).');
+          ax=ax.map(x=>x/len);
+          const count=b.count===undefined?1:numF(b.count,e,p+'.count');
+          if(!(Number.isInteger(count)&&count>=1)) throw new TypeBuildError(p+'.count','must be a whole number, 1 or more (it works out to '+count+').');
+          const ref=Math.abs(ax[0])<0.9?[1,0,0]:[0,1,0], cr=(a,c)=>[a[1]*c[2]-a[2]*c[1],a[2]*c[0]-a[0]*c[2],a[0]*c[1]-a[1]*c[0]];
+          let u=cr(ax,ref); const ul=Math.hypot(...u); u=u.map(x=>x/ul); const v=cr(ax,u);
+          const o=ctr.map((x,k)=>x-ax[k]*L/2), r=d/2, segs=32;
+          const outline=Array.from({length:segs},(_,k)=>[r*Math.cos(2*PI*k/segs),r*Math.sin(2*PI*k/segs)]);
+          const name=b.name!==undefined?at(p+'.name',()=>T.template(b.name,e,host,counters)):'Dowel';
+          parts.push(part(name,outline,{noCut:true,noKerf:true,th:L,map:mapOf(o,u,v,ax),bought:{kind:'dowel',diameter:d,length:L,count,center:ctr,axis:ax,path:p}}));
+        }
         else if(c.dividers){ const b=c.dividers, p=path+'.dividers';
           const [ox,oy,oz]=vecF(b.at,e,p+'.at',3), [wi,di,hi]=vecF(b.size,e,p+'.size',3);
           parts.push(...makeDividers(ox,oy,oz,wi,di,hi,b.cols===undefined?1:numF(b.cols,e,p+'.cols'),b.rows===undefined?1:numF(b.rows,e,p+'.rows'),b.height===undefined?100:numF(b.height,e,p+'.height'),b.prefix?at(p+'.prefix',()=>T.template(b.prefix,e,host,counters)):''));
@@ -340,6 +358,30 @@ function generateCustom(def){
       const r={}; for(const [kk,vv] of Object.entries(def.info[k])) r[kk]=kk==='label'?vv:numF(vv,env,'info.'+k+'.'+kk); info[k]=r; }
     return {parts,warns,notes,info};
   } finally { G.ts=savedTs; }
+}
+/* Things to buy rather than cut (dowels): identical ones are counted together.
+   → [{kind, name, diameter, length, qty, label}] with sizes in mm and label in the display unit. */
+function inchFraction(mm){
+  for(const den of [2,4,8,16]){ const num=Math.round(mm/25.4*den); if(num>0&&Math.abs(num*25.4/den-mm)<=0.05){   // common stock sizes only
+    const whole=Math.floor(num/den), rest=num%den, g=(a,b)=>b?g(b,a%b):a, k=g(rest,den);
+    return (whole?whole+(rest?' ':''):'')+(rest?(rest/k)+'/'+(den/k):'')+'"'; } }
+  return null;
+}
+// "To buy" table (empty when there is nothing to buy); qty is boxes being made
+function boughtTable(items,qty=1,card=false){
+  if(!items.length) return '';
+  return (card?'<h2>To buy</h2>':'<h4 style="margin:12px 0 4px">To buy (not cut)</h4>')+'<table><tr><th>Item</th><th>For</th><th>Qty</th></tr>'
+    +items.map(b=>'<tr><td>'+esc(b.label)+'</td><td>'+esc(b.name)+'</td><td class="m">'+(b.qty*qty)+'</td></tr>').join('')+'</table>';
+}
+function boughtItems(parts){
+  const map=new Map();
+  for(const p of parts){ const b=p.bought; if(!b) continue;
+    const d=Math.round(b.diameter*100)/100, L=Math.round(b.length*10)/10, key=b.kind+'|'+d+'|'+L;
+    const e=map.get(key); if(e){ e.qty+=b.count; continue; }
+    const frac=inchFraction(b.diameter), dia=frac?frac+' ('+(Math.round(b.diameter*10)/10)+' mm)':fmt(b.diameter);
+    map.set(key,{kind:b.kind,name:p.name,diameter:d,length:L,qty:b.count,label:'Dowel, '+dia+' × '+fmt(b.length)});
+  }
+  return [...map.values()];
 }
 // A custom type's own setting (not one of Boxsmith's standard ones): from S.typeParams, else its default.
 function paramValue(def,key){
@@ -1929,6 +1971,7 @@ function cardHTML(noImage){
    +'<h1>'+esc(title)+'</h1><p class="sub">'+esc(ty.name)+' · '+fmt(I.W)+' × '+fmt(I.D)+' × '+fmt(I.H)+' · '+fmt(S.t)+' material</p>'
    +(img?'<img src="'+img+'" alt="Finished box">':'')
    +'<h2>In this kit</h2><table><tr><th>Part</th><th>Size</th></tr>'+fparts.map(f=>'<tr><td>'+esc(f.name)+'</td><td>'+fmt(f.bb.w)+' × '+fmt(f.bb.h)+'</td></tr>').join('')+'</table>'
+   +boughtTable(boughtItems(res.parts),1,true)
    +'<h2>Put it together</h2><ol><li>Pop each part out of the sheet. If there are small tabs holding it, snap or sand them off.</li>'+res.notes.map(n=>'<li>'+esc(n)+'</li>').join('')+'<li>Dry-fit everything first. Then glue (wood glue for wood, acrylic cement for acrylic) and hold the corners with tape while it sets.</li></ol>'
    +'<p class="foot">Made with Boxsmith.</p></body></html>';
 }
@@ -1985,7 +2028,8 @@ function update(resetView){
     +res.notes.map(n=>'<li>'+esc(n)+'</li>').join('')
     +(S.cols>1||S.rows>1?(['open','liftoff','split','sliding','hinged','drawer','pencil'].includes(S.type)?'<li>Dividers slot together egg-crate style: the ↔ pieces drop onto the ↕ pieces. They sit loose so you can lift them out.</li>':''):'')
     +(S.holdTabs>0?'<li>Kit mode: parts are held in the sheet by small tabs. Snap them free and sand the nubs.</li>':'')
-    +'<li>Glue: wood glue for ply/MDF, Weld-On or acrylic cement for acrylic. Tape corners while it sets.</li></ol><table><tr><th>Part</th><th>Cut size</th></tr>'+rows+'</table>';
+    +'<li>Glue: wood glue for ply/MDF, Weld-On or acrylic cement for acrylic. Tape corners while it sets.</li></ol><table><tr><th>Part</th><th>Cut size</th></tr>'+rows+'</table>'
+    +boughtTable(boughtItems(res.parts),qtyOf());
   $('#cardBtn').addEventListener('click',()=>{ trackEvent('download',{format:'card'}); saveFile(baseName()+'-assembly-card.html', cardHTML()); });
   const warns=[...res.warns,...lay.warns];
   $('#warns').innerHTML=warns.map(w=>'<div class="warn">'+esc(w)+'</div>').join('');

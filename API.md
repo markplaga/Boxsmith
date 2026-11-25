@@ -69,7 +69,7 @@ A box type file is JSON that describes a new style of box: its parts, their size
 | Method | Result |
 | --- | --- |
 | `types.validate(type)` | `{ok, errors, warnings}`. Checks the file without building it. Each problem is `{path, message}`, where `path` is the place in the file (`parts[2].panel.edges[1]`). |
-| `types.check(type, settings = {})` | Validates, builds with these settings, and tests the parts in 3D: every finger meets a partner's gap, no two parts run into each other or overlap, and each part fits the sheet. Returns `{ok, stage, errors, warnings, parts, size, notes}`; `stage` is `'format'`, `'build'`, `'fit'` or `'done'`. Nothing stays registered. |
+| `types.check(type, settings = {})` | Validates, builds with these settings, and tests the parts in 3D: every finger meets a partner's gap, no two parts run into each other or overlap, and each part fits the sheet. It also follows each `dowel` through the holes it passes (see BOX-TYPES.md). Returns `{ok, stage, errors, warnings, parts, size, notes, bought}` (`parts` counts the cut parts); `stage` is `'format'`, `'build'`, `'fit'` or `'done'`. Nothing stays registered. |
 | `types.register(type)` | Adds the type (or replaces one with the same `id`). It then lists in `boxes.list()` and works everywhere a built-in style does: `boxes.create`, `design.compute`, layouts. Throws a `TypeError` with an `errors` list if the file has problems. |
 | `types.unregister(id)` | Removes it. |
 | `types.get(id)`, `types.list()` | A registered type file, or all of them. |
@@ -112,6 +112,7 @@ Needs the full API (Node with `boxsmith-node.js`, or the page).
 
 - `name`, `type`, `settings` (the full settings used), `outside` and `inside` sizes (`{ W, D, H }`, with `inside` null when the design has none).
 - `warnings` (the same messages the page shows) and `notes` (assembly notes).
+- `bought`: things to buy rather than cut, from a type's `dowel` parts: `[{ kind: 'dowel', name, diameter, length, qty, label }]`, sizes in mm, `qty` for one box, `label` like `Dowel, 1/8" (3.2 mm) × 86 mm`. Empty for the built-in styles.
 - `parts`: `{ name, material, thickness, width, height, holes }` for one box.
 - `sheets`: `{ index, material, thickness, label, width, height, parts, svg, dxf }`, packed with your bed size, grain, gap and quantity.
 - `stats`: `{ parts, sheets, bedUsePercent, cutLengthMm, laserSeconds }`.
@@ -264,7 +265,7 @@ The **📱 Remote** button in Arrange boxes links a second screen to the one sho
 | `color`, `nocolor` | `{ hex: '#rrggbb' }` | Colors the selected box or part. |
 | `design`, `add` | `{ index, settings, types? }` / `{ settings, types? }` | Replaces a box's design in place, or adds a new box. `types` can carry the type files a custom style needs (`{ id: type }`); they are checked and kept in My types. |
 | `typeFormat` | `{ reference?: true, examples?: false }` | Replies `{"t":"typeFormat", format, version, schema, standardKeys, builtInStyles, reference, examples?}`: the JSON Schema, the setting keys a param can reuse, and the full format reference (BOX-TYPES.md) unless `reference: false`. `examples: true` adds the four example type files. Everything an AI needs to write a type. |
-| `typeCheck` | `{ type, settings?, tag? }` | Checks a type file and builds it in 3D at those settings (default: Boxsmith's defaults, 120 × 90 × 70 mm) without keeping it. Replies `{"t":"typeCheck", tag, settings, ok, stage, errors, warnings, parts, size, text}`; `text` is the problems as plain lines, and `tag` (any text you send) matches replies to checks in a `batch`. The full method for an AI is in [AI-TYPE-BUILDER.md](AI-TYPE-BUILDER.md). |
+| `typeCheck` | `{ type, settings?, tag? }` | Checks a type file and builds it in 3D at those settings (default: Boxsmith's defaults, 120 × 90 × 70 mm) without keeping it. Replies `{"t":"typeCheck", tag, settings, ok, stage, errors, warnings, parts, size, bought, text}`; `text` is the problems as plain lines, and `tag` (any text you send) matches replies to checks in a `batch`. The full method for an AI is in [AI-TYPE-BUILDER.md](AI-TYPE-BUILDER.md). |
 | `typeAdd` | `{ type, settings?, use?, force? }` | Checks the type, then adds it to My types on the model screen (`added: true`, `saved`). A type whose parts don't fit together is only added with `force: true`. `use: true` also switches the sidebar to it. Replies like `typeCheck`. Then `add` boxes with `settings: { type: id, … }`. |
 | `typeList` | none | Replies `{"t":"types","types":[{ id, name, description, saved, typeVersion, params }]}`. |
 | `typeRemove` | `{ id }` | Removes a custom style from My types. |

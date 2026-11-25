@@ -345,6 +345,7 @@ function labShow(r){
      +(ok&&r.parts?' — '+r.parts+' parts, '+fmt(r.size.W)+' × '+fmt(r.size.D)+' × '+fmt(r.size.H):'')+'</div>'
      +(r.errors&&r.errors.length?'<ul class="labErr">'+r.errors.slice(0,30).map(li).join('')+(r.errors.length>30?'<li>…and '+(r.errors.length-30)+' more</li>':'')+'</ul>':'')
      +(r.warnings&&r.warnings.length?'<ul class="labWarn">'+r.warnings.slice(0,10).map(li).join('')+'</ul>':'')
+     +(ok&&r.bought&&r.bought.length?'<p class="hint">To buy: '+r.bought.map(b=>esc(b.label)+(b.qty>1?' × '+b.qty:'')).join('; ')+'</p>':'')
      +(ok?'<p class="hint">Checked at the size and material in the sidebar. Try a few other sizes and settings too.</p>':'');
   $('#labCopy').classList.toggle('hidden',!(r.errors&&r.errors.length)&&!(r.warnings&&r.warnings.length));
 }

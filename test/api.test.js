@@ -640,3 +640,35 @@ test('animate: freeCamera ignores camera keys and keeps the view\'s projection (
   assert.equal(Anim.validateAnimation({ keyframes: keys, freeCamera: true, projection: 'perspective' }, 1).anim.projection, 'perspective');
   assert.match(Anim.validateAnimation({ keyframes: keys, freeCamera: 'yes' }, 1).error, /freeCamera must be true or false/);
 });
+
+test('box types: dowels follow settings, are listed to buy, are never cut, and are checked in their holes (#27)', () => {
+  const pin = () => ({ format: 'boxsmith-type', version: 1, id: 'pin-test', name: 'Pin test',
+    params: [{ key: 'holeD', label: 'Pivot hole', kind: 'length', default: 3.3, min: 2, max: 10 }],
+    parts: [
+      { for: { side: [0, 1] }, panel: { name: "Cheek {side ? 'R' : 'L'}", size: ['D', 'H'], at: ['side ? W - t : 0', 0, 'H'], u: 'Y', v: '-Z', n: 'X',
+        holes: [{ circle: ['D/2', 'H/2', 'holeD/2'] }] } },
+      { dowel: { name: 'Pivot', diameter: 'holeD - 0.1', length: 'W + 6', at: ['W/2', 'D/2', 'H/2'], axis: 'X' } }] });
+  assert.equal(B.types.validate(pin()).ok, true);
+  B.types.register(pin());
+  try {
+    const d = B.design.compute({ type: 'pin-test', W: 80 }, { dxf: true });
+    assert.deepEqual(d.parts.map(p => p.name), ['Cheek L', 'Cheek R'], 'the dowel is not a cut part');
+    assert.ok(!d.sheets.some(s => /Pivot/.test(s.svg) || /Pivot/.test(s.dxf)), 'and not in SVG or DXF');
+    assert.deepEqual(d.bought, [{ kind: 'dowel', name: 'Pivot', diameter: 3.2, length: 86, qty: 1, label: 'Dowel, 1/8" (3.2 mm) × 86 mm' }]);
+    const big = B.design.compute({ type: 'pin-test', typeParams: { 'pin-test': { holeD: 6 } } }, { svg: false, dxf: false, card: false });
+    assert.equal(big.bought[0].diameter, 5.9, 'holeD drives the dowel');
+    assert.equal(B.design.compute({ type: 'closed' }, { svg: false, dxf: false, card: false }).bought.length, 0);
+  } finally { B.types.unregister('pin-test'); }
+  const good = B.types.check(pin());
+  assert.equal(good.ok, true, JSON.stringify(good.errors)); assert.equal(good.parts, 2); assert.equal(good.bought[0].qty, 1);
+  const off = pin(); off.parts[1].dowel.at = ['W/2', 'D/2 + 10', 'H/2'];
+  assert.ok(B.types.check(off).errors.some(e => /runs into solid material in "Cheek L"/.test(e.message)));
+  const tight = pin(); tight.parts[1].dowel.diameter = 'holeD + 0.5';
+  assert.ok(B.types.check(tight).errors.some(e => /won't go through "Cheek R"/.test(e.message)));
+  const loose = pin(); loose.parts[1].dowel.diameter = 'holeD - 1.5';
+  const lr = B.types.check(loose); assert.equal(lr.ok, true); assert.ok(lr.warnings.some(w => /is loose in/.test(w.message)));
+  const miss = pin(); miss.parts[1].dowel.at = ['W/2', 'D/2', 'H*3'];
+  assert.ok(B.types.check(miss).warnings.some(w => /doesn't pass through any part/.test(w.message)));
+  const both = pin(); both.parts[1].dowel.position = [0, 0, 0];
+  assert.equal(B.types.validate(both).ok, false, 'at or position, not both');
+});

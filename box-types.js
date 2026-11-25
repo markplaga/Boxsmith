@@ -2,7 +2,7 @@
 
 /* Boxsmith box type files: the format, its formula language, and the structural checks.
    A box type file is plain JSON (format "boxsmith-type", version 1). It says what a box is made of
-   (finger-jointed boxes, flat panels, dividers), with sizes and positions written as formulas, and
+   (finger-jointed boxes, flat panels, dividers, and dowels to buy), with sizes and positions written as formulas, and
    which settings the user can change. It never contains code: formulas are parsed by the small
    language below and can only use the names and functions listed here, so a type file from anyone
    is safe to open. The geometry itself is built by app.js (generateCustom) with Boxsmith's own joint
@@ -251,7 +251,7 @@
         for(const k of ['inner','hole']) if(def.info[k]!==undefined){ const v=def.info[k]; if(!isRecord(v)) err('info.'+k,'must be {"W":…, "D":…, "H":…}.'); else for(const [kk,vv] of Object.entries(v)) if(kk==='label'){ if(typeof vv!=='string') err('info.'+k+'.label','must be text.'); } else checkF('info.'+k+'.'+kk,vv); } }
     }
     // parts
-    if(!Array.isArray(def.parts)||!def.parts.length) err('parts','must list at least one part (a box, a panel or dividers).');
+    if(!Array.isArray(def.parts)||!def.parts.length) err('parts','must list at least one part (a box, a panel, dividers or a dowel).');
     else def.parts.forEach((c,i)=>checkComponent('parts['+i+']',c));
     function checkEdge(path,e){ if(typeof e==='string'){ if(EDGES.includes(e)) return; checkF(path,e); return; } if(Array.isArray(e)){ vec(path,e,e.length); return; } err(path,'must be "e" (plain), "f" (fingers), "F" (their partner), or a formula giving one of those or a list of points.'); }
     function checkHole(path,h){
@@ -269,10 +269,10 @@
     function checkHoles(path,hs){ if(typeof hs==='string'){ checkF(path,hs); return; } if(!Array.isArray(hs)){ err(path,'must be a list of holes, or a formula.'); return; } hs.forEach((h,j)=>checkHole(path+'['+j+']',h)); }
     function checkAxis(path,a){ if(typeof a==='string'&&AXES[a]) return; vec(path,a,3); }
     function checkComponent(path,c){
-      if(!isRecord(c)){ err(path,'must be an object with one of: box, panel, dividers.'); return; }
-      const kinds=['box','panel','dividers'].filter(k=>c[k]!==undefined);
-      if(kinds.length!==1){ err(path,'must have exactly one of: box, panel, dividers.'); return; }
-      for(const k of Object.keys(c)) if(!['box','panel','dividers','when','for','let'].includes(k)) err(path+'.'+k,'is not allowed here (allowed: box, panel, dividers, when, for, let).');
+      if(!isRecord(c)){ err(path,'must be an object with one of: box, panel, dividers, dowel.'); return; }
+      const kinds=['box','panel','dividers','dowel'].filter(k=>c[k]!==undefined);
+      if(kinds.length!==1){ err(path,'must have exactly one of: box, panel, dividers, dowel.'); return; }
+      for(const k of Object.keys(c)) if(!['box','panel','dividers','dowel','when','for','let'].includes(k)) err(path+'.'+k,'is not allowed here (allowed: box, panel, dividers, dowel, when, for, let).');
       if(c.when!==undefined) checkF(path+'.when',c.when);
       if(c.for!==undefined){ if(!isRecord(c.for)||!Object.keys(c.for).length) err(path+'.for','must be {"name": list or formula, …}.'); else for(const [k,v] of Object.entries(c.for)){ if(!KEY.test(k)) err(path+'.for.'+k,'is not a usable name.'); if(Array.isArray(v)) v.forEach((x,j)=>checkF(path+'.for.'+k+'['+j+']',x)); else checkF(path+'.for.'+k,v); } }
       if(c.let!==undefined){ if(!isRecord(c.let)) err(path+'.let','must be an object of name: formula.'); else for(const [k,v] of Object.entries(c.let)){ if(!KEY.test(k)) err(path+'.let.'+k,'is not a usable name.'); checkF(path+'.let.'+k,v); } }
@@ -302,6 +302,16 @@
         if(b.material!==undefined&&!['wood','acrylic'].includes(b.material)) err(p+'.material','must be "wood" or "acrylic".');
         if(b.role!==undefined&&typeof b.role!=='string') err(p+'.role','must be text.');
         if(b.text!==undefined&&(!isRecord(b.text)||(b.text.rot!==undefined&&![0,180].includes(b.text.rot)))) err(p+'.text','must be {"rot"?: 0 or 180, "x"?, "y"?}.');
+      }
+      else if(k==='dowel'){
+        // a round rod you buy: drawn in 3D, listed to buy, never cut
+        allow(['name','diameter','length','at','position','axis','count']);
+        if(b.name!==undefined){ checkT(p+'.name',b.name); if(typeof b.name!=='string'||!b.name.trim()) err(p+'.name','must be text.'); }
+        checkF(p+'.diameter',b.diameter); checkF(p+'.length',b.length);
+        if(b.at!==undefined&&b.position!==undefined) err(p,'give the centre as "at" or "position", not both.');
+        vec(p+(b.position!==undefined?'.position':'.at'),b.position??b.at??[0,0,0],3);
+        checkAxis(p+'.axis',b.axis??'X');
+        if(b.count!==undefined) checkF(p+'.count',b.count);
       }
       else {
         allow(['at','size','cols','rows','height','prefix']);
