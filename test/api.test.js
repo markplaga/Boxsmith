@@ -627,3 +627,16 @@ test('box types: a new style with a panel through slotted walls fits, and a misp
   const r = B.types.check(def);
   assert.equal(r.ok, false); assert.ok(r.errors.some(e => /Right side/.test(e.message) && /Shelf/.test(e.message)));
 });
+
+test('animate: freeCamera ignores camera keys and keeps the view\'s projection (#25)', () => {
+  const keys = [{ t: 0, boxes: { 0: { position: [0, 0, 0] } } }, { t: 2, boxes: { 0: { position: [10, 0, 0] } } }];
+  const cam = [{ t: 0, yaw: 10 }, { t: 2, yaw: 90 }];
+  const plain = Anim.validateAnimation({ keyframes: keys, camera: cam }, 1);
+  assert.equal(plain.anim.freeCamera, false);
+  assert.equal(plain.anim.projection, 'ortho', 'files without the field are unchanged');
+  const free = Anim.validateAnimation({ keyframes: keys, camera: cam, freeCamera: true }, 1);
+  assert.equal(free.anim.freeCamera, true);
+  assert.equal(free.anim.projection, null, 'no projection named: the view keeps its own');
+  assert.equal(Anim.validateAnimation({ keyframes: keys, freeCamera: true, projection: 'perspective' }, 1).anim.projection, 'perspective');
+  assert.match(Anim.validateAnimation({ keyframes: keys, freeCamera: 'yes' }, 1).error, /freeCamera must be true or false/);
+});

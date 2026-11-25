@@ -1450,17 +1450,29 @@ function render(){
 }
 // interaction
 (function(){
-  const ptrs=new Map(); let last=null, pinch0=null, zoom0=1;
+  const ptrs=new Map(); let last=null, pinch0=null, zoom0=1, mid0=null, panning=false;
   let down=null;
-  cv.addEventListener('pointerdown',e=>{ down=[e.clientX,e.clientY]; cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId,[e.clientX,e.clientY]); last=[e.clientX,e.clientY]; if(ptrs.size===1&&e.button===0&&layoutDragStart(e)) last=null; if(ptrs.size===2){ layoutDragEnd(); down=null; const [a,b]=[...ptrs.values()]; pinch0=Math.hypot(a[0]-b[0],a[1]-b[1]); zoom0=view.zoom; } });
+  // while an animation plays full screen (free camera), taps don't select boxes or leave the full view
+  const cinemaOn=()=>document.body.classList.contains('cinema');
+  // move the look-at point so the scene follows the pointer by (dx, dy) screen pixels
+  const panBy=(dx,dy)=>{ const g=cameraGeometry(), R=(g.CAMV&&g.CAMV.right)||g.right, U=(g.CAMV&&g.CAMV.up)||g.up;
+    view.pan=view.pan.map((v,i)=>v-R[i]*dx/g.scale+U[i]*dy/g.scale); };
+  const midOf=()=>{ const [a,b]=[...ptrs.values()]; return [(a[0]+b[0])/2,(a[1]+b[1])/2]; };
+  cv.addEventListener('contextmenu',e=>e.preventDefault());   // right-drag pans
+  cv.addEventListener('pointerdown',e=>{ down=[e.clientX,e.clientY]; cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId,[e.clientX,e.clientY]); last=[e.clientX,e.clientY];
+    panning=e.pointerType==='mouse'&&(e.button===2||e.button===1||e.shiftKey);
+    if(ptrs.size===1&&e.button===0&&!panning&&layoutDragStart(e)) last=null;
+    if(ptrs.size===2){ layoutDragEnd(); down=null; const [a,b]=[...ptrs.values()]; pinch0=Math.hypot(a[0]-b[0],a[1]-b[1]); zoom0=view.zoom; mid0=midOf(); } });
   cv.addEventListener('pointermove',e=>{ if(!ptrs.has(e.pointerId)) return; ptrs.set(e.pointerId,[e.clientX,e.clientY]);
-    if(ptrs.size===2&&pinch0){ const [a,b]=[...ptrs.values()]; view.zoom=Math.max(0.3,Math.min(5,zoom0*Math.hypot(a[0]-b[0],a[1]-b[1])/pinch0)); render(); return; }
+    if(ptrs.size===2&&pinch0){ const [a,b]=[...ptrs.values()], m=midOf(); view.zoom=Math.max(0.3,Math.min(5,zoom0*Math.hypot(a[0]-b[0],a[1]-b[1])/pinch0));
+      if(mid0){ panBy(m[0]-mid0[0],m[1]-mid0[1]); } mid0=m; render(); return; }   // two fingers: pinch zooms, moving them pans
     if(down && Math.hypot(e.clientX-down[0],e.clientY-down[1])>=6) down=null;
     if(layoutDragMove(e)) return;
+    if(last&&panning){ panBy(e.clientX-last[0],e.clientY-last[1]); last=[e.clientX,e.clientY]; render(); return; }
     if(last){ view.yaw-=(e.clientX-last[0])*0.01; view.pitch=Math.max(-1.45,Math.min(1.45,view.pitch+(e.clientY-last[1])*0.01)); last=[e.clientX,e.clientY]; render(); } });
   let tap0=null;
-  const up=e=>{ layoutDragEnd(); if(e.type==='pointerup' && e.pointerType==='touch' && down && ptrs.size===1 && Math.hypot(e.clientX-down[0],e.clientY-down[1])<8){ const now=performance.now(); if(tap0 && now-tap0.t<350 && Math.hypot(e.clientX-tap0.x,e.clientY-tap0.y)<30 && maximizedView()){ tap0=null; setMax(false); down=null; ptrs.delete(e.pointerId); if(ptrs.size<2) pinch0=null; last=null; return; } tap0={t:now,x:e.clientX,y:e.clientY}; }
-    if(e.type==='pointerup' && down && Math.hypot(e.clientX-down[0],e.clientY-down[1])<6 && ptrs.size===1) pick3D(e); down=null; ptrs.delete(e.pointerId); if(ptrs.size<2) pinch0=null; last=ptrs.size?[...ptrs.values()][0]:null; };
+  const up=e=>{ layoutDragEnd(); if(e.type==='pointerup' && e.pointerType==='touch' && down && ptrs.size===1 && Math.hypot(e.clientX-down[0],e.clientY-down[1])<8 && !cinemaOn()){ const now=performance.now(); if(tap0 && now-tap0.t<350 && Math.hypot(e.clientX-tap0.x,e.clientY-tap0.y)<30 && maximizedView()){ tap0=null; setMax(false); down=null; ptrs.delete(e.pointerId); if(ptrs.size<2) pinch0=null; last=null; return; } tap0={t:now,x:e.clientX,y:e.clientY}; }
+    if(e.type==='pointerup' && down && Math.hypot(e.clientX-down[0],e.clientY-down[1])<6 && ptrs.size===1 && !panning && !cinemaOn()) pick3D(e); down=null; ptrs.delete(e.pointerId); if(ptrs.size<2){ pinch0=null; mid0=null; } if(!ptrs.size) panning=false; last=ptrs.size?[...ptrs.values()][0]:null; };
   cv.addEventListener('pointerup',up); cv.addEventListener('pointercancel',up);
   cv.addEventListener('wheel',e=>{ e.preventDefault(); view.zoom=Math.max(0.3,Math.min(5,view.zoom*Math.exp(-e.deltaY*0.0015))); render(); },{passive:false});
   cv.addEventListener('dblclick',()=>{

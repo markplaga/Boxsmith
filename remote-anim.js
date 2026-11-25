@@ -153,13 +153,16 @@
     const cameraInterp=args.cameraInterp===undefined?'linear':args.cameraInterp;
     if(cameraInterp!=='linear'&&cameraInterp!=='catmullRom') return bad("cameraInterp must be 'linear' or 'catmullRom'.");
     if(args.soundtrack!==undefined&&args.soundtrack!==null&&(typeof args.soundtrack!=='string'||!args.soundtrack||(args.soundtrack.length>2048&&!/^data:audio\//.test(args.soundtrack)))) return bad('soundtrack must be the name of an audio file (mp3, wav, …), a URL, or a data:audio URL.');
-    const projection=args.projection===undefined?'ortho':args.projection;
-    if(projection!=='ortho'&&projection!=='perspective') return bad("projection must be 'ortho' or 'perspective'.");
+    if(args.freeCamera!==undefined&&typeof args.freeCamera!=='boolean') return bad('freeCamera must be true or false.');
+    const freeCamera=args.freeCamera===true;
+    // with a free camera the view on screen is kept, its projection too, unless the animation names one
+    const projection=args.projection===undefined?(freeCamera?null:'ortho'):args.projection;
+    if(projection!==null&&projection!=='ortho'&&projection!=='perspective') return bad("projection must be 'ortho' or 'perspective'.");
     const groupInterp=args.groupInterp===undefined?'linear':args.groupInterp;
     if(groupInterp!=='linear'&&groupInterp!=='catmullRom') return bad("groupInterp must be 'linear' or 'catmullRom'.");
     for(const list of Object.values(tracks)) list.sort((a,b)=>a.t-b.t);
     for(const list of Object.values(groupTracks)) list.sort((a,b)=>a.t-b.t);
-    return {ok:true,anim:{tracks,groupTracks,groupInterp,camera,cameraInterp,projection,soundtrack:args.soundtrack||null,duration,fps,easing,loop:!!args.loop,unit}};
+    return {ok:true,anim:{tracks,groupTracks,groupInterp,camera,cameraInterp,projection,soundtrack:args.soundtrack||null,duration,fps,easing,loop:!!args.loop,unit,freeCamera}};
   }
 
   /* ---------- sampling ---------- */

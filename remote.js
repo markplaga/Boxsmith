@@ -159,7 +159,7 @@ const Remote=(()=>{
       library:librarySummary(),
       recording:recording?{fps:recording.fps,width:recording.w,height:recording.h,seconds:recording.E?Math.round(recording.slot/recording.fps*10)/10:0}:null,
       groups:groupStates(),
-      view:viewDeg(),camera:typeof cameraInfo==='function'?cameraInfo():null,anim:anim?{playing:anim.playing,t:Math.round(anim.t*1000)/1000,duration:anim.duration,loop:anim.loop,soundtrack:anim.sound?{name:anim.sound.name,state:anim.sound.state,seconds:anim.sound.seconds,error:anim.sound.error}:null}:null,exporting,
+      view:viewDeg(),camera:typeof cameraInfo==='function'?cameraInfo():null,freeCamera:!!(anim&&anim.spec.freeCamera),anim:anim?{playing:anim.playing,freeCamera:!!anim.spec.freeCamera,t:Math.round(anim.t*1000)/1000,duration:anim.duration,loop:anim.loop,soundtrack:anim.sound?{name:anim.sound.name,state:anim.sound.state,seconds:anim.sound.seconds,error:anim.sound.error}:null}:null,exporting,
       boxes:layoutBoxes.map((b,i)=>({label:layoutBoxLabel(b,i),hidden:!!b.hidden,noFrame:!!b.settings.noFrame,group:b.group||null,clash:clash.has(i),position:b.position,rotation:b.rotation,colors:b.settings.colors||{}})),
       parts:partNames(box),acrylic:!!box&&boxHasAcrylic(box),
       sides:[...$('#layoutSnapSide').options].map(o=>[o.value,o.textContent]),
@@ -401,6 +401,10 @@ const Remote=(()=>{
       case 'state': case 'hello': return;   // nothing to do: every command is answered with a fresh state
       case 'animate': return loadAnim(a);
       case 'play': return playAnim();
+      case 'freeCamera':
+        if(!anim) return 'No animation is loaded.';
+        if(typeof a.on!=='boolean') return 'on must be true or false.';
+        setFreeCamera(a.on); return;
       case 'pause': if(!anim) return 'No animation is loaded.'; pauseAnim(); return;
       case 'stop': if(!anim) return 'No animation is loaded.'; stopAnim(false); return;
       case 'seek':
@@ -612,7 +616,7 @@ const Remote=(()=>{
     const groupRest={}; for(const g of layoutGroups) groupRest[g.id]={position:g.origin.slice(),rotation:[0,0,0],scale:1};
     const moving=Object.keys(spec.groupTracks||{}), riders=[];
     layoutBoxes.forEach((b,i)=>{ if(b.group&&groupChain(b.group).some(g=>moving.includes(g.id))){ riders.push(i); if(!originals[i]){ b._animColors=undefined; originals[i]={box:b,pose:poseOf(b),rider:true}; } } });
-    anim={spec,unit:spec.unit,start,duration:spec.duration,fps:spec.fps,loop:spec.loop,t:0,playing:false,raf:0,originals,variants,view0:viewDeg(),lastFrameT:-1,groupRest,riders};
+    anim={namedProjection:a.projection!==undefined,spec,unit:spec.unit,start,duration:spec.duration,fps:spec.fps,loop:spec.loop,t:0,playing:false,raf:0,originals,variants,view0:viewDeg(),lastFrameT:-1,groupRest,riders};
     anim.sampleView=Object.assign({},anim.view0,{groupRest,resolveTarget:(target,t)=>targetPan(target,t)});
     if(curView!=='layout') document.querySelector('#tabs [data-v="layout"]')?.click();
     if(typeof a.name==='string') anim.name=a.name.slice(0,200);
@@ -652,8 +656,8 @@ const Remote=(()=>{
       if(!swapped) fastTransform(box);
     }
     if(swapped) relayoutNoFit();
-    view.projection=anim.spec.projection;   // the animation's own projection, put back on stop
-    if(s.camera){
+    if(anim.spec.projection) view.projection=anim.spec.projection;   // the animation's own projection, put back on stop
+    if(s.camera&&!anim.spec.freeCamera){        // a free camera is the user's: camera keys are ignored
       if(finite(s.camera.fov)) view.fov=s.camera.fov;
       if(finite(s.camera.yaw)) view.yaw=s.camera.yaw*PI/180;
       if(finite(s.camera.pitch)) view.pitch=s.camera.pitch*PI/180;
@@ -738,19 +742,23 @@ const Remote=(()=>{
     if(!f) return;
     try{ const p=f.call(el); fsByUs=true; if(p&&p.catch) p.catch(()=>{ fsByUs=false; }); }catch(e){ fsByUs=false; }
   }
+  // A free camera (#25): taps, drags and pinches move the camera instead of stopping; only Esc or the
+  // stop button stop, and Space pauses and resumes without leaving the full-screen view.
+  const freeCam=()=>!!(anim&&anim.spec.freeCamera);
   function enterCinema(){
-    if(cinema||exporting||typeof setMax!=='function') return;   // recordings play without it, so a tap can't cut them short
+    if(cinema||exporting||typeof setMax!=='function') return;   // exports play without it, so a tap can't cut them short
     cinema={wasMax:maximizedView()};
     goFullscreen();                       // works when this follows a click or tap
     setMax(true);
     document.body.classList.add('cinema');
+    document.body.classList.toggle('cinema-free',freeCam()); renderCinemaBar();
     if(document.activeElement&&document.activeElement.blur) document.activeElement.blur();
     requestAnimationFrame(render);
   }
   function exitCinema(){
     if(!cinema) return;
     const was=cinema.wasMax; cinema=null;
-    document.body.classList.remove('cinema');
+    document.body.classList.remove('cinema','cinema-free'); renderCinemaBar();
     if(!was) setMax(false);
     if(fsByUs&&fsElement()){ const x=document.exitFullscreen||document.webkitExitFullscreen; try{ const p=x&&x.call(document); if(p&&p.catch) p.catch(()=>{}); }catch(e){} }
     fsByUs=false;
@@ -774,6 +782,32 @@ const Remote=(()=>{
     enterCinema();
     anim.raf=requestAnimationFrame(tick);
   }
+  // Space with a free camera: pause or go on, staying full screen
+  function togglePauseInCinema(){
+    if(!anim) return;
+    if(anim.playing){ anim.playing=false; cancelAnimationFrame(anim.raf); stopSound(); }
+    else playAnim();
+    renderCinemaBar(); renderAnimBar(); sendState(true);
+  }
+  function setFreeCamera(on){
+    if(!anim) return;
+    anim.spec.freeCamera=!!on;
+    if(on&&anim.spec.projection==='ortho'&&!anim.namedProjection) anim.spec.projection=null;
+    if(!on&&!anim.spec.projection) anim.spec.projection='ortho';
+    if(cinema){ document.body.classList.toggle('cinema-free',!!on); renderCinemaBar(); }
+    renderAnimBar(); sendState(true);
+  }
+  function renderCinemaBar(){
+    let bar=$('#cinemaBar');
+    if(!cinema||!freeCam()){ if(bar) bar.remove(); return; }
+    if(!bar){
+      bar=document.createElement('div'); bar.id='cinemaBar'; bar.className='cinema-bar';
+      bar.innerHTML='<button type="button" class="btn" data-cb="stop" aria-label="Stop playback">■ Stop</button><span></span>';
+      bar.querySelector('[data-cb=stop]').addEventListener('click',e=>stopFromCinema(e));
+      document.body.appendChild(bar);
+    }
+    bar.querySelector('span').textContent=anim&&anim.playing?'Drag to orbit · two fingers or right-drag to pan · pinch or scroll to zoom · Space pauses':'Paused · Space plays';
+  }
   function pauseAnim(){ if(!anim) return; anim.playing=false; cancelAnimationFrame(anim.raf); stopSound(); settle(); exitCinema(); syncBoxLayout(); renderAnimBar(); }
   function seekAnim(t){
     t=Math.max(0,Math.min(anim.duration,t));
@@ -796,7 +830,8 @@ const Remote=(()=>{
       transformLayoutBox(box);
     }
     if(swapped) relayoutNoFit();
-    setViewDeg(anim.view0);
+    if(anim.spec.freeCamera) view.projection=anim.view0.projection||view.projection;   // keep where the user flew to
+    else setViewDeg(anim.view0);
     if(forget) anim=null; else { anim.t=0; anim.lastFrameT=-1; }
     exitCinema(); render(); syncBoxLayout(); renderAnimBar();
   }
@@ -1240,19 +1275,23 @@ const Remote=(()=>{
     if(!bar){
       bar=document.createElement('div'); bar.id='animBar'; bar.className='anim-bar';
       bar.innerHTML='<span class="anim-name"></span><button type="button" class="btn" data-ab="play"></button><button type="button" class="btn" data-ab="stop" title="Back to the start">■</button>'+
-        '<input type="range" min="0" step="0.01" aria-label="Animation time"><span class="anim-time"></span><button type="button" class="btn" data-ab="close" aria-label="Close animation" title="Stop and close">✕</button>';
+        '<input type="range" min="0" step="0.01" aria-label="Animation time"><span class="anim-time"></span>'+
+        '<button type="button" class="btn" data-ab="free" title="Free camera: move the camera yourself while it plays (camera keys are ignored)">🎥 Free camera</button>'+
+        '<button type="button" class="btn" data-ab="close" aria-label="Close animation" title="Stop and close">✕</button>';
       document.body.appendChild(bar);
       bar.addEventListener('click',e=>{
         const b=e.target.closest('[data-ab]'); if(!b||!anim) return;
         if(b.dataset.ab==='play'){ if(anim.playing) pauseAnim(); else { goFullscreen(); playAnim(); } }
         else if(b.dataset.ab==='stop') stopAnim(false);
         else if(b.dataset.ab==='close') stopAnim(true);
+        else if(b.dataset.ab==='free') setFreeCamera(!anim.spec.freeCamera);
         sendState(true); renderAnimBar();
       });
       bar.querySelector('input').addEventListener('input',e=>{ if(anim){ seekAnim(+e.target.value); renderAnimBar(); } });
     }
     bar.querySelector('.anim-name').textContent=anim.name||'Animation';
     bar.querySelector('[data-ab=play]').textContent=anim.playing?'❚❚ Pause':'▶ Play';
+    const fb=bar.querySelector('[data-ab=free]'); fb.classList.toggle('on',!!anim.spec.freeCamera); fb.setAttribute('aria-pressed',String(!!anim.spec.freeCamera));
     const r=bar.querySelector('input'); r.max=anim.duration; if(document.activeElement!==r) r.value=anim.t;
     bar.querySelector('.anim-time').textContent=anim.t.toFixed(2)+' / '+anim.duration.toFixed(2)+' s';
   }
@@ -1515,9 +1554,14 @@ const Remote=(()=>{
     });
     remoteEvents();
     $('#animImport').addEventListener('click',()=>$('#animFile').click());
-    for(const type of ['pointerdown','touchstart']) window.addEventListener(type,e=>{ if(cinema) stopFromCinema(e); },{capture:true,passive:false});
+    for(const type of ['pointerdown','touchstart']) window.addEventListener(type,e=>{ if(cinema&&!freeCam()) stopFromCinema(e); },{capture:true,passive:false});
     for(const type of ['click','pointerup','mouseup','touchend']) window.addEventListener(type,e=>{ if(performance.now()<swallowClicksUntil){ e.preventDefault(); e.stopPropagation(); } },{capture:true,passive:false});
-    window.addEventListener('keydown',e=>{ if(cinema&&(e.key==='Escape'||e.key===' '||e.key==='Spacebar')) stopFromCinema(e); },true);
+    window.addEventListener('keydown',e=>{
+      if(!cinema) return;
+      const space=e.key===' '||e.key==='Spacebar';
+      if(freeCam()&&space){ e.preventDefault(); e.stopPropagation(); togglePauseInCinema(); }
+      else if(e.key==='Escape'||space) stopFromCinema(e);
+    },true);
     for(const type of ['fullscreenchange','webkitfullscreenchange']) document.addEventListener(type,()=>{ if(cinema&&fsByUs&&!fsElement()){ fsByUs=false; stopFromCinema(); } });
     $('#animLibBtn').addEventListener('click',()=>{ if(library){ library.hidden=!library.hidden; renderLibrary(); } });
     $('#animFile').addEventListener('change',e=>{ const f=[...e.target.files]; e.target.value=''; importAnimationFile(f); });
