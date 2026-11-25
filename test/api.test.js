@@ -236,6 +236,20 @@ test('view({ pitch: 90 }) is the Top view of Arrange boxes', async t => {
 /* ---------- Remote animation helpers (remote-anim.js) ---------- */
 const Anim = require('../remote-anim.js');
 
+test('animation: type params ease per name from the start values', () => {
+  const v = Anim.validateAnimation({ easing: 'linear', keyframes: [
+    { t: 0, boxes: { 0: { params: { elbowR: 0 } } } },
+    { t: 2, boxes: { 0: { params: { elbowR: 60, armOutR: 40 } } } }
+  ] }, 1);
+  assert.equal(v.ok, true);
+  const at = (t, start) => Anim.sampleAt(v.anim, t, start || {}).boxes[0].params;
+  assert.equal(at(1).elbowR, 30);
+  assert.equal(at(1, { 0: { params: { armOutR: 10 } } }).armOutR, 25);   // eases in from the box's own value
+  assert.equal(at(5).elbowR, 60);
+  assert.equal(Anim.validateAnimation({ keyframes: [{ t: 0, boxes: { 0: { params: { kneeL: 'x' } } } }] }, 1).ok, false);
+  assert.equal(Anim.validateAnimation({ keyframes: [{ t: 0, boxes: { 0: { params: [3] } } }] }, 1).ok, false);
+});
+
 test('animation: positions and rotations interpolate at mid-times', () => {
   const v = Anim.validateAnimation({ easing: 'linear', keyframes: [
     { t: 0, boxes: { 0: { position: [0, 0, 0], rotation: [0, 0, 0] } } },

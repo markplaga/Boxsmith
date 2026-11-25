@@ -252,6 +252,8 @@ Write the second box (and everything beyond it) where it is when the joint is st
 - `pivotReach(sideA, sideB, bendMax, swingMax)`: how far each box's end must sit from the pivot (its `reach`) so the boxes, tabs and cross never touch while the joint turns up to `bendMax` and `swingMax` degrees either way. Larger angles need a longer reach.
 - `pivotMinSide()`: the narrowest box that has room for pivot tabs (22 mm for 3 mm material).
 
+Pose settings can also be animated: an animation keyframe with `"params": { "bendAngle": 40 }` for a box made from your type moves the joint smoothly (see `animate` in API.md).
+
 The check builds the pose you are looking at. It tests every post: each must sit in a tab hole with room for its corners, otherwise it "runs into solid material" or "can't turn". It also tests the tabs, boxes and cross for collisions like any other parts. Test a type with its angle settings at their extremes, alone and together. [`robot`](https://github.com/markplaga/markplaga-boxsmith-type/tree/main/types/robot) in the shared collection is a full example: neck, shoulders, elbows, hips and knees.
 
 **Slots for a panel's tabs.** A `fingers` hole that is one thickness tall with one `"f"` edge, like `{"fingers": {"size": [L, "t"], "edges": ["f", "e", "e", "e"], "at": [x, y]}}`, is exactly the row of finger tabs of an `"f"` edge of length `L`. So it is the slot row for a panel whose `"f"` edge of the same length passes through the wall there. [`box-with-shelf.json`](types/box-with-shelf.json) does this.

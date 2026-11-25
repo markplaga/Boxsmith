@@ -1170,6 +1170,20 @@ function cutEdgeRGB(material,key=view.mat){
 const stereoActive=()=>view.stereo==='cross'||view.stereo==='parallel';
 let scene=null, selPi=-1;
 function circlePts(c){ return arc(c.x,c.y,c.r,0,2*PI,18).slice(0,18); }
+// a flat part in 3D: its outline and holes at both faces, its side quads and its centre (also used to re-pose a part)
+function solidGeometry(pts,holes,map,t){
+  const {o,u,v,n}=map;
+  const m2=(q,h)=>[o[0]+u[0]*q[0]+v[0]*q[1]+n[0]*h, o[1]+u[1]*q[0]+v[1]*q[1]+n[1]*h, o[2]+u[2]*q[0]+v[2]*q[1]+n[2]*h];
+  const loops=[pts,...holes];
+  const bot=loops.map(L=>L.map(q=>m2(q,0))), top=loops.map(L=>L.map(q=>m2(q,t)));
+  const sides=[];
+  loops.forEach((L,li)=>{ const sg=(area(L)>0?1:-1)*(li===0?1:-1);
+    for(let i=0;i<L.length;i++){ const a=L[i], b=L[(i+1)%L.length]; const dx=b[0]-a[0], dy=b[1]-a[1], ln=Math.hypot(dx,dy)||1;
+      const nx=sg*dy/ln, ny=-sg*dx/ln; const N=[u[0]*nx+v[0]*ny,u[1]*nx+v[1]*ny,u[2]*nx+v[2]*ny];
+      sides.push({q:[bot[li][i],bot[li][(i+1)%L.length],top[li][(i+1)%L.length],top[li][i]],N}); } });
+  let cx=0,cy=0,cz=0,cnt=0; for(const q of bot[0]){ cx+=q[0];cy+=q[1];cz+=q[2];cnt++; }
+  return {c:[cx/cnt+n[0]*t/2,cy/cnt+n[1]*t/2,cz/cnt+n[2]*t/2],bot,top,n,sides};
+}
 function makeScene(parts){
   const solids=[];
   for(const p of parts){
@@ -1177,18 +1191,8 @@ function makeScene(parts){
     const top=hs.filter((h,i)=>!hs.some((o,j)=>j!==i && Math.abs(area(o))>Math.abs(area(h)) && pointIn(h[0],o))); // islands drop out; don't show them as nested holes
     const list=p.solids || (p.map?[{pts:p.outline, holes:top, map:p.map}]:[]);
     for(const s of list){
-      const {o,u,v,n}=s.map, t=s.th||p.th||G.t;
-      const m2=(q,h)=>[o[0]+u[0]*q[0]+v[0]*q[1]+n[0]*h, o[1]+u[1]*q[0]+v[1]*q[1]+n[1]*h, o[2]+u[2]*q[0]+v[2]*q[1]+n[2]*h];
-      const loops=[s.pts,...(s.holes||[])];
-      const bot=loops.map(L=>L.map(q=>m2(q,0))), top=loops.map(L=>L.map(q=>m2(q,t)));
-      const sides=[];
-      loops.forEach((L,li)=>{ const sg=(area(L)>0?1:-1)*(li===0?1:-1);
-        for(let i=0;i<L.length;i++){ const a=L[i], b=L[(i+1)%L.length]; const dx=b[0]-a[0], dy=b[1]-a[1], ln=Math.hypot(dx,dy)||1;
-          const nx=sg*dy/ln, ny=-sg*dx/ln; const N=[u[0]*nx+v[0]*ny,u[1]*nx+v[1]*ny,u[2]*nx+v[2]*ny];
-          sides.push({q:[bot[li][i],bot[li][(i+1)%L.length],top[li][(i+1)%L.length],top[li][i]],N}); } });
-      let cx=0,cy=0,cz=0,cnt=0; for(const q of bot[0]){ cx+=q[0];cy+=q[1];cz+=q[2];cnt++; }
-      const c=[cx/cnt+n[0]*t/2,cy/cnt+n[1]*t/2,cz/cnt+n[2]*t/2];
-      solids.push({c,bot,top,n,sides,anim:s.anim||p.anim||null,pts:s.pts,holes:s.holes||[],map:s.map,th:t,look:p.look||null,pi:p.idx,part:p,decal:!p.solids});
+      const t=s.th||p.th||G.t;
+      solids.push(Object.assign(solidGeometry(s.pts,s.holes||[],s.map,t),{anim:s.anim||p.anim||null,pts:s.pts,holes:s.holes||[],map:s.map,th:t,look:p.look||null,pi:p.idx,part:p,decal:!p.solids}));
     }
   }
   let mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];

@@ -611,12 +611,23 @@ const Remote=(()=>{
         catch(err){ return 'keyframe at '+key.t+' s: those settings for box '+i+' make impossible geometry.'; }
       }
     }
-    const start={}; for(const i of Object.keys(originals)) start[i]=originals[i].pose;
+    // params keys: a box type's own number settings (joint angles…), checked against that box's style
+    const posers={};
+    for(const i of Object.keys(spec.tracks)){
+      const names=[...new Set(spec.tracks[i].flatMap(k=>k.params?Object.keys(k.params):[]))]; if(!names.length) continue;
+      const box=layoutBoxes[i], def=customTypeDef(box.settings.type);
+      if(!def) return 'box '+i+' is a '+typeInfo(box.settings.type).name+', which has no settings to animate with params. params work on box types from the Type lab, like the Robot.';
+      const nums=(def.params||[]).filter(p=>['number','integer','length'].includes(p.kind));
+      for(const n of names) if(!nums.some(p=>p.key===n)) return 'box '+i+' ('+def.name+') has no number setting "'+n+'". It has: '+(nums.map(p=>p.key).join(', ')||'none')+'.';
+      const rest={}; for(const p of nums) if(names.includes(p.key)) rest[p.key]=poserValue(box.settings,def,p.key);
+      posers[i]={def,rest,last:null};
+    }
+    const start={}; for(const i of Object.keys(originals)) start[i]=Object.assign({},originals[i].pose,posers[i]?{params:posers[i].rest}:{});
     // boxes that ride on animated groups (directly or through a group inside one)
     const groupRest={}; for(const g of layoutGroups) groupRest[g.id]={position:g.origin.slice(),rotation:[0,0,0],scale:1};
     const moving=Object.keys(spec.groupTracks||{}), riders=[];
     layoutBoxes.forEach((b,i)=>{ if(b.group&&groupChain(b.group).some(g=>moving.includes(g.id))){ riders.push(i); if(!originals[i]){ b._animColors=undefined; originals[i]={box:b,pose:poseOf(b),rider:true}; } } });
-    anim={namedProjection:a.projection!==undefined,spec,unit:spec.unit,start,duration:spec.duration,fps:spec.fps,loop:spec.loop,t:0,playing:false,raf:0,originals,variants,view0:viewDeg(),lastFrameT:-1,groupRest,riders};
+    anim={posers,namedProjection:a.projection!==undefined,spec,unit:spec.unit,start,duration:spec.duration,fps:spec.fps,loop:spec.loop,t:0,playing:false,raf:0,originals,variants,view0:viewDeg(),lastFrameT:-1,groupRest,riders};
     anim.sampleView=Object.assign({},anim.view0,{groupRest,resolveTarget:(target,t)=>targetPan(target,t)});
     if(curView!=='layout') document.querySelector('#tabs [data-v="layout"]')?.click();
     if(typeof a.name==='string') anim.name=a.name.slice(0,200);
@@ -625,6 +636,35 @@ const Remote=(()=>{
     // tell the remotes it's ready (before any 'playing'), so they can send export, seek, … without guessing
     if(host) host.send({t:'anim',state:'loaded',time:0,duration:Math.round(anim.duration*1000)/1000,name:anim.name||null,unit:anim.unit,autoplay:a.autoplay!==false,soundtrack:anim.sound?anim.sound.name:null});
     if(a.autoplay!==false){ if(anim.sound&&anim.sound.state==='loading'){ anim.pendingPlay=true; setTimeout(()=>{ if(anim&&anim.pendingPlay){ anim.pendingPlay=false; playAnim(); } },5000); } else playAnim(); }
+  }
+  /* Posing a box type's settings (animating robot joints). The type is built again with the new values,
+     and only the placement of each part changes: the 3D shapes and their GL meshes are kept and moved.
+     If the new values change which parts there are, the frame keeps the old pose (and says so once). */
+  function poserValue(settings,def,key){
+    if(Object.prototype.hasOwnProperty.call(DEFAULTS,key)) return settings[key]??DEFAULTS[key];
+    const own=settings.typeParams&&settings.typeParams[def.id]; const p=def.params.find(x=>x.key===key);
+    return own&&own[key]!==undefined?own[key]:p.default;
+  }
+  function poseBox(box,poser,values){
+    const def=poser.def, set=JSON.parse(JSON.stringify(box.settings)), own=Object.assign({},(set.typeParams||{})[def.id]);
+    for(const [k,v0] of Object.entries(values)){ const p=def.params.find(x=>x.key===k); let v=v0;
+      if(p.min!==undefined) v=Math.max(p.min,v); if(p.max!==undefined) v=Math.min(p.max,v); if(p.kind==='integer') v=Math.round(v);
+      if(Object.prototype.hasOwnProperty.call(DEFAULTS,k)) set[k]=v; else own[k]=v; }
+    set.typeParams=Object.assign({},set.typeParams,{[def.id]:own});
+    const key=JSON.stringify(values,(k,v)=>typeof v==='number'?Math.round(v*100)/100:v);
+    if(poser.last===key&&poser.box===box) return;
+    let parts;
+    const prevS=S, prevG=G;
+    try{ S=Object.assign({},DEFAULTS,set); G=geometryContext(); parts=generate().parts; }
+    catch(err){ if(!poser.warned){ poser.warned=true; note('Box '+layoutBoxes.indexOf(box)+': that pose can\'t be built ('+err.message+').'); } return; }
+    finally{ S=prevS; G=prevG; }
+    const maps=[]; for(const q of parts){ if(q.solids) q.solids.forEach(x=>maps.push(x.map)); else if(q.map) maps.push(q.map); }
+    const solids=box.model.solids;
+    if(maps.length!==solids.length){ if(!poser.warned){ poser.warned=true; note('Box '+layoutBoxes.indexOf(box)+': those settings change which parts there are, so they can\'t move smoothly; use settings keys for that.'); } return; }
+    const obs=new Map(); if(typeof GL!=='undefined'&&GL) for(const ob of GL.objs) if(ob.s.layoutBox===box) obs.set(ob.s,ob);
+    solids.forEach((sd,k)=>{ const m=maps[k]; sd.map=m; Object.assign(sd,solidGeometry(sd.pts,sd.holes,m,sd.th));
+      const ob=obs.get(sd); if(ob) ob.base.set(m.u[0],m.v[0],m.n[0],m.o[0], m.u[1],m.v[1],m.n[1],m.o[1], m.u[2],m.v[2],m.n[2],m.o[2], 0,0,0,1); });
+    box.model._hull=null; poser.last=key; poser.box=box;
   }
   // Pose every animated box (and the camera) for time t, then draw. Transforms only: meshes are
   // rebuilt only when a key swaps in a different design.
@@ -643,6 +683,7 @@ const Remote=(()=>{
         const next=want===anim.originals[i].pose.settings?anim.originals[i].box:Object.values(anim.variants[i]||{}).find(b=>b.settings===want);
         if(next&&next!==box){ layoutBoxes[i]=next; box=next; swapped=true; }
       }
+      if(p.params&&anim.posers[i]) poseBox(box,anim.posers[i],p.params);
       box.position=p.position.slice(); box.rotation=p.rotation.slice(); box.hidden=!!p.hidden||!!groupHidden(box);
       setColors(box,groupColors(box)||p.colors);   // colors only change at their keys, so most frames skip the copy
       if(!swapped) fastTransform(box);
@@ -825,6 +866,7 @@ const Remote=(()=>{
     for(const [i,o] of Object.entries(anim.originals)){
       if(layoutBoxes[i]!==o.box&&layoutBoxes[i]&&anim.variants[i]&&Object.values(anim.variants[i]).includes(layoutBoxes[i])){ layoutBoxes[i]=o.box; swapped=true; }
       const box=o.box, p=o.pose; box._animColors=undefined;
+      if(anim.posers&&anim.posers[i]) poseBox(box,anim.posers[i],anim.posers[i].rest);   // the box's own pose again
       box.position=p.position.slice(); box.rotation=p.rotation.slice(); box.hidden=p.hidden;
       if(p.colors) box.settings.colors=JSON.parse(JSON.stringify(p.colors)); else delete box.settings.colors;
       transformLayoutBox(box);

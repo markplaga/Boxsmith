@@ -114,6 +114,11 @@
           for(const [part,hex] of Object.entries(pose.colors)) if(!HEX.test(hex)) return bad(where+'.boxes['+name+'].colors.'+part+" must be '#rrggbb'.");
         }
         if(pose.settings!==undefined&&(pose.settings===null||typeof pose.settings!=='object')) return bad(where+'.boxes['+name+'].settings must be an object.');
+        if(pose.params!==undefined){   // a box type's own number settings (joint angles…), which glide between keys
+          if(pose.params===null||typeof pose.params!=='object'||Array.isArray(pose.params)) return bad(where+'.boxes['+name+'].params must be an object of setting: number.');
+          for(const [k,v] of Object.entries(pose.params)) if(!isNum(v)) return bad(where+'.boxes['+name+'].params.'+k+' must be a finite number.');
+        }
+        if(pose.ease!==undefined&&!EASE[pose.ease]) return bad(where+'.boxes['+name+'].ease must be '+EASE_NAMES+'.');
         const entry=Object.assign({t:key.t},pose);
         if(pose.position!==undefined) entry.position=toMM(pose.position);
         (tracks[i]=tracks[i]||[]).push(entry);
@@ -189,6 +194,21 @@
     return pts[pts.length-1][field];
   }
   const lerp3=(a,b,u)=>a.map((v,i)=>v+(b[i]-v)*u);
+  /* A box's params: each name runs through the keys that set it, from the box's own value at 0 (start),
+     with the key's ease or the animation's easing. → {name: value} or undefined when no key sets any. */
+  function paramsAt(list,t,start,global){
+    let names=list._pn;
+    if(!names){ names=[...new Set(list.flatMap(k=>k.params?Object.keys(k.params):[]))]; Object.defineProperty(list,'_pn',{value:names,enumerable:false}); }
+    if(!names.length) return undefined;
+    const cache=list._pk||(Object.defineProperty(list,'_pk',{value:{},enumerable:false}),list._pk), out={};
+    for(const n of names){
+      let pts=cache[n]||(cache[n]=list.filter(k=>k.params&&k.params[n]!==undefined).map(k=>({t:k.t,v:k.params[n],ease:k.ease})));
+      const sv=start&&start[n];
+      if(pts[0].t>0&&isNum(sv)) pts=[{t:0,v:sv}].concat(pts);
+      out[n]=keyedValue(pts,t,global,false,'num');
+    }
+    return out;
+  }
   function sampleAt(anim,t,start={},view){
     const ease=EASE[anim.easing]||EASE.easeInOut, boxes={};
     for(const [i,list] of Object.entries(anim.tracks)){
@@ -198,7 +218,8 @@
         rotation:propAt(list,'rotation',t,s.rotation,ease,rotationBetween),
         colors:propAt(list,'colors',t,s.colors,ease,null,'colors' in s),
         hidden:propAt(list,'hidden',t,s.hidden,ease,null,'hidden' in s),
-        settings:propAt(list,'settings',t,s.settings,ease,null,'settings' in s)
+        settings:propAt(list,'settings',t,s.settings,ease,null,'settings' in s),
+        params:paramsAt(list,t,s.params,ease)
       };
     }
     const groups=anim.groupTracks?groupsAt(anim,t,(view&&view.groupRest)||{}):{};
