@@ -242,6 +242,7 @@ That end's face is replaced (whether or not it is in `faces`) by a panel that si
 | `child` | The name of the frame that turns with the joint. Parts with `"frame": that name follow it, and so does any pivot placed in it, which chains joints: shoulder, then elbow, then wrist. |
 | `postW` | Post width, default the material thickness (square posts). The tab holes must be `pivotHole(postW)`. |
 | `gap`, `over` | Clearance between the cross and the tab walls (default 0.5 mm), and how far the posts stick out past the tabs (default 1 mm). |
+| `corner` | The radius of the cross's corners, default the material thickness. It never reaches the posts' shoulders, and 0 keeps them square. Rounding doesn't change how far the joint can turn. |
 | `name` | The cross's name on the cut sheet, default `"Pivot cross"`. |
 
 Write the second box (and everything beyond it) where it is when the joint is straight (both angles 0), with `"frame": "<child>"`. Boxsmith turns it into the pose. Frames are in the same coordinates as everything else, so a part in a frame is placed exactly like one outside it.

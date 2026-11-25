@@ -324,11 +324,11 @@
       }
       else if(k==='pivot'){
         // the cross between two tabbed box ends; its "child" frame turns with the joint
-        allow(['name','at','bend','swing','size','bendAngle','swingAngle','child','postW','gap','over']);
+        allow(['name','at','bend','swing','size','bendAngle','swingAngle','child','postW','gap','over','corner']);
         if(b.name!==undefined) checkT(p+'.name',b.name);
         vec(p+'.at',b.at??[0,0,0],3); checkAxis(p+'.bend',b.bend??'X'); checkAxis(p+'.swing',b.swing??'Y');
         vec(p+'.size',b.size,2);
-        for(const kk of ['bendAngle','swingAngle','postW','gap','over']) if(b[kk]!==undefined) checkF(p+'.'+kk,b[kk]);
+        for(const kk of ['bendAngle','swingAngle','postW','gap','over','corner']) if(b[kk]!==undefined) checkF(p+'.'+kk,b[kk]);
         if(typeof b.child!=='string'||!b.child.trim()) err(p+'.child','must name the frame that turns with the joint (parts after it use "frame": that name).'); else checkT(p+'.child',b.child);
       }
       else {

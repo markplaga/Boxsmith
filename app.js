@@ -390,7 +390,11 @@ function generateCustom(def){
           if(hb<pw/2+1||hs<pw/2+1) throw new TypeBuildError(p+'.size','is too small: the cross between the tabs would be '+fmt(2*hb)+' × '+fmt(2*hs)+', not enough around '+fmt(pw)+' posts.');
           const ang=(k,d)=>b[k]===undefined?0:numF(b[k],e,p+'.'+k)*PI/180, aB=ang('bendAngle'), aS=ang('swingAngle');
           const nn=[ub[1]*us[2]-ub[2]*us[1],ub[2]*us[0]-ub[0]*us[2],ub[0]*us[1]-ub[1]*us[0]];
-          const pts=[[-hb,-hs],[-pw/2,-hs],[-pw/2,-Ls],[pw/2,-Ls],[pw/2,-hs],[hb,-hs],[hb,-pw/2],[Lb,-pw/2],[Lb,pw/2],[hb,pw/2],[hb,hs],[pw/2,hs],[pw/2,Ls],[-pw/2,Ls],[-pw/2,hs],[-hb,hs],[-hb,pw/2],[-Lb,pw/2],[-Lb,-pw/2],[-hb,-pw/2]].map(q=>[q[0]+Lb,q[1]+Ls]);
+          // rounded corners (default: the material thickness), never reaching the posts' shoulders
+          const rMax=Math.max(0,Math.min(hb,hs)-pw/2-1), rWant=Math.min(rMax,Math.max(0,b.corner===undefined?t:numF(b.corner,e,p+'.corner'))), rc=rWant>0.05?rWant:0;
+          const corner=(cx,cy,a0)=>rc?arcPts(cx,cy,rc,a0,a0+PI/2,8):[[cx,cy]];
+          const pts=concatPts(corner(-hb+rc,-hs+rc,PI),[[-pw/2,-hs],[-pw/2,-Ls],[pw/2,-Ls],[pw/2,-hs]],corner(hb-rc,-hs+rc,-PI/2),[[hb,-pw/2],[Lb,-pw/2],[Lb,pw/2],[hb,pw/2]],
+            corner(hb-rc,hs-rc,0),[[pw/2,hs],[pw/2,Ls],[-pw/2,Ls],[-pw/2,hs]],corner(-hb+rc,hs-rc,PI/2),[[-hb,pw/2],[-Lb,pw/2],[-Lb,-pw/2],[-hb,-pw/2]]).map(q=>[q[0]+Lb,q[1]+Ls]);
           const o=P0.map((x,k)=>x-ub[k]*Lb-us[k]*Ls-nn[k]*t/2);
           const name=b.name!==undefined?at(p+'.name',()=>T.template(b.name,e,host,counters)):'Pivot cross';
           const pin=(dir,from,to)=>({from:P0.map((x,k)=>x+dir[k]*from),to:P0.map((x,k)=>x+dir[k]*to),size:Math.hypot(pw,t),path:p});
