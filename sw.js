@@ -1,10 +1,10 @@
 /* Boxsmith service worker: makes the app installable and usable offline.
    Bump VERSION whenever you change app files so installed copies refresh. */
-const VERSION='boxsmith-v43';
+const VERSION='boxsmith-v44';
 const CORE = [
   './', 'index.html', 'help.html', 'manifest.webmanifest',
   'three.min.js', 'designs.js', 'tools.js', 'box-types.js', 'boxsmith-api.js', 'box-layout.js',
-  'mosaic-core.js', 'app.js', 'mosaic.js', 'boxsmith-engine.js', 'type-lab.js', 'BOX-TYPES.md', 'AI-TYPE-BUILDER.md', 'boxsmith-type.schema.json', 'types/closed-box.json', 'types/open-tray.json', 'types/cube-frame.json', 'types/box-with-shelf.json', 'remote-anim.js', 'remote.js',
+  'mosaic-core.js', 'share.js', 'site.config.js', 'site.js', 'app.js', 'mosaic.js', 'boxsmith-engine.js', 'type-lab.js', 'BOX-TYPES.md', 'AI-TYPE-BUILDER.md', 'boxsmith-type.schema.json', 'types/closed-box.json', 'types/open-tray.json', 'types/cube-frame.json', 'types/box-with-shelf.json', 'remote-anim.js', 'remote.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png',
   'icons/apple-touch-icon.png', 'icons/favicon-32.png'
 ];
